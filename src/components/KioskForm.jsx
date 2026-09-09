@@ -266,7 +266,7 @@ export default function KioskForm({ activeBatch, onComplete, onCancel, initialDa
         'السرية الثالثة ( ٣ )',
         'السرية الرابعة ( ٤ )',
         'السرية الخامسة ( ٥ )',
-        'سرية القيادة'
+        'السرية السادسة ( ٦ )'
       ],
       placeholder: 'أو اكتب السرية...',
     }

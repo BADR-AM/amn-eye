@@ -1,5 +1,6 @@
 import React from 'react';
 import { Printer, X, Download, Shield } from 'lucide-react';
+import centralSecurityLogo from '../assets/central_security_logo.png';
 
 export default function OfficialReport({ recruit, onClose }) {
   if (!recruit) return null;
@@ -46,22 +47,31 @@ export default function OfficialReport({ recruit, onClose }) {
       </div>
 
       {/* Official A4 Document Sheet */}
-      <div className="w-full max-w-[210mm] min-h-[297mm] bg-white text-black p-[15mm] shadow-2xl rounded-sm border border-slate-300 font-sans print:border-none print:shadow-none print:p-0 print:m-0 print:w-full">
+      <div className="w-full max-w-[210mm] min-h-[297mm] bg-white text-black p-[12mm] shadow-2xl rounded-sm border border-slate-300 font-sans print:border-none print:shadow-none print:p-0 print:m-0 print:w-full print:text-[13px]">
         
         {/* Official Header */}
-        <div className="relative border-b-2 border-black pb-2 mb-3">
+        <div className="relative border-b-2 border-black pb-2 mb-2">
           
+          {/* Central Security Shield Logo in Right Corner */}
+          <div className="absolute right-0 top-0 w-24 h-28 flex flex-col items-center justify-center">
+            <img 
+              src={centralSecurityLogo} 
+              alt="شعار الأمن المركزي" 
+              className="w-20 h-24 object-contain"
+            />
+          </div>
+
           {/* Right/Center Hierarchy */}
-          <div className="text-center font-bold space-y-1">
-            <h2 className="text-xl tracking-wider font-extrabold">وزارة الداخليـــــة</h2>
-            <h3 className="text-lg">الإدارة العامة للأمن المركزي</h3>
-            <h4 className="text-base">منطقة وسط الدلتا</h4>
-            <h4 className="text-base">مركز تدريب المجندين</h4>
-            <h5 className="text-sm font-semibold underline underline-offset-4">وحدة الأمن والتحريات</h5>
+          <div className="text-center font-bold space-y-0.5">
+            <h2 className="text-lg tracking-wider font-extrabold">وزارة الداخليـــــة</h2>
+            <h3 className="text-base font-bold">الإدارة العامة للأمن المركزي</h3>
+            <h4 className="text-sm font-bold">منطقة وسط الدلتا</h4>
+            <h4 className="text-sm font-bold">مركز تدريب المجندين</h4>
+            <h5 className="text-xs font-semibold underline underline-offset-4">وحدة الأمن والتحريات</h5>
           </div>
 
           {/* Photo Box in Left Corner */}
-          <div className="absolute left-0 top-0 w-28 h-36 border-2 border-black rounded flex flex-col items-center justify-center overflow-hidden bg-slate-50">
+          <div className="absolute left-0 top-0 w-24 h-32 border-2 border-black rounded flex flex-col items-center justify-center overflow-hidden bg-slate-50">
             {recruit.photo_path ? (
               <img
                 src={recruit.photo_path}
@@ -69,7 +79,7 @@ export default function OfficialReport({ recruit, onClose }) {
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div className="text-center p-2 text-xs text-slate-500 font-bold">
+              <div className="text-center p-1 text-[11px] text-slate-500 font-bold">
                 صورة المجند<br />الشخصية
               </div>
             )}
