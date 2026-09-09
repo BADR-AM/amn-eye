@@ -586,7 +586,11 @@ app.get('/api/recruits', requireAuth, async (req, res) => {
     const total = countRow ? countRow.count : 0;
 
     const listSql = `
-      SELECT r.*, b.name as batch_name, b.year as batch_year, b.month as batch_month
+      SELECT r.*, b.name as batch_name, b.year as batch_year, b.month as batch_month,
+        (SELECT activity_type FROM recruit_activities WHERE recruit_id = r.id AND (return_date IS NULL OR return_date = '') ORDER BY id DESC LIMIT 1) as active_activity,
+        (SELECT destination FROM recruit_activities WHERE recruit_id = r.id AND (return_date IS NULL OR return_date = '') ORDER BY id DESC LIMIT 1) as active_destination,
+        (SELECT diagnosis FROM recruit_activities WHERE recruit_id = r.id ORDER BY id DESC LIMIT 1) as latest_diagnosis,
+        (SELECT COUNT(*) FROM recruit_activities WHERE recruit_id = r.id) as activities_count
       FROM recruits r
       JOIN batches b ON r.batch_id = b.id
       ${whereSql}
@@ -636,7 +640,11 @@ app.get('/api/recruits/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const recruit = await get(`
-      SELECT r.*, b.name as batch_name, b.year as batch_year, b.month as batch_month
+      SELECT r.*, b.name as batch_name, b.year as batch_year, b.month as batch_month,
+        (SELECT activity_type FROM recruit_activities WHERE recruit_id = r.id AND (return_date IS NULL OR return_date = '') ORDER BY id DESC LIMIT 1) as active_activity,
+        (SELECT destination FROM recruit_activities WHERE recruit_id = r.id AND (return_date IS NULL OR return_date = '') ORDER BY id DESC LIMIT 1) as active_destination,
+        (SELECT diagnosis FROM recruit_activities WHERE recruit_id = r.id ORDER BY id DESC LIMIT 1) as latest_diagnosis,
+        (SELECT COUNT(*) FROM recruit_activities WHERE recruit_id = r.id) as activities_count
       FROM recruits r
       JOIN batches b ON r.batch_id = b.id
       WHERE r.id = ?
@@ -902,6 +910,236 @@ app.delete('/api/recruits/:id', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Error deleting recruit:', error);
     res.status(500).json({ error: 'خطأ في حذف المجند' });
+  }
+});
+
+// -------------------------------------------------------------
+// 9. Recruit Activities & Medical Tracking (المتابعة والتحركات الطبية)
+// -------------------------------------------------------------
+
+// جلب سجل تحركات ومتابعة مجند معين
+app.get('/api/recruits/:id/activities', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const activities = await query(
+      `SELECT * FROM recruit_activities WHERE recruit_id = ? ORDER BY departure_date DESC, id DESC`,
+      [id]
+    );
+    res.json(activities);
+  } catch (error) {
+    console.error('Error fetching activities:', error);
+    res.status(500).json({ error: 'خطأ في استرجاع سجل المتابعة' });
+  }
+});
+
+// تسجيل حركة / متابعة جديدة لمجند (مستشفى الشرطة، عيادة، مأمورية، إلخ)
+app.post('/api/recruits/:id/activities', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      activity_type,
+      destination,
+      departure_date,
+      return_date,
+      diagnosis,
+      medical_decision,
+      notes,
+      officer_name
+    } = req.body;
+
+    if (!activity_type || !departure_date) {
+      return res.status(400).json({ error: 'نوع الحركة وتاريخ القيام مطلوبان' });
+    }
+
+    const result = await run(
+      `INSERT INTO recruit_activities 
+        (recruit_id, activity_type, destination, departure_date, return_date, diagnosis, medical_decision, notes, officer_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        activity_type,
+        destination || '',
+        departure_date,
+        return_date || null,
+        diagnosis || '',
+        medical_decision || '',
+        notes || '',
+        officer_name || ''
+      ]
+    );
+
+    // إذا كان هناك قرار طبي، يمكن تحديث ملاحظات المجند أو حالته تلقائياً إذا لزم الأمر
+    const newActivity = await get(`SELECT * FROM recruit_activities WHERE id = ?`, [result.lastID]);
+    res.status(201).json(newActivity);
+  } catch (error) {
+    console.error('Error adding activity:', error);
+    res.status(500).json({ error: 'خطأ في تسجيل حركة المتابعة' });
+  }
+});
+
+// تحديث حركة متابعة (تسجيل عودة، إضافة تشخيص، إلخ)
+app.put('/api/activities/:activityId', requireAuth, async (req, res) => {
+  try {
+    const { activityId } = req.params;
+    const {
+      activity_type,
+      destination,
+      departure_date,
+      return_date,
+      diagnosis,
+      medical_decision,
+      notes,
+      officer_name
+    } = req.body;
+
+    const existing = await get(`SELECT * FROM recruit_activities WHERE id = ?`, [activityId]);
+    if (!existing) {
+      return res.status(404).json({ error: 'سجل المتابعة غير موجود' });
+    }
+
+    await run(
+      `UPDATE recruit_activities SET
+        activity_type = COALESCE(?, activity_type),
+        destination = COALESCE(?, destination),
+        departure_date = COALESCE(?, departure_date),
+        return_date = ?,
+        diagnosis = COALESCE(?, diagnosis),
+        medical_decision = COALESCE(?, medical_decision),
+        notes = COALESCE(?, notes),
+        officer_name = COALESCE(?, officer_name),
+        updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [
+        activity_type,
+        destination,
+        departure_date,
+        return_date !== undefined ? return_date : existing.return_date,
+        diagnosis,
+        medical_decision,
+        notes,
+        officer_name,
+        activityId
+      ]
+    );
+
+    const updated = await get(`SELECT * FROM recruit_activities WHERE id = ?`, [activityId]);
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating activity:', error);
+    res.status(500).json({ error: 'خطأ في تحديث سجل المتابعة' });
+  }
+});
+
+// حذف حركة متابعة
+app.delete('/api/activities/:activityId', requireAuth, async (req, res) => {
+  try {
+    const { activityId } = req.params;
+    const existing = await get(`SELECT * FROM recruit_activities WHERE id = ?`, [activityId]);
+    if (!existing) {
+      return res.status(404).json({ error: 'سجل المتابعة غير موجود' });
+    }
+
+    await run(`DELETE FROM recruit_activities WHERE id = ?`, [activityId]);
+    res.json({ message: 'تم حذف قيد المتابعة بنجاح' });
+  } catch (error) {
+    console.error('Error deleting activity:', error);
+    res.status(500).json({ error: 'خطأ في حذف قيد المتابعة' });
+  }
+});
+
+// -------------------------------------------------------------
+// 10. Analytics & Telemetry Overview (إحصائيات الإنفوجرافيك التفاعلية)
+// -------------------------------------------------------------
+app.get('/api/analytics/overview', async (req, res) => {
+  try {
+    const { batch_id } = req.query;
+    let batchFilter = '';
+    const params = [];
+
+    if (batch_id && batch_id !== 'all') {
+      batchFilter = 'WHERE batch_id = ?';
+      params.push(batch_id);
+    }
+
+    // 1. الإحصائيات الأساسية
+    const totalRecruits = await get(`SELECT COUNT(*) as count FROM recruits ${batchFilter}`, params);
+    
+    // عدد الحالات ذات الملاحظات الأمنية
+    const flaggedRecruits = await get(
+      `SELECT COUNT(*) as count FROM recruits 
+       ${batchFilter ? batchFilter + ' AND' : 'WHERE'} 
+       (inspection LIKE '%ملاحظ%' OR inspection LIKE '%تحفظ%' OR family_security_status LIKE '%ملاحظ%' OR family_security_status LIKE '%تحفظ%')`,
+      params
+    );
+
+    // 2. توزيع السرايا
+    const companyDistribution = await query(
+      `SELECT company, COUNT(*) as count 
+       FROM recruits 
+       ${batchFilter}
+       GROUP BY company 
+       ORDER BY count DESC`,
+      params
+    );
+
+    // 3. الموقف الطبي وحالات مستشفى الشرطة الحالية
+    // حالات خرجت لمستشفى الشرطة ولم تعد حتى الآن (return_date IS NULL OR return_date = '')
+    const inHospitalNow = await get(
+      `SELECT COUNT(DISTINCT r.id) as count 
+       FROM recruit_activities a
+       JOIN recruits r ON a.recruit_id = r.id
+       ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
+       a.activity_type = 'medical_referral' 
+       AND (a.return_date IS NULL OR a.return_date = '')`,
+      params
+    );
+
+    // قرارات طبية (حجز، راحة طبية، لائق)
+    const medicalDecisions = await query(
+      `SELECT a.medical_decision, COUNT(*) as count 
+       FROM recruit_activities a
+       JOIN recruits r ON a.recruit_id = r.id
+       ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
+       a.medical_decision != '' AND a.medical_decision IS NOT NULL
+       GROUP BY a.medical_decision`,
+      params
+    );
+
+    // 4. الحضور حسب التاريخ (آخر 7 تواريخ تسجيل)
+    const attendanceTrends = await query(
+      `SELECT attendance_date, COUNT(*) as count 
+       FROM recruits 
+       ${batchFilter}
+       GROUP BY attendance_date 
+       ORDER BY attendance_date DESC 
+       LIMIT 7`,
+      params
+    );
+
+    // 5. المؤهلات الدراسية
+    const qualificationStats = await query(
+      `SELECT qualification, COUNT(*) as count 
+       FROM recruits 
+       ${batchFilter}
+       GROUP BY qualification 
+       ORDER BY count DESC 
+       LIMIT 5`,
+      params
+    );
+
+    res.json({
+      total: totalRecruits.count,
+      flagged: flaggedRecruits.count,
+      clean: Math.max(0, totalRecruits.count - flaggedRecruits.count),
+      inHospitalNow: inHospitalNow.count,
+      companyDistribution,
+      medicalDecisions,
+      attendanceTrends: attendanceTrends.reverse(),
+      qualificationStats
+    });
+  } catch (error) {
+    console.error('Error fetching analytics overview:', error);
+    res.status(500).json({ error: 'خطأ في جلب تحليلات المنظومة' });
   }
 });
 

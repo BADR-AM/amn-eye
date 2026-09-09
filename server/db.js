@@ -136,6 +136,28 @@ export const initDb = async () => {
     )
   `);
 
+  // 4. Recruit Activities / Medical Tracking table (سجل التحركات والمتابعة الطبية والأمنية)
+  await run(`
+    CREATE TABLE IF NOT EXISTS recruit_activities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recruit_id INTEGER NOT NULL,
+      activity_type TEXT NOT NULL, -- medical_referral, hospital_return, mission, administrative
+      destination TEXT DEFAULT '', -- جهة التحرك (مستشفى الشرطة بطنطا / مدينة نصر / العيادة)
+      departure_date TEXT NOT NULL, -- تاريخ وساعة الخروج / الإحالة
+      return_date TEXT, -- تاريخ وساعة العودة
+      diagnosis TEXT DEFAULT '', -- التشخيص الطبي
+      medical_decision TEXT DEFAULT '', -- القرار الطبي (راحة طبية، حجز، لائق، إعادة عرض)
+      notes TEXT DEFAULT '', -- ملاحظات القيد
+      officer_name TEXT DEFAULT '', -- اسم / رتبة مسجل القيد
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (recruit_id) REFERENCES recruits(id) ON DELETE CASCADE
+    )
+  `);
+
+  await run(`CREATE INDEX IF NOT EXISTS idx_activities_recruit_id ON recruit_activities(recruit_id)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_activities_type ON recruit_activities(activity_type)`);
+
   // Seed default company colors if not set
   const companyColorsRow = await get(`SELECT value FROM settings WHERE key = 'company_colors'`);
   if (!companyColorsRow) {

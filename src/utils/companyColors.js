@@ -86,6 +86,21 @@ export const getCompanyColorConfig = (companyName, customColors = null) => {
 };
 
 /**
+ * Helper to get CSS style attributes directly.
+ */
+export const getCompanyStyle = (companyName, customColors = null) => {
+  const conf = getCompanyColorConfig(companyName, customColors);
+  return {
+    color: conf.color,
+    bg: conf.color,
+    text: conf.textColor,
+    textColor: conf.textColor,
+    border: conf.borderColor || conf.color,
+    name: conf.name
+  };
+};
+
+/**
  * Fetch company colors from server or fallback to local storage / defaults.
  */
 export const fetchCompanyColors = async () => {
