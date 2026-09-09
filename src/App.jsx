@@ -289,6 +289,15 @@ export default function App() {
         activeBatch={activeBatch}
       />
 
+      {/* System Footer Branding */}
+      <footer className="w-full text-center py-2.5 bg-darkslate-950/80 dark:bg-zinc-950/80 border-t border-slate-850 dark:border-zinc-850 no-print text-[11px] text-slate-500 font-mono flex items-center justify-center gap-2">
+        <span className="font-semibold text-slate-400">Security Eye System</span>
+        <span>•</span>
+        <span className="text-slate-300 font-bold">Created by SHERIF A.ELRAHMAN</span>
+        <span>•</span>
+        <span>قطاع الأمن المركزي — منطقة وسط الدلتا</span>
+      </footer>
+
     </div>
   );
 }
