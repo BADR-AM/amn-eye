@@ -22,7 +22,7 @@ import LockerCard from './LockerCard';
 import CompanyColorsModal from './CompanyColorsModal';
 import { fetchCompanyColors, getCompanyColorConfig, DEFAULT_COMPANY_COLORS } from '../utils/companyColors';
 import { authHeaders } from '../utils/auth';
-import html2canvas from 'html2canvas';
+import { toPng, toJpeg } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 
@@ -188,14 +188,12 @@ export default function ExportModal({
     setProgressMsg('جاري إنشاء صورة الكارت عالية الدقة...');
 
     try {
-      const canvas = await html2canvas(cardRef.current, {
-        scale: 2.5,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#ffffff'
+      const dataUrl = await toPng(cardRef.current, {
+        pixelRatio: 2.5,
+        backgroundColor: '#ffffff',
+        cacheBust: true,
       });
 
-      const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.download = `كارت_دولاب_${currentRecruit.name.replace(/\s+/g, '_')}.png`;
       link.href = dataUrl;
@@ -246,14 +244,12 @@ export default function ExportModal({
 
         if (!cardRef.current) continue;
 
-        const canvas = await html2canvas(cardRef.current, {
-          scale: 2.5,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#ffffff'
+        const imgData = await toJpeg(cardRef.current, {
+          quality: 0.95,
+          pixelRatio: 2.5,
+          backgroundColor: '#ffffff',
+          cacheBust: true,
         });
-
-        const imgData = canvas.toDataURL('image/jpeg', 0.95);
 
         if (pdfLayout === 'single') {
           // 1 card centered per page (landscape A6 / horizontal)

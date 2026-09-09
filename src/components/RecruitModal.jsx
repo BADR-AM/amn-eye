@@ -17,7 +17,7 @@ import {
   Download
 } from 'lucide-react';
 import LockerCard from './LockerCard';
-import html2canvas from 'html2canvas';
+import { toPng } from 'html-to-image';
 
 export default function RecruitModal({ recruit, onClose, onPrint, onDelete, onUpdate }) {
   const [showCardPreview, setShowCardPreview] = useState(false);
@@ -31,8 +31,11 @@ export default function RecruitModal({ recruit, onClose, onPrint, onDelete, onUp
   const handleDownloadCard = async () => {
     if (!cardRef.current) return;
     try {
-      const canvas = await html2canvas(cardRef.current, { scale: 2.5, useCORS: true, allowTaint: true, backgroundColor: '#ffffff' });
-      const dataUrl = canvas.toDataURL('image/png');
+      const dataUrl = await toPng(cardRef.current, {
+        pixelRatio: 2.5,
+        backgroundColor: '#ffffff',
+        cacheBust: true
+      });
       const link = document.createElement('a');
       link.download = `كارت_دولاب_${recruit.name.replace(/\s+/g, '_')}.png`;
       link.href = dataUrl;
