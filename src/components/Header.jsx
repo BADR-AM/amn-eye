@@ -10,7 +10,8 @@ import {
   Sun,
   Moon,
   Bot,
-  LogOut
+  LogOut,
+  HardDrive
 } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
 
@@ -19,6 +20,7 @@ export default function Header({
   onOpenKiosk, 
   onOpenBatches, 
   onOpenNetwork, 
+  onOpenBackup,
   onOpenAiChat,
   theme,
   onToggleTheme,
@@ -112,6 +114,16 @@ export default function Header({
             <Bot className="w-4 h-4" />
             <span className="hidden sm:inline">المساعد الذكي</span>
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          </button>
+
+          {/* Backup & External Drive Management */}
+          <button
+            onClick={onOpenBackup}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-all shadow-sm"
+            title="النسخ الاحتياطي الدوري وسحب نسخة للهارد الخارجي"
+          >
+            <HardDrive className="w-4 h-4 text-amber-400" />
+            <span className="hidden md:inline">النسخ والهارد الخارجي</span>
           </button>
 
           {/* Wi-Fi Sync Network Status */}

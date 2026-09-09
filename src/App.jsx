@@ -7,6 +7,7 @@ import RecruitModal from './components/RecruitModal';
 import OfficialReport from './components/OfficialReport';
 import BatchesModal from './components/BatchesModal';
 import NetworkModal from './components/NetworkModal';
+import BackupManagerModal from './components/BackupManagerModal';
 import ChatPanel from './components/ChatPanel';
 import LoginPage from './components/LoginPage';
 import Toast from './components/Toast';
@@ -29,6 +30,7 @@ export default function App() {
   // Dialog & Panel states
   const [showBatchesModal, setShowBatchesModal] = useState(false);
   const [showNetworkModal, setShowNetworkModal] = useState(false);
+  const [showBackupModal, setShowBackupModal] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
   // Backend state
@@ -182,6 +184,7 @@ export default function App() {
           onOpenKiosk={() => setView('kiosk')}
           onOpenBatches={() => setShowBatchesModal(true)}
           onOpenNetwork={() => setShowNetworkModal(true)}
+          onOpenBackup={() => setShowBackupModal(true)}
           onOpenAiChat={() => setIsChatOpen(true)}
           theme={theme}
           onToggleTheme={handleToggleTheme}
@@ -268,6 +271,14 @@ export default function App() {
         <NetworkModal
           networkInfo={networkInfo}
           onClose={() => setShowNetworkModal(false)}
+        />
+      )}
+
+      {/* Backup & External Drive Management Modal */}
+      {showBackupModal && (
+        <BackupManagerModal
+          isOpen={showBackupModal}
+          onClose={() => setShowBackupModal(false)}
         />
       )}
 

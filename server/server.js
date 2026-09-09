@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import { initDb, query, get, run } from './db.js';
 import { getLocalIpAddresses } from './network.js';
 import { requireAuth, handleLogin } from './auth.js';
+import { createBackup, listBackups, deleteBackup, getAvailableDrives, startAutoBackupSchedule } from './backup.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1286,6 +1287,150 @@ app.delete('/api/documents/:id', requireAuth, async (req, res) => {
   }
 });
 
+// -------------------------------------------------------------
+// 12. Automated & External Drive Backup System (النسخ الاحتياطي الدوري)
+// -------------------------------------------------------------
+
+// كشف الأقراص المتاحة (الهاردات الخارجية والفلاشات)
+app.get('/api/backup/drives', requireAuth, (req, res) => {
+  try {
+    const drives = getAvailableDrives();
+    res.json(drives);
+  } catch (err) {
+    console.error('Error getting drives:', err);
+    res.status(500).json({ error: 'خطأ في استكشاف محركات الأقراص' });
+  }
+});
+
+// جلب قائمة النسخ الاحتياطية وإعدادات الجدولة
+app.get('/api/backup/list', requireAuth, async (req, res) => {
+  try {
+    const settingsRow = await get(`SELECT value FROM settings WHERE key = 'backup_config'`);
+    let config = {
+      externalPath: '',
+      autoBackupEnabled: true,
+      intervalHours: 6,
+      lastBackupAt: null
+    };
+    if (settingsRow && settingsRow.value) {
+      try { config = { ...config, ...JSON.parse(settingsRow.value) }; } catch (e) {}
+    }
+
+    const localBackups = listBackups();
+    const externalBackups = config.externalPath && fs.existsSync(config.externalPath) 
+      ? listBackups(config.externalPath) 
+      : [];
+
+    res.json({
+      config,
+      localBackups,
+      externalBackups
+    });
+  } catch (err) {
+    console.error('Error listing backups:', err);
+    res.status(500).json({ error: 'خطأ في جلب قائمة النسخ الاحتياطية' });
+  }
+});
+
+// حفظ إعدادات النسخ الاحتياطي (المسار الخارجي، الجدولة)
+app.post('/api/backup/settings', requireAuth, async (req, res) => {
+  try {
+    const { externalPath, autoBackupEnabled, intervalHours } = req.body;
+    const config = {
+      externalPath: externalPath || '',
+      autoBackupEnabled: autoBackupEnabled !== undefined ? autoBackupEnabled : true,
+      intervalHours: Number(intervalHours) || 6
+    };
+
+    await run(
+      `INSERT INTO settings (key, value, updated_at) VALUES ('backup_config', ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+      [JSON.stringify(config)]
+    );
+
+    // Reconfigure scheduler if enabled
+    if (config.autoBackupEnabled) {
+      startAutoBackupSchedule(config.intervalHours, async () => {
+        const row = await get(`SELECT value FROM settings WHERE key = 'backup_config'`);
+        if (row && row.value) {
+          try { return JSON.parse(row.value).externalPath; } catch (e) {}
+        }
+        return null;
+      });
+    }
+
+    res.json({ message: 'تم حفظ إعدادات النسخ الاحتياطي بنجاح', config });
+  } catch (err) {
+    console.error('Error saving backup settings:', err);
+    res.status(500).json({ error: 'خطأ في حفظ إعدادات النسخ' });
+  }
+});
+
+// إنشاء نسخة احتياطية فورية (محلياً أو على مسار خارجي محدد)
+app.post('/api/backup/create', requireAuth, async (req, res) => {
+  try {
+    const { externalPath } = req.body;
+    let targetExtDir = externalPath;
+
+    if (!targetExtDir) {
+      const cfgRow = await get(`SELECT value FROM settings WHERE key = 'backup_config'`);
+      if (cfgRow && cfgRow.value) {
+        try { targetExtDir = JSON.parse(cfgRow.value).externalPath; } catch (e) {}
+      }
+    }
+
+    const backupResult = await createBackup({
+      destinationDir: targetExtDir && fs.existsSync(targetExtDir) ? targetExtDir : null,
+      isAuto: false
+    });
+
+    res.json({
+      message: 'تم إنشاء النسخة الاحتياطية بنجاح',
+      backup: backupResult
+    });
+  } catch (err) {
+    console.error('Error creating backup:', err);
+    res.status(500).json({ error: 'خطأ أثناء إنشاء النسخة الاحتياطية: ' + err.message });
+  }
+});
+
+// تنزيل نسخة احتياطية مباشرة عبر المتصفح
+app.get('/api/backup/download/:fileName', requireAuth, (req, res) => {
+  try {
+    const { fileName } = req.params;
+    // Security check against directory traversal
+    const safeName = path.basename(fileName);
+    const backupsDir = path.join(__dirname, '..', 'backups');
+    const filePath = path.join(backupsDir, safeName);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'ملف النسخة الاحتياطية غير موجود' });
+    }
+
+    res.download(filePath, safeName);
+  } catch (err) {
+    console.error('Error downloading backup:', err);
+    res.status(500).json({ error: 'خطأ في تنزيل النسخة الاحتياطية' });
+  }
+});
+
+// حذف نسخة احتياطية
+app.delete('/api/backup/:fileName', requireAuth, (req, res) => {
+  try {
+    const { fileName } = req.params;
+    const safeName = path.basename(fileName);
+    const deleted = deleteBackup(safeName);
+    if (deleted) {
+      res.json({ message: 'تم حذف النسخة الاحتياطية بنجاح' });
+    } else {
+      res.status(404).json({ error: 'الملف غير موجود' });
+    }
+  } catch (err) {
+    console.error('Error deleting backup:', err);
+    res.status(500).json({ error: 'خطأ في حذف النسخة الاحتياطية' });
+  }
+});
+
 // Serve frontend static build if it exists (in production / packaged Electron app)
 const distDir = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(distDir)) {
@@ -1321,4 +1466,15 @@ app.listen(PORT, '0.0.0.0', () => {
     ips.forEach(i => console.log(`   👉 http://${i.ip}:${PORT} (${i.interfaceName})`));
   }
   console.log(`=======================================================`);
+
+  // Initialize background automated periodic backups (every 6 hours)
+  startAutoBackupSchedule(6, async () => {
+    try {
+      const row = await get(`SELECT value FROM settings WHERE key = 'backup_config'`);
+      if (row && row.value) {
+        return JSON.parse(row.value).externalPath;
+      }
+    } catch (e) {}
+    return null;
+  });
 });
