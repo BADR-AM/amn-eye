@@ -1,0 +1,68 @@
+{
+  "name": "recruit-investigation-system",
+  "version": "1.0.0",
+  "description": "نظام تسجيل وفحص المجندين المستجدين - وحدة الأمن والتحريات",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev:server": "node server/server.js",
+    "dev:vite": "vite",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:vite\"",
+    "build": "vite build",
+    "electron:dev": "concurrently \"npm run dev:server\" \"cross-env ELECTRON_DEV=true electron .\"",
+    "start": "node server/server.js",
+    "electron:start": "electron .",
+    "pack": "vite build && electron-builder --dir",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [],
+  "author": "Security and Investigation Unit",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^1.4.5-lts.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8",
+    "lucide-react": "^0.475.0",
+    "postcss": "^8.5.3",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.2.0",
+    "vitest": "^5.0.0"
+  },
+  "build": {
+    "appId": "com.security.recruitsys",
+    "productName": "منظومة فحص المجندين",
+    "executableName": "RecruitsSecuritySystem",
+    "asar": false,
+    "directories": {
+      "output": "dist-electron"
+    },
+    "win": {
+      "target": "dir"
+    },
+    "files": [
+      "dist/**/*",
+      "server/**/*",
+      "electron/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ]
+  }
+}

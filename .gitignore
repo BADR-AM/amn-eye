@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-electron/
+RecruitsApp/
+data/
+uploads/
+.env
+*.db
+*.db-journal
+*.db-wal
+*.exe
+*.dll
