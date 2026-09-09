@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from './components/Header';
+import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import KioskForm from './components/KioskForm';
 import MediaCapture from './components/MediaCapture';
@@ -13,108 +14,56 @@ import Toast from './components/Toast';
 import { isLoggedIn as checkLoggedIn, setToken, clearToken, authHeaders } from './utils/auth';
 
 export default function App() {
-  // Auth
   const [loggedIn, setLoggedIn] = useState(checkLoggedIn());
-
-  // Current view: 'dashboard' | 'kiosk' | 'media'
   const [view, setView] = useState('dashboard');
-
-  // Theme: 'dark' | 'light'
-  const [theme, setTheme] = useState('dark');
-
-  // Active recruit for dossier / print modals
   const [selectedRecruit, setSelectedRecruit] = useState(null);
   const [printRecruit, setPrintRecruit] = useState(null);
-
-  // Dialog & Panel states
   const [showBatchesModal, setShowBatchesModal] = useState(false);
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-
-  // Backend state
   const [batches, setBatches] = useState([]);
   const [activeBatch, setActiveBatch] = useState(null);
   const [stats, setStats] = useState(null);
   const [networkInfo, setNetworkInfo] = useState(null);
-
-  // Intermediate form data passed from KioskForm to MediaCapture
   const [kioskFormData, setKioskFormData] = useState(null);
-
-  // Toast state
   const [toast, setToast] = useState(null);
+
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type, key: Date.now() });
   }, []);
 
-  // Auth handlers
-  const handleLogin = (token) => {
-    setToken(token);
-    setLoggedIn(true);
-  };
-
+  const handleLogin = (token) => { setToken(token); setLoggedIn(true); };
   const handleLogout = () => {
     clearToken();
     setLoggedIn(false);
     setView('dashboard');
   };
 
-  // Toggle Theme
-  const handleToggleTheme = () => {
-    // Always keep dark mode
-    setTheme('dark');
-    document.documentElement.classList.add('dark');
-  };
+  useEffect(() => { document.documentElement.classList.add('dark'); }, []);
 
-  useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [theme]);
-
-  // Load initial backend state
   const loadInitialData = async () => {
     try {
       const headers = authHeaders();
-
-      // 1. Fetch batches (public)
       const batchesRes = await fetch('/api/batches');
       if (batchesRes.ok) {
         const bData = await batchesRes.json();
         setBatches(bData);
-        const active = bData.find(b => b.active === 1) || bData[0];
-        setActiveBatch(active);
+        setActiveBatch(bData.find(b => b.active === 1) || bData[0]);
       }
 
-      // 2. Fetch stats (protected)
       const statsRes = await fetch('/api/stats', { headers });
-      if (statsRes.ok) {
-        const sData = await statsRes.json();
-        setStats(sData);
-      } else if (statsRes.status === 401) {
-        handleLogout();
-        return;
-      }
+      if (statsRes.ok) setStats(await statsRes.json());
+      else if (statsRes.status === 401) { handleLogout(); return; }
 
-      // 3. Fetch network info for Wi-Fi sharing (public)
       const netRes = await fetch('/api/network-info');
-      if (netRes.ok) {
-        const nData = await netRes.json();
-        setNetworkInfo(nData);
-      }
+      if (netRes.ok) setNetworkInfo(await netRes.json());
     } catch (err) {
       console.error('Error connecting to backend:', err);
     }
   };
 
-  useEffect(() => {
-    if (loggedIn) {
-      loadInitialData();
-    }
-  }, [loggedIn]);
+  useEffect(() => { if (loggedIn) loadInitialData(); }, [loggedIn]);
 
-  // Global hotkeys (e.g. F2 to start registration)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'F2' && view === 'dashboard' && loggedIn) {
@@ -126,12 +75,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [view, loggedIn]);
 
-  // Handlers
-  const handleKioskComplete = (formData) => {
-    setKioskFormData(formData);
-    setView('media');
-  };
-
+  const handleKioskComplete = (formData) => { setKioskFormData(formData); setView('media'); };
   const handleSaveSuccess = (savedRecruit) => {
     setView('dashboard');
     setKioskFormData(null);
@@ -142,14 +86,9 @@ export default function App() {
 
   const handleDeleteRecruit = async (recruitId) => {
     try {
-      const res = await fetch(`/api/recruits/${recruitId}`, {
-        method: 'DELETE',
-        headers: authHeaders(),
-      });
+      const res = await fetch(`/api/recruits/${recruitId}`, { method: 'DELETE', headers: authHeaders() });
       if (!res.ok) throw new Error('فشل الحذف');
-      if (selectedRecruit && selectedRecruit.id === recruitId) {
-        setSelectedRecruit(null);
-      }
+      if (selectedRecruit?.id === recruitId) setSelectedRecruit(null);
       loadInitialData();
       showToast('تم حذف ملف المجند بنجاح');
     } catch (err) {
@@ -157,127 +96,74 @@ export default function App() {
     }
   };
 
-  // Not logged in — show login page
-  if (!loggedIn) {
-    return <LoginPage onLogin={handleLogin} />;
-  }
+  if (!loggedIn) return <LoginPage onLogin={handleLogin} />;
+
+  const appActions = {
+    onDashboard: () => setView('dashboard'),
+    onRegister: () => setView('kiosk'),
+    onOpenBatches: () => setShowBatchesModal(true),
+    onOpenNetwork: () => setShowNetworkModal(true),
+    onOpenAiChat: () => setIsChatOpen(true),
+    onLogout: handleLogout,
+  };
 
   return (
-    <div className="min-h-screen bg-darkslate-950 dark:bg-zinc-950 text-slate-100 dark:text-zinc-100 flex flex-col font-sans transition-colors duration-200">
-      
-      {/* Toast notification */}
-      {toast && (
-        <Toast
-          key={toast.key}
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+    <div className="min-h-screen bg-[var(--ui-bg)] text-slate-100 flex font-sans">
+      {view === 'dashboard' && <Sidebar activeBatch={activeBatch} {...appActions} />}
 
-      {/* App Header (visible in dashboard mode) */}
-      {view === 'dashboard' && (
-        <Header
-          activeBatch={activeBatch}
-          onOpenKiosk={() => setView('kiosk')}
-          onOpenBatches={() => setShowBatchesModal(true)}
-          onOpenNetwork={() => setShowNetworkModal(true)}
-          onOpenAiChat={() => setIsChatOpen(true)}
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
-          networkInfo={networkInfo}
-          onRefresh={loadInitialData}
-          onLogout={handleLogout}
-        />
-      )}
+      <div className="flex-1 min-w-0 flex flex-col">
+        {toast && <Toast key={toast.key} message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      {/* Main Dashboard View */}
-      {view === 'dashboard' && (
-        <main className="flex-1">
-          <Dashboard
-            stats={stats}
-            batches={batches}
+        {view === 'dashboard' && (
+          <Header
             activeBatch={activeBatch}
-            onOpenKiosk={() => setView('kiosk')}
-            onSelectRecruit={(r) => setSelectedRecruit(r)}
-            onPrintRecruit={(r) => setPrintRecruit(r)}
-            onDeleteRecruit={handleDeleteRecruit}
-            onOpenAiChat={() => setIsChatOpen(true)}
+            onOpenKiosk={appActions.onRegister}
+            onOpenBatches={appActions.onOpenBatches}
+            onOpenNetwork={appActions.onOpenNetwork}
+            onOpenAiChat={appActions.onOpenAiChat}
+            networkInfo={networkInfo}
             onRefresh={loadInitialData}
+            onLogout={handleLogout}
           />
-        </main>
-      )}
+        )}
 
-      {/* Kiosk Form Mode */}
-      {view === 'kiosk' && (
-        <KioskForm
-          activeBatch={activeBatch}
-          onComplete={handleKioskComplete}
-          onCancel={() => {
-            setKioskFormData(null);
-            setView('dashboard');
-          }}
-          initialData={kioskFormData}
-        />
-      )}
+        {view === 'dashboard' && (
+          <main className="flex-1 min-w-0">
+            <Dashboard
+              stats={stats} batches={batches} activeBatch={activeBatch}
+              onOpenKiosk={appActions.onRegister}
+              onSelectRecruit={setSelectedRecruit}
+              onPrintRecruit={setPrintRecruit}
+              onDeleteRecruit={handleDeleteRecruit}
+              onOpenAiChat={appActions.onOpenAiChat}
+              onRefresh={loadInitialData}
+            />
+          </main>
+        )}
 
-      {/* Media Capture Station */}
-      {view === 'media' && kioskFormData && (
-        <MediaCapture
-          formData={kioskFormData}
-          onSaveSuccess={handleSaveSuccess}
-          onBack={() => setView('kiosk')}
-          onCancel={() => setView('dashboard')}
-        />
-      )}
+        {view === 'kiosk' && (
+          <KioskForm activeBatch={activeBatch} onComplete={handleKioskComplete}
+            onCancel={() => { setKioskFormData(null); setView('dashboard'); }}
+            initialData={kioskFormData} />
+        )}
 
-      {/* Recruit Dossier Modal */}
-      {selectedRecruit && (
-        <RecruitModal
-          recruit={selectedRecruit}
-          onClose={() => setSelectedRecruit(null)}
-          onPrint={(r) => {
-            setSelectedRecruit(null);
-            setPrintRecruit(r);
-          }}
-          onDelete={handleDeleteRecruit}
-        />
-      )}
+        {view === 'media' && kioskFormData && (
+          <MediaCapture formData={kioskFormData} onSaveSuccess={handleSaveSuccess}
+            onBack={() => setView('kiosk')} onCancel={() => setView('dashboard')} />
+        )}
+      </div>
 
-      {/* Official A4 Printable Examination Report */}
-      {printRecruit && (
-        <OfficialReport
-          recruit={printRecruit}
-          onClose={() => setPrintRecruit(null)}
-        />
-      )}
+      {selectedRecruit && <RecruitModal recruit={selectedRecruit} onClose={() => setSelectedRecruit(null)}
+        onPrint={(r) => { setSelectedRecruit(null); setPrintRecruit(r); }} onDelete={handleDeleteRecruit} />}
 
-      {/* Batches Management Modal */}
-      {showBatchesModal && (
-        <BatchesModal
-          batches={batches}
-          activeBatch={activeBatch}
-          onSetActiveBatch={(b) => setActiveBatch(b)}
-          onClose={() => setShowBatchesModal(false)}
-          onRefresh={loadInitialData}
-        />
-      )}
+      {printRecruit && <OfficialReport recruit={printRecruit} onClose={() => setPrintRecruit(null)} />}
 
-      {/* Wi-Fi & Local Network Sync Modal */}
-      {showNetworkModal && (
-        <NetworkModal
-          networkInfo={networkInfo}
-          onClose={() => setShowNetworkModal(false)}
-        />
-      )}
+      {showBatchesModal && <BatchesModal batches={batches} activeBatch={activeBatch}
+        onSetActiveBatch={setActiveBatch} onClose={() => setShowBatchesModal(false)} onRefresh={loadInitialData} />}
 
-      {/* AI Data Assistant Sliding Chat Panel */}
-      <ChatPanel
-        isOpen={isChatOpen}
-        onClose={() => setIsChatOpen(false)}
-        activeBatch={activeBatch}
-      />
+      {showNetworkModal && <NetworkModal networkInfo={networkInfo} onClose={() => setShowNetworkModal(false)} />}
 
+      <ChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} activeBatch={activeBatch} />
     </div>
   );
 }
