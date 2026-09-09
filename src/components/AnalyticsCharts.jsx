@@ -11,6 +11,7 @@ import {
   TrendingUp,
   Award
 } from 'lucide-react';
+import { authHeaders } from '../utils/auth';
 
 export default function AnalyticsCharts({ activeBatch }) {
   const [analytics, setAnalytics] = useState(null);
@@ -19,7 +20,7 @@ export default function AnalyticsCharts({ activeBatch }) {
   const fetchAnalytics = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/analytics');
+      const res = await fetch('/api/analytics', { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         setAnalytics(data);

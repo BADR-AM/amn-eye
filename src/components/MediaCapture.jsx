@@ -38,6 +38,7 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
 
   // Status & error
   const [cameraError, setCameraError] = useState(null);
+  const [saveError, setSaveError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
   // Initialize camera stream
@@ -150,7 +151,7 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
 
     } catch (err) {
       console.error('Error starting video recording:', err);
-      alert('حدث خطأ أثناء بدء تسجيل الفيديو: ' + err.message);
+      setSaveError('حدث خطأ أثناء بدء تسجيل الفيديو: ' + err.message);
     }
   };
 
@@ -177,6 +178,7 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
   // Final Submit to Backend API
   const handleFinalSave = async () => {
     setIsSaving(true);
+    setSaveError(null);
     try {
       const submitData = new FormData();
 
@@ -218,7 +220,7 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
       onSaveSuccess(savedRecruit);
     } catch (error) {
       console.error('Save error:', error);
-      alert('خطأ أثناء حفظ الملف: ' + error.message);
+      setSaveError('خطأ أثناء حفظ الملف: ' + error.message);
       setIsSaving(false);
     }
   };
@@ -288,6 +290,13 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
             >
               إعادة المحاولة
             </button>
+          </div>
+        )}
+
+        {saveError && (
+          <div className="w-full mb-4 p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl text-rose-300 text-sm flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+            <span>{saveError}</span>
           </div>
         )}
 

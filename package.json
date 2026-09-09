@@ -14,7 +14,9 @@
     "electron:start": "electron .",
     "pack": "vite build && electron-builder --dir",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "hashpass": "node scripts/hashpass.js",
+    "gensecret": "node -e \"console.log(require('crypto').randomBytes(48).toString('hex'))\""
   },
   "keywords": [],
   "author": "Security and Investigation Unit",

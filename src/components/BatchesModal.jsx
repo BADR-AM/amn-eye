@@ -22,6 +22,7 @@ export default function BatchesModal({
   const [newBatchYear, setNewBatchYear] = useState(2026);
   const [newBatchMonth, setNewBatchMonth] = useState(1);
   const [newBatchNotes, setNewBatchNotes] = useState('');
+  const [error, setError] = useState('');
 
   const monthsMap = {
     1: 'يناير',
@@ -51,9 +52,10 @@ export default function BatchesModal({
       if (!res.ok) throw new Error('فشل إضافة الدفع');
       setShowAddForm(false);
       setNewBatchNotes('');
+      setError('');
       onRefresh();
     } catch (err) {
-      alert('خطأ أثناء إضافة الدفع: ' + err.message);
+      setError('خطأ أثناء إضافة الدفع: ' + err.message);
     }
   };
 
@@ -66,9 +68,10 @@ export default function BatchesModal({
       if (!res.ok) throw new Error('فشل تفعيل الدفع');
       const updated = await res.json();
       onSetActiveBatch(updated);
+      setError('');
       onRefresh();
     } catch (err) {
-      alert('خطأ: ' + err.message);
+      setError('خطأ: ' + err.message);
     }
   };
 
@@ -98,7 +101,11 @@ export default function BatchesModal({
 
         {/* Content */}
         <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-          
+          {error && (
+            <div className="px-3 py-2 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-xs font-bold text-center">
+              {error}
+            </div>
+          )}
           {/* Active Batch Summary Banner */}
           {activeBatch && (
             <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/60 to-teal-950/60 border border-emerald-500/40 flex items-center justify-between">

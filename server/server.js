@@ -621,7 +621,7 @@ app.post('/api/recruits', upload.fields([{ name: 'photo', maxCount: 1 }, { name:
       data.qualification || 'متوسط',
       data.birth_date || '',
       data.wife || 'أعزب',
-      data.national_id || '',
+      nationalId || null,
       data.address || '',
       data.current_job || '',
       data.other_jobs || '',
@@ -664,6 +664,15 @@ app.put('/api/recruits/:id', requireAuth, upload.fields([{ name: 'photo', maxCou
     const existing = await get(`SELECT * FROM recruits WHERE id = ?`, [id]);
     if (!existing) {
       return res.status(404).json({ error: 'المجند غير موجود' });
+    }
+
+    // Validate national_id format if provided
+    if (data.national_id !== undefined && data.national_id !== null) {
+      const nid = String(data.national_id).trim();
+      if (nid && !/^\d{14}$/.test(nid)) {
+        return res.status(400).json({ error: 'الرقم القومي يجب أن يكون 14 رقماً' });
+      }
+      data.national_id = nid || null;
     }
 
     let photoPath = existing.photo_path;
@@ -739,6 +748,9 @@ app.put('/api/recruits/:id', requireAuth, upload.fields([{ name: 'photo', maxCou
     res.json(updated);
   } catch (error) {
     console.error('Error updating recruit:', error);
+    if (error.message && error.message.includes('UNIQUE constraint failed')) {
+      return res.status(409).json({ error: 'الرقم القومي مسجل مسبقاً' });
+    }
     res.status(500).json({ error: 'خطأ في تعديل بيانات المجند' });
   }
 });

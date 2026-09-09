@@ -103,11 +103,12 @@ export const initDb = async () => {
     )
   `);
 
-  // Indexing for instant search + uniqueness
+  // Indexing for instant search + uniqueness (partial: only non-empty IDs)
   await run(`CREATE INDEX IF NOT EXISTS idx_recruits_name ON recruits(name)`);
   await run(`CREATE INDEX IF NOT EXISTS idx_recruits_batch_id ON recruits(batch_id)`);
-  // Enforce unique national_id (ignore duplicates on existing data)
-  await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_recruits_national_id_unique ON recruits(national_id)`);
+  await run(`DROP INDEX IF EXISTS idx_recruits_national_id_unique`);
+  await run(`DROP INDEX IF EXISTS idx_recruits_national_id`);
+  await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_recruits_national_id_unique ON recruits(national_id) WHERE national_id IS NOT NULL AND national_id != ''`);
 
   // Seed default 4 batches for 2026 if empty
   const existingBatches = await query(`SELECT COUNT(*) as count FROM batches`);
