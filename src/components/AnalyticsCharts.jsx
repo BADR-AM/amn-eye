@@ -1,15 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, 
-  PieChart, 
   MapPin, 
   Activity, 
   Briefcase, 
   GraduationCap, 
   Layers, 
-  RefreshCw,
-  TrendingUp,
-  Award
+  RefreshCw
 } from 'lucide-react';
 import { authHeaders } from '../utils/auth';
 

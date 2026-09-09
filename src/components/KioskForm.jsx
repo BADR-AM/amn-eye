@@ -22,12 +22,12 @@ import {
 } from 'lucide-react';
 import { parseEgyptianNationalId } from '../utils/nationalId';
 
-export default function KioskForm({ activeBatch, onComplete, onCancel }) {
+export default function KioskForm({ activeBatch, onComplete, onCancel, initialData }) {
   const [currentStep, setCurrentStep] = useState(0);
   const inputRef = useRef(null);
 
   // Form state holding all 20 official fields
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState(initialData || {
     batch_id: activeBatch ? activeBatch.id : 1,
     attendance_date: new Date().toISOString().split('T')[0],
     name: '',
@@ -49,7 +49,9 @@ export default function KioskForm({ activeBatch, onComplete, onCancel }) {
     mother_job: 'ربة منزل',
     siblings_check: 'لا توجد ملاحظات أمنية على الأشقاء',
     family_social_status: 'الأسرة مستقرة والوالدان على قيد الحياة',
-    family_security_status: 'العائلة خالية من السوابق والشبهات الجنائية والسياسية'
+    family_security_status: 'العائلة خالية من السوابق والشبهات الجنائية والسياسية',
+    police_number: '',
+    company: 'السرية الثالثة ( ٣ )'
   });
 
   // Questions configuration
@@ -243,6 +245,30 @@ export default function KioskForm({ activeBatch, onComplete, onCancel }) {
         'موقف أمني نظيف تماماً بالتحريات',
         'يوجد سابقة جنائية مشاجرة قديمة لأحد الأقارب'
       ],
+    },
+    {
+      id: 'police_number',
+      title: 'رقم الشرطة (رقم السلاح / القيد)',
+      subtitle: 'أدخل رقم الشرطة الخاص بالمجند المطبوع على كارت الدولاب (اختياري)',
+      icon: CreditCard,
+      type: 'text',
+      placeholder: 'مثال: ١٢٤٩٢٣ أو 124923',
+    },
+    {
+      id: 'company',
+      title: 'السرية / الكتيبة',
+      subtitle: 'اختر أو اكتب السرية التابع لها المجند لتظهر على كارت الدولاب',
+      icon: ShieldAlert,
+      type: 'choice_or_text',
+      options: [
+        'السرية الأولى ( ١ )',
+        'السرية الثانية ( ٢ )',
+        'السرية الثالثة ( ٣ )',
+        'السرية الرابعة ( ٤ )',
+        'السرية الخامسة ( ٥ )',
+        'سرية القيادة'
+      ],
+      placeholder: 'أو اكتب السرية...',
     }
   ];
 

@@ -8,12 +8,7 @@ import {
   Loader2, 
   BrainCircuit, 
   ChevronDown, 
-  ChevronLeft, 
-  X, 
-  Sparkles,
-  RefreshCw,
-  HelpCircle,
-  Database
+  X
 } from 'lucide-react';
 import { authHeaders } from '../utils/auth';
 

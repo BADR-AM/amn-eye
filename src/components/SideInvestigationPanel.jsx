@@ -4,21 +4,16 @@ import {
   Printer, 
   Eye, 
   Camera, 
-  Video, 
-  User, 
-  Calendar, 
-  CreditCard, 
-  Home, 
-  Activity, 
-  ShieldAlert,
-  Briefcase
+  Video,
+  IdCard
 } from 'lucide-react';
 
 export default function SideInvestigationPanel({ 
   recruit, 
   onClose, 
   onOpenFullDossier, 
-  onPrint 
+  onPrint,
+  onOpenLockerCard 
 }) {
   if (!recruit) return null;
 
@@ -33,7 +28,21 @@ export default function SideInvestigationPanel({
           </div>
           <div>
             <h3 className="text-sm font-extrabold text-white truncate max-w-[200px]">{recruit.name}</h3>
-            <span className="text-[10px] text-emerald-400 font-bold">{recruit.batch_name}</span>
+            <div className="flex items-center gap-1.5 mt-0.5 text-[10px]">
+              <span className="text-emerald-400 font-bold">{recruit.batch_name}</span>
+              {recruit.police_number && (
+                <>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-orange-400 font-mono font-bold">ش: {recruit.police_number}</span>
+                </>
+              )}
+              {recruit.company && (
+                <>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-orange-300 truncate max-w-[100px]">{recruit.company}</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -121,6 +130,14 @@ export default function SideInvestigationPanel({
 
       {/* Footer Action Buttons */}
       <div className="p-4 border-t border-slate-800 bg-darkslate-850 space-y-2">
+        <button
+          onClick={() => onOpenLockerCard?.(recruit)}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-orange-600/20 hover:bg-orange-600/30 text-orange-300 font-bold text-xs border border-orange-500/30 transition-all"
+        >
+          <IdCard className="w-4 h-4 text-orange-400" />
+          <span>معاينة وتصدير كارت الدولاب</span>
+        </button>
+
         <button
           onClick={() => onPrint(recruit)}
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-950/40 transition-all"

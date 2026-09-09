@@ -1,13 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Calendar, 
   CheckCircle2, 
   Plus, 
   Layers, 
-  Users, 
-  Sparkles,
-  ArrowRight
+  Users
 } from 'lucide-react';
 import { authHeaders } from '../utils/auth';
 
@@ -18,6 +16,12 @@ export default function BatchesModal({
   onClose,
   onRefresh 
 }) {
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [onClose]);
+
   const [showAddForm, setShowAddForm] = useState(false);
   const [newBatchYear, setNewBatchYear] = useState(2026);
   const [newBatchMonth, setNewBatchMonth] = useState(1);

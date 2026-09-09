@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, 
   Filter, 
@@ -18,10 +18,13 @@ import {
   Shield,
   BarChart3,
   TrendingUp,
-  Sparkles
+  Sparkles,
+  Download,
+  IdCard
 } from 'lucide-react';
 import AnalyticsCharts from './AnalyticsCharts';
 import SideInvestigationPanel from './SideInvestigationPanel';
+import ExportModal from './ExportModal';
 import { authHeaders } from '../utils/auth';
 
 export default function Dashboard({ 
@@ -47,6 +50,50 @@ export default function Dashboard({
   // UI Modes
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [sidePanelRecruit, setSidePanelRecruit] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const userClosedPanel = useRef(false);
+
+  const handleClosePanel = () => {
+    userClosedPanel.current = true;
+    setSidePanelRecruit(null);
+  };
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const allVisibleSelected = recruits.length > 0 && recruits.every(r => selectedIds.includes(r.id));
+  const toggleSelectAll = () => {
+    if (allVisibleSelected) {
+      setSelectedIds(prev => prev.filter(id => !recruits.some(r => r.id === id)));
+    } else {
+      const visibleIds = recruits.map(r => r.id);
+      setSelectedIds(prev => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  const handleUpdateRecruit = async (id, fields) => {
+    try {
+      const res = await fetch(`/api/recruits/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders(),
+        },
+        body: JSON.stringify(fields),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setRecruits(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r));
+        if (sidePanelRecruit?.id === id) {
+          setSidePanelRecruit(prev => ({ ...prev, ...updated }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to update recruit:', e);
+    }
+  };
 
   // Fetch recruits with active filters
   const fetchRecruits = async () => {
@@ -68,7 +115,7 @@ export default function Dashboard({
       setTotalCount(data.total || 0);
 
       // Auto select first recruit for side panel if none selected yet on desktop
-      if (!sidePanelRecruit && data.recruits && data.recruits.length > 0) {
+      if (!sidePanelRecruit && !userClosedPanel.current && data.recruits && data.recruits.length > 0) {
         setSidePanelRecruit(data.recruits[0]);
       }
     } catch (err) {
@@ -79,7 +126,10 @@ export default function Dashboard({
   };
 
   useEffect(() => {
-    fetchRecruits();
+    const timer = setTimeout(() => {
+      fetchRecruits();
+    }, 300);
+    return () => clearTimeout(timer);
   }, [searchTerm, selectedBatchId, selectedQualification, page]);
 
   // Video completion rate calculation
@@ -213,6 +263,7 @@ export default function Dashboard({
               value={selectedBatchId}
               onChange={(e) => {
                 setSelectedBatchId(e.target.value);
+                userClosedPanel.current = false;
                 setPage(1);
               }}
               className="bg-transparent text-white font-bold focus:outline-none cursor-pointer"
@@ -270,6 +321,21 @@ export default function Dashboard({
             <span>المساعد الذكي (AI)</span>
           </button>
 
+          {/* Export & Locker Cards Button */}
+          <button
+            onClick={() => setShowExportModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold bg-orange-600/20 hover:bg-orange-600/30 text-orange-300 border border-orange-500/40 transition-all shadow-sm"
+            title="تصدير كروت الدولاب واستخراج البيانات"
+          >
+            <IdCard className="w-4 h-4 text-orange-400" />
+            <span>كروت الدولاب والتصدير</span>
+            {selectedIds.length > 0 && (
+              <span className="mr-1 px-1.5 py-0.5 bg-orange-500 text-black font-black rounded-full text-[10px]">
+                {selectedIds.length}
+              </span>
+            )}
+          </button>
+
           {/* Refresh Button */}
           <button
             onClick={() => {
@@ -320,6 +386,15 @@ export default function Dashboard({
               <table className="w-full text-right text-xs">
                 <thead className="bg-darkslate-850 border-b border-slate-800 text-slate-400 font-bold sticky top-0 z-10">
                   <tr>
+                    <th className="py-3 px-2 w-9 text-center">
+                      <input 
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        onChange={toggleSelectAll}
+                        className="rounded bg-slate-800 border-slate-700 text-orange-500 focus:ring-orange-500 cursor-pointer"
+                        title="تحديد كل المجندين المعروضين"
+                      />
+                    </th>
                     <th className="py-3 px-3 w-12 text-center">الصورة</th>
                     <th className="py-3 px-3">اسم المجند</th>
                     <th className="py-3 px-3 font-mono">الرقم القومي</th>
@@ -337,7 +412,7 @@ export default function Dashboard({
                 <tbody className="divide-y divide-slate-800/80 text-slate-200">
                   {recruits.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-500">
+                      <td colSpan={sidePanelRecruit ? 6 : 9} className="py-12 text-center text-slate-500">
                         <Shield className="w-12 h-12 mx-auto mb-2 stroke-1 text-slate-600" />
                         {loading ? 'جاري تحميل البيانات...' : 'لا يوجد مجندين مطابقين لمعايير البحث الحالية.'}
                       </td>
@@ -345,16 +420,31 @@ export default function Dashboard({
                   ) : (
                     recruits.map((r) => {
                       const isSelected = sidePanelRecruit && sidePanelRecruit.id === r.id;
+                      const isChecked = selectedIds.includes(r.id);
                       return (
                         <tr 
                           key={r.id} 
                           className={`transition-colors cursor-pointer group ${
                             isSelected 
                               ? 'bg-emerald-950/30 border-r-4 border-r-emerald-500' 
+                              : isChecked
+                              ? 'bg-orange-950/20'
                               : 'hover:bg-slate-800/50'
                           }`}
-                          onClick={() => setSidePanelRecruit(r)}
+                          onClick={() => {
+                            userClosedPanel.current = false;
+                            setSidePanelRecruit(r);
+                          }}
                         >
+                          {/* Checkbox */}
+                          <td className="py-2 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                            <input 
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleSelect(r.id)}
+                              className="rounded bg-slate-800 border-slate-700 text-orange-500 focus:ring-orange-500 cursor-pointer"
+                            />
+                          </td>
                           {/* Photo Thumbnail */}
                           <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                             <div className="w-9 h-9 rounded-xl overflow-hidden bg-slate-800 border border-slate-700 mx-auto shrink-0">
@@ -430,6 +520,17 @@ export default function Dashboard({
                               </button>
 
                               <button
+                                onClick={() => {
+                                  setSelectedIds([r.id]);
+                                  setShowExportModal(true);
+                                }}
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-orange-600 text-slate-300 hover:text-white transition-colors"
+                                title="كارت الدولاب الرسمي"
+                              >
+                                <IdCard className="w-3.5 h-3.5 text-orange-400" />
+                              </button>
+
+                              <button
                                 onClick={() => onPrintRecruit(r)}
                                 className="p-1.5 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white transition-colors"
                                 title="طباعة الاستمارة الرسمية A4"
@@ -492,14 +593,28 @@ export default function Dashboard({
           <div className="w-full lg:w-1/3 shrink-0">
             <SideInvestigationPanel
               recruit={sidePanelRecruit}
-              onClose={() => setSidePanelRecruit(null)}
+              onClose={handleClosePanel}
               onOpenFullDossier={onSelectRecruit}
               onPrint={onPrintRecruit}
+              onOpenLockerCard={(r) => {
+                setSelectedIds([r.id]);
+                setShowExportModal(true);
+              }}
             />
           </div>
         )}
 
       </div>
+
+      {/* Export & Locker Cards Modal */}
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        recruits={recruits}
+        selectedRecruitIds={selectedIds}
+        activeBatch={activeBatch}
+        onUpdateRecruit={handleUpdateRecruit}
+      />
 
     </div>
   );

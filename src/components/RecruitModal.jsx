@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { 
   X, 
   Printer, 
   Trash2, 
-  Edit3, 
   Video, 
   Camera, 
   User, 
@@ -14,17 +13,40 @@ import {
   ShieldAlert, 
   Activity, 
   Users,
-  CheckCircle2
+  IdCard,
+  Download
 } from 'lucide-react';
+import LockerCard from './LockerCard';
+import html2canvas from 'html2canvas';
 
 export default function RecruitModal({ recruit, onClose, onPrint, onDelete, onUpdate }) {
+  const [showCardPreview, setShowCardPreview] = useState(false);
+  const cardRef = useRef(null);
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [onClose]);
+
+  const handleDownloadCard = async () => {
+    if (!cardRef.current) return;
+    try {
+      const canvas = await html2canvas(cardRef.current, { scale: 2.5, useCORS: true, allowTaint: true, backgroundColor: '#ffffff' });
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = `كارت_دولاب_${recruit.name.replace(/\s+/g, '_')}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error('Export error:', err);
+    }
+  };
+
   if (!recruit) return null;
 
-  const [activeTab, setActiveTab] = useState('overview');
-
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
-      <div className="bg-darkslate-900 border border-slate-800 rounded-3xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto" dir="rtl">
+      <div className="bg-darkslate-900 border border-slate-700/80 rounded-3xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
         
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between gap-4 bg-darkslate-850">
@@ -46,6 +68,19 @@ export default function RecruitModal({ recruit, onClose, onPrint, onDelete, onUp
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCardPreview(!showCardPreview)}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                showCardPreview
+                  ? 'bg-orange-600 text-white border-orange-500 shadow-md'
+                  : 'bg-orange-600/20 hover:bg-orange-600/30 text-orange-300 border-orange-500/30'
+              }`}
+              title="عرض / إخفاء كارت الدولاب"
+            >
+              <IdCard className="w-4 h-4" />
+              <span>{showCardPreview ? 'إخفاء كارت الدولاب' : 'كارت الدولاب'}</span>
+            </button>
+
             <button
               onClick={() => onPrint(recruit)}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-950/50 transition-all"
@@ -75,6 +110,28 @@ export default function RecruitModal({ recruit, onClose, onPrint, onDelete, onUp
             </button>
           </div>
         </div>
+
+        {/* Locker Card Preview Banner */}
+        {showCardPreview && (
+          <div className="mx-6 mt-4 p-4 bg-slate-950/90 border border-orange-500/40 rounded-2xl flex flex-col items-center gap-3">
+            <div className="w-full flex items-center justify-between">
+              <span className="text-xs font-bold text-orange-400 flex items-center gap-2">
+                <IdCard className="w-4 h-4" />
+                معاينة كارت الدولاب الرسمي للمجند
+              </span>
+              <button
+                onClick={handleDownloadCard}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs shadow-md transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>تحميل الكارت كصورة PNG</span>
+              </button>
+            </div>
+            <div className="shadow-2xl rounded overflow-hidden">
+              <LockerCard ref={cardRef} recruit={recruit} scale={0.85} />
+            </div>
+          </div>
+        )}
 
         {/* Modal Body - 2 Columns */}
         <div className="p-6 overflow-y-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -108,9 +165,9 @@ export default function RecruitModal({ recruit, onClose, onPrint, onDelete, onUp
             <div className="bg-darkslate-850 border border-slate-800 rounded-2xl p-3 flex flex-col">
               <span className="text-xs font-bold text-slate-400 mb-2 flex items-center gap-1.5">
                 <Video className="w-3.5 h-3.5 text-rose-400" />
-                مقطع الفيديو المرفق (30 ثانية)
+                فيديو الاستمارة (30 ثانية توثيقي)
               </span>
-              <div className="w-full aspect-video rounded-xl overflow-hidden bg-black border border-slate-700">
+              <div className="w-full aspect-video rounded-xl overflow-hidden bg-slate-900 border border-slate-700 flex items-center justify-center">
                 {recruit.video_path ? (
                   <video
                     src={recruit.video_path}
@@ -137,7 +194,15 @@ export default function RecruitModal({ recruit, onClose, onPrint, onDelete, onUp
                 <User className="w-4 h-4" />
                 البيانات الأساسية والتعليمية
               </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div>
+                  <span className="text-slate-400 block">رقم الشرطة</span>
+                  <span className="font-bold text-orange-400 text-sm font-mono">{recruit.police_number || 'غير مدون'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">السرية</span>
+                  <span className="font-bold text-orange-400 text-sm">{recruit.company || 'السرية الثالثة ( ٣ )'}</span>
+                </div>
                 <div>
                   <span className="text-slate-400 block">الديانة</span>
                   <span className="font-bold text-white text-sm">{recruit.religion}</span>

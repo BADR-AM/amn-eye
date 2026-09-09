@@ -6,6 +6,18 @@ let mainWindow = null;
 const PORT = process.env.PORT || 5000;
 const isDev = process.env.ELECTRON_DEV === 'true';
 
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+}
+
+app.on('second-instance', (event, commandLine, workingDirectory) => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
 // Start embedded Express backend server inside Electron process
 async function startServer() {
   try {
@@ -96,6 +108,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
+  console.log('🛑 إغلاق البرنامج والتنظيف...');
   if (process.platform !== 'darwin') {
     app.quit();
   }

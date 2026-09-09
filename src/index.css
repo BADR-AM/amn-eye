@@ -7,7 +7,7 @@
     direction: rtl;
     text-align: right;
     font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
-    user-select: none;
+    user-select: auto;
     -webkit-font-smoothing: antialiased;
   }
 }

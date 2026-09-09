@@ -135,7 +135,7 @@ export default function Header({
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-900/30 transition-all transform hover:scale-[1.02] active:scale-[0.98]"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>تسجيل جديد (Enter)</span>
+            <span>تسجيل جديد (F2)</span>
           </button>
 
           {/* Light / Dark Mode Toggle */}

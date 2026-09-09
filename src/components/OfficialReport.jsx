@@ -49,7 +49,7 @@ export default function OfficialReport({ recruit, onClose }) {
       <div className="w-full max-w-[210mm] min-h-[297mm] bg-white text-black p-[15mm] shadow-2xl rounded-sm border border-slate-300 font-sans print:border-none print:shadow-none print:p-0 print:m-0 print:w-full">
         
         {/* Official Header */}
-        <div className="relative border-b-2 border-black pb-4 mb-5">
+        <div className="relative border-b-2 border-black pb-2 mb-3">
           
           {/* Right/Center Hierarchy */}
           <div className="text-center font-bold space-y-1">
@@ -87,7 +87,7 @@ export default function OfficialReport({ recruit, onClose }) {
         </div>
 
         {/* Form Body - Line by Line with Dotted Leader lines exactly like the user's paper */}
-        <div className="text-[14px] leading-[2.2] font-medium space-y-1">
+        <div className="text-[14px] leading-[1.7] font-medium space-y-1">
           
           {/* الاسم */}
           <div className="flex items-baseline">
@@ -252,18 +252,18 @@ export default function OfficialReport({ recruit, onClose }) {
         </div>
 
         {/* Official Signatures & Approval Footer */}
-        <div className="mt-8 pt-4 border-t-2 border-black grid grid-cols-3 gap-4 text-center text-xs font-bold">
+        <div className="mt-6 pt-3 border-t-2 border-black grid grid-cols-3 gap-4 text-center text-xs font-bold">
           <div>
             <div>محقق الفحص</div>
-            <div className="mt-8">..................................</div>
+            <div className="mt-6">..................................</div>
           </div>
           <div>
             <div>رئيس وحدة الأمن والتحريات</div>
-            <div className="mt-8">..................................</div>
+            <div className="mt-6">..................................</div>
           </div>
           <div>
             <div>يعتمد / قائد مركز تدريب المجندين</div>
-            <div className="mt-8">..................................</div>
+            <div className="mt-6">..................................</div>
           </div>
         </div>
 

@@ -4,10 +4,7 @@ import {
   Wifi, 
   Copy, 
   Check, 
-  Laptop, 
-  Smartphone, 
   ShieldCheck,
-  ExternalLink,
   QrCode
 } from 'lucide-react';
 import QRCode from 'qrcode';
@@ -17,6 +14,12 @@ export default function NetworkModal({ networkInfo, onClose }) {
   const [qrDataUrl, setQrDataUrl] = useState('');
 
   const networkUrl = networkInfo?.networkUrl || `http://${networkInfo?.primaryIp || 'localhost'}:${networkInfo?.port || 5000}`;
+
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [onClose]);
 
   useEffect(() => {
     if (networkUrl) {
@@ -81,7 +84,7 @@ export default function NetworkModal({ networkInfo, onClose }) {
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-400 block">رابط الشبكة المحلية المباشر:</label>
             <div className="flex items-center gap-2 bg-darkslate-950 border border-emerald-500/40 p-2.5 rounded-2xl">
-              <span className="text-emerald-300 font-mono font-bold text-sm sm:text-base flex-1 px-2 select-all dir-ltr text-left truncate">
+              <span dir="ltr" className="text-emerald-300 font-mono font-bold text-sm sm:text-base flex-1 px-2 select-all text-left truncate">
                 {networkUrl}
               </span>
               <button

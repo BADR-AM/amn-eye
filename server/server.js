@@ -29,9 +29,10 @@ const videosDir = path.join(uploadsDir, 'videos');
 
 // Middlewares
 app.use(cors({
-  origin: ['http://localhost:5173', `http://localhost:${PORT}`],
+  origin: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 }));
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
@@ -58,8 +59,8 @@ const storage = multer.diskStorage({
     }
   },
   filename: (req, file, cb) => {
-    const ext = file.fieldname === 'photo' ? '.jpg' : '.webm';
-    cb(null, `${file.fieldname}_${Date.now()}_${crypto.randomUUID()}${ext}`);
+    const origExt = path.extname(file.originalname).toLowerCase() || (file.fieldname === 'photo' ? '.jpg' : '.webm');
+    cb(null, `${file.fieldname}_${Date.now()}_${crypto.randomUUID()}${origExt}`);
   },
 });
 
@@ -81,6 +82,17 @@ const upload = multer({
 
 // Initialize database
 await initDb();
+
+// Validate required environment variables
+if (!process.env.JWT_SECRET || !process.env.ADMIN_PASSWORD_HASH) {
+  console.warn('⚠️ تحذير: متغيرات البيئة JWT_SECRET أو ADMIN_PASSWORD_HASH غير محددة.');
+  console.warn('⚠️ سيتم استخدام قيم افتراضية للتطوير. لا تستخدم هذا في بيئة الإنتاج!');
+  if (!process.env.JWT_SECRET) process.env.JWT_SECRET = 'dev-secret-change-me-in-production-' + crypto.randomUUID();
+  if (!process.env.ADMIN_PASSWORD_HASH) {
+    // Default password: admin123 (bcrypt hash)
+    process.env.ADMIN_PASSWORD_HASH = '$2b$10$xJ8Ks7Y.mTgZQlMqR7x4QOjWz0q9H4yz3EYxVJx1X2Ib8YMlR4vmu';
+  }
+}
 
 // -------------------------------------------------------------
 // API Endpoints
@@ -351,13 +363,30 @@ app.post('/api/chat', requireAuth, async (req, res) => {
       sendEvent('THOUGHT', 'إجراء بحث فوري ومطابقة الاسم أو الرقم القومي في قاعدة البيانات...');
       await new Promise(r => setTimeout(r, 250));
 
-      const results = await query(`
-        SELECT r.name, r.national_id, r.qualification, r.current_job, r.address, b.name as batch_name
-        FROM recruits r
-        JOIN batches b ON r.batch_id = b.id
-        ORDER BY r.id DESC
-        LIMIT 5
-      `);
+      // Extract the actual search term from the message
+      const searchTerm = message.trim()
+        .replace(/ابحث عن|ابحث|مجند|اسم|بطاقة|رقم قومي|المجند/g, '')
+        .trim();
+
+      let results;
+      if (searchTerm && searchTerm.length > 0) {
+        results = await query(`
+          SELECT r.name, r.national_id, r.qualification, r.current_job, r.address, b.name as batch_name
+          FROM recruits r
+          JOIN batches b ON r.batch_id = b.id
+          WHERE r.name LIKE ? OR r.national_id LIKE ?
+          ORDER BY r.id DESC
+          LIMIT 10
+        `, [`%${searchTerm}%`, `%${searchTerm}%`]);
+      } else {
+        results = await query(`
+          SELECT r.name, r.national_id, r.qualification, r.current_job, r.address, b.name as batch_name
+          FROM recruits r
+          JOIN batches b ON r.batch_id = b.id
+          ORDER BY r.id DESC
+          LIMIT 5
+        `);
+      }
 
       responseText = `### 🔍 نتائج البحث في قاعدة بيانات المجندين\n\n`;
       if (results.length === 0) {
@@ -548,6 +577,15 @@ app.get('/api/recruits/:id', requireAuth, async (req, res) => {
   }
 });
 
+// Helper: clean up uploaded files on error
+const cleanupUploadedFiles = (req) => {
+  if (req.files) {
+    Object.values(req.files).flat().forEach(f => {
+      try { fs.unlinkSync(f.path); } catch(e) {}
+    });
+  }
+};
+
 // 6. Create Recruit with Multipart Photo and Video Upload
 app.post('/api/recruits', upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
@@ -555,12 +593,14 @@ app.post('/api/recruits', upload.fields([{ name: 'photo', maxCount: 1 }, { name:
 
     // Validate required fields
     if (!data.name || !data.batch_id) {
+      cleanupUploadedFiles(req);
       return res.status(400).json({ error: 'اسم المجند والدفع التجنيدي مطلوبان' });
     }
 
     // Validate national_id format (14 digits)
     const nationalId = (data.national_id || '').trim();
     if (nationalId && !/^\d{14}$/.test(nationalId)) {
+      cleanupUploadedFiles(req);
       return res.status(400).json({ error: 'الرقم القومي يجب أن يكون 14 رقماً' });
     }
 
@@ -588,7 +628,7 @@ app.post('/api/recruits', upload.fields([{ name: 'photo', maxCount: 1 }, { name:
           if (buffer.length <= 5 * 1024 * 1024) {
             const filename = `photo_${Date.now()}_${crypto.randomUUID()}.jpg`;
             const filePath = path.join(photosDir, filename);
-            fs.writeFileSync(filePath, buffer);
+            await fs.promises.writeFile(filePath, buffer);
             photoPath = `/uploads/photos/${filename}`;
           }
         }
@@ -603,13 +643,15 @@ app.post('/api/recruits', upload.fields([{ name: 'photo', maxCount: 1 }, { name:
         birth_date, wife, national_id, address, current_job,
         other_jobs, travel_abroad, literacy, inspection, medical_status,
         father_name, father_job, mother_name, mother_job, siblings_check,
-        family_social_status, family_security_status, photo_path, video_path, notes
+        family_social_status, family_security_status, photo_path, video_path,
+        police_number, company, notes
       ) VALUES (
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?,
+        ?, ?
       )
     `;
 
@@ -638,6 +680,8 @@ app.post('/api/recruits', upload.fields([{ name: 'photo', maxCount: 1 }, { name:
       data.family_security_status || 'خالية من السوابق والشبهات',
       photoPath,
       videoPath,
+      data.police_number || '',
+      data.company || '',
       data.notes || ''
     ];
 
@@ -696,7 +740,7 @@ app.put('/api/recruits/:id', requireAuth, upload.fields([{ name: 'photo', maxCou
           const buffer = Buffer.from(matches[2], 'base64');
           if (buffer.length <= 5 * 1024 * 1024) {
             const filename = `photo_${Date.now()}_${crypto.randomUUID()}.jpg`;
-            fs.writeFileSync(path.join(photosDir, filename), buffer);
+            await fs.promises.writeFile(path.join(photosDir, filename), buffer);
             photoPath = `/uploads/photos/${filename}`;
           }
         }
@@ -709,7 +753,8 @@ app.put('/api/recruits/:id', requireAuth, upload.fields([{ name: 'photo', maxCou
         birth_date = ?, wife = ?, national_id = ?, address = ?, current_job = ?,
         other_jobs = ?, travel_abroad = ?, literacy = ?, inspection = ?, medical_status = ?,
         father_name = ?, father_job = ?, mother_name = ?, mother_job = ?, siblings_check = ?,
-        family_social_status = ?, family_security_status = ?, photo_path = ?, video_path = ?, notes = ?,
+        family_social_status = ?, family_security_status = ?, photo_path = ?, video_path = ?,
+        police_number = ?, company = ?, notes = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `;
@@ -739,6 +784,8 @@ app.put('/api/recruits/:id', requireAuth, upload.fields([{ name: 'photo', maxCou
       data.family_security_status ?? existing.family_security_status,
       photoPath,
       videoPath,
+      data.police_number ?? existing.police_number ?? '',
+      data.company ?? existing.company ?? '',
       data.notes ?? existing.notes,
       id
     ];
@@ -783,6 +830,15 @@ app.delete('/api/recruits/:id', requireAuth, async (req, res) => {
   }
 });
 
+// Serve frontend static build if it exists (in production / packaged Electron app)
+const distDir = path.join(__dirname, '..', 'dist');
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
+}
+
 // Global error handler for multer and other errors
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
@@ -797,15 +853,6 @@ app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'خطأ داخلي في الخادم' });
 });
-
-// Serve frontend static build if it exists (in production / packaged Electron app)
-const distDir = path.join(__dirname, '..', 'dist');
-if (fs.existsSync(distDir)) {
-  app.use(express.static(distDir));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(distDir, 'index.html'));
-  });
-}
 
 // Start Server on 0.0.0.0 so local network / Wi-Fi devices can connect
 app.listen(PORT, '0.0.0.0', () => {

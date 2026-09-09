@@ -35,7 +35,9 @@ const GOVERNORATES = {
  */
 export function parseEgyptianNationalId(id) {
   if (!id || typeof id !== 'string') return null;
-  const cleanId = id.trim();
+  // Normalize Eastern Arabic numerals to Western
+  const normalizedId = id.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+  const cleanId = normalizedId.trim();
   if (cleanId.length !== 14 || !/^\d{14}$/.test(cleanId)) return null;
 
   const centuryCode = cleanId[0];

@@ -45,7 +45,7 @@ export const handleLogin = async (req, res) => {
       return res.status(401).json({ error: 'كلمة المرور غير صحيحة' });
     }
 
-    const token = generateToken({ role: 'admin', iat: Date.now() });
+    const token = generateToken({ role: 'admin' });
     res.json({ token, role: 'admin' });
   } catch (err) {
     console.error('Login error:', err);

@@ -49,10 +49,20 @@ export const run = (sql, params = []) => {
   });
 };
 
+export const closeDb = () => {
+  return new Promise((resolve, reject) => {
+    db.close((err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+};
+
 // Initialize schema and seed default recruitment batches
 export const initDb = async () => {
   // Enable Write-Ahead Logging for ultra-fast concurrency across LAN / Wi-Fi
   await run('PRAGMA journal_mode = WAL;');
+  await run('PRAGMA busy_timeout = 5000;');
   await run('PRAGMA foreign_keys = ON;');
 
   // 1. Batches table (الدفوع التجنيدية)
@@ -96,12 +106,26 @@ export const initDb = async () => {
       family_security_status TEXT,
       photo_path TEXT,
       video_path TEXT,
+      police_number TEXT DEFAULT '',
+      company TEXT DEFAULT '',
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE RESTRICT
     )
   `);
+
+  // Auto-migration for existing tables: check and add missing columns
+  const tableCols = await query(`PRAGMA table_info(recruits)`);
+  const colNames = tableCols.map(c => c.name);
+  if (!colNames.includes('police_number')) {
+    await run(`ALTER TABLE recruits ADD COLUMN police_number TEXT DEFAULT ''`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود police_number');
+  }
+  if (!colNames.includes('company')) {
+    await run(`ALTER TABLE recruits ADD COLUMN company TEXT DEFAULT ''`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود company');
+  }
 
   // Indexing for instant search + uniqueness (partial: only non-empty IDs)
   await run(`CREATE INDEX IF NOT EXISTS idx_recruits_name ON recruits(name)`);
@@ -113,7 +137,7 @@ export const initDb = async () => {
   // Seed default 4 batches for 2026 if empty
   const existingBatches = await query(`SELECT COUNT(*) as count FROM batches`);
   if (existingBatches[0].count === 0) {
-    const currentYear = 2026;
+    const currentYear = new Date().getFullYear();
     const defaultBatches = [
       { name: `دفع شهر 1 (يناير ${currentYear})`, year: currentYear, month: 1, active: 0 },
       { name: `دفع شهر 4 (أبريل ${currentYear})`, year: currentYear, month: 4, active: 0 },

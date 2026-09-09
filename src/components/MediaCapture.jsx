@@ -9,7 +9,7 @@ import {
   CircleDot, 
   Sparkles, 
   Upload, 
-  ArrowRight,
+  ArrowLeft,
   ShieldCheck,
   AlertTriangle,
   Loader2
@@ -90,7 +90,10 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
     canvas.width = video.videoWidth || 1280;
     canvas.height = video.videoHeight || 720;
     const ctx = canvas.getContext('2d');
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     const base64Image = canvas.toDataURL('image/jpeg', 0.92);
     setCapturedPhoto(base64Image);
@@ -387,7 +390,7 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
                     className="flex items-center gap-2 px-8 py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-sm shadow-xl shadow-emerald-950/60 transition-all"
                   >
                     <span>اعتماد الصورة والانتقال للفيديو</span>
-                    <ArrowRight className="w-4 h-4" />
+                    <ArrowLeft className="w-4 h-4" />
                   </button>
                 </>
               )}
