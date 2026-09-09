@@ -12,6 +12,7 @@ import {
   Bot,
   LogOut
 } from 'lucide-react';
+import centralSecurityLogo from '../assets/central_security_logo.png';
 
 export default function Header({ 
   activeBatch, 
@@ -45,8 +46,12 @@ export default function Header({
         
         {/* Brand & Military Department Info */}
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-800 flex items-center justify-center shadow-lg shadow-emerald-950/40 border border-emerald-500/30 shrink-0">
-            <Shield className="w-7 h-7 text-white" />
+          <div className="w-12 h-12 flex items-center justify-center shrink-0">
+            <img 
+              src={centralSecurityLogo} 
+              alt="شعار الأمن المركزي" 
+              className="w-11 h-12 object-contain drop-shadow-md"
+            />
           </div>
           <div>
             <div className="flex items-center gap-2">
