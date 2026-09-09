@@ -1,47 +1,53 @@
+@import './styles/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  * { box-sizing: border-box; }
+  html { background: var(--ui-bg); }
   body {
+    margin: 0;
     direction: rtl;
     text-align: right;
+    background: var(--ui-bg);
+    color: var(--ui-text);
     font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
     user-select: auto;
     -webkit-font-smoothing: antialiased;
   }
+  button, input, select, textarea { font: inherit; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 2px;
+  }
 }
 
-/* Custom sleek scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: #0f141c;
-}
-::-webkit-scrollbar-thumb {
-  background: #2a3547;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #3b4b66;
+@layer components {
+  .amn-card {
+    background: var(--ui-layer-01);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--radius-md);
+  }
+  .amn-button-primary {
+    background: var(--amn-blue-50);
+    color: white;
+    border: 1px solid #3e5fbd;
+    border-radius: var(--radius-sm);
+  }
+  .amn-button-primary:hover { background: var(--amn-blue-40); }
 }
 
-/* Print styling specifically for Official Examination Report A4 */
+/* Slim operational scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--ui-bg); }
+::-webkit-scrollbar-thumb { background: #344158; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #4b5b76; }
+
 @media print {
-  body {
-    background: white !important;
-    color: black !important;
-  }
-  .no-print {
-    display: none !important;
-  }
-  .print-only {
-    display: block !important;
-  }
-  @page {
-    size: A4 portrait;
-    margin: 10mm 12mm 10mm 12mm;
-  }
+  body { background: white !important; color: black !important; }
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  @page { size: A4 portrait; margin: 10mm 12mm 10mm 12mm; }
 }
