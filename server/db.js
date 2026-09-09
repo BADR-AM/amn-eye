@@ -126,6 +126,18 @@ export const initDb = async () => {
     await run(`ALTER TABLE recruits ADD COLUMN company TEXT DEFAULT ''`);
     console.log('✅ تم تحديث المخطط: إضافة عمود company');
   }
+  if (!colNames.includes('id_doc_front_path')) {
+    await run(`ALTER TABLE recruits ADD COLUMN id_doc_front_path TEXT DEFAULT ''`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود id_doc_front_path (وثيقة التعارف - وجه 1)');
+  }
+  if (!colNames.includes('id_doc_back_path')) {
+    await run(`ALTER TABLE recruits ADD COLUMN id_doc_back_path TEXT DEFAULT ''`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود id_doc_back_path (وثيقة التعارف - وجه 2)');
+  }
+  if (!colNames.includes('military_record_path')) {
+    await run(`ALTER TABLE recruits ADD COLUMN military_record_path TEXT DEFAULT ''`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود military_record_path (أصل السجل العسكري)');
+  }
 
   // 3. System Settings table (إعدادات المنظومة وألوان السرايا)
   await run(`
@@ -157,6 +169,26 @@ export const initDb = async () => {
 
   await run(`CREATE INDEX IF NOT EXISTS idx_activities_recruit_id ON recruit_activities(recruit_id)`);
   await run(`CREATE INDEX IF NOT EXISTS idx_activities_type ON recruit_activities(activity_type)`);
+
+  // 5. Recruit Documents / Scanned Identification & Military Records (وثائق التعارف والسجل العسكري الممسوحة ضوئياً)
+  await run(`
+    CREATE TABLE IF NOT EXISTS recruit_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recruit_id INTEGER NOT NULL,
+      doc_type TEXT NOT NULL, -- id_doc_front, id_doc_back, military_record, other
+      title TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_name TEXT DEFAULT '',
+      file_size INTEGER DEFAULT 0,
+      mime_type TEXT DEFAULT 'image/jpeg',
+      notes TEXT DEFAULT '',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (recruit_id) REFERENCES recruits(id) ON DELETE CASCADE
+    )
+  `);
+
+  await run(`CREATE INDEX IF NOT EXISTS idx_documents_recruit_id ON recruit_documents(recruit_id)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_documents_type ON recruit_documents(doc_type)`);
 
   // Seed default company colors if not set
   const companyColorsRow = await get(`SELECT value FROM settings WHERE key = 'company_colors'`);

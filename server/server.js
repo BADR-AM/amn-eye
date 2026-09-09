@@ -20,8 +20,9 @@ const PORT = process.env.PORT || 5000;
 const uploadsDir = path.join(__dirname, '..', 'uploads');
 const photosDir = path.join(uploadsDir, 'photos');
 const videosDir = path.join(uploadsDir, 'videos');
+const docsDir = path.join(uploadsDir, 'documents');
 
-[uploadsDir, photosDir, videosDir].forEach((dir) => {
+[uploadsDir, photosDir, videosDir, docsDir].forEach((dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -34,8 +35,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 }));
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // Serve uploaded media files statically with security headers
 app.use('/uploads', (req, res, next) => {
@@ -47,6 +48,7 @@ app.use('/uploads', (req, res, next) => {
 // Multer config — type allowlist + random filenames
 const ALLOWED_PHOTO_MIME = ['image/jpeg', 'image/png', 'image/webp'];
 const ALLOWED_VIDEO_MIME = ['video/webm', 'video/mp4'];
+const ALLOWED_DOC_MIME = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -54,12 +56,14 @@ const storage = multer.diskStorage({
       cb(null, photosDir);
     } else if (file.fieldname === 'video') {
       cb(null, videosDir);
+    } else if (file.fieldname === 'document' || file.fieldname === 'doc_file') {
+      cb(null, docsDir);
     } else {
       cb(null, uploadsDir);
     }
   },
   filename: (req, file, cb) => {
-    const origExt = path.extname(file.originalname).toLowerCase() || (file.fieldname === 'photo' ? '.jpg' : '.webm');
+    const origExt = path.extname(file.originalname).toLowerCase() || (file.fieldname === 'photo' ? '.jpg' : file.fieldname === 'video' ? '.webm' : '.jpg');
     cb(null, `${file.fieldname}_${Date.now()}_${crypto.randomUUID()}${origExt}`);
   },
 });
@@ -67,17 +71,18 @@ const storage = multer.diskStorage({
 const fileFilter = (req, file, cb) => {
   const isPhoto = file.fieldname === 'photo' && ALLOWED_PHOTO_MIME.includes(file.mimetype);
   const isVideo = file.fieldname === 'video' && ALLOWED_VIDEO_MIME.includes(file.mimetype);
-  if (isPhoto || isVideo) {
+  const isDoc = (file.fieldname === 'document' || file.fieldname === 'doc_file') && ALLOWED_DOC_MIME.includes(file.mimetype);
+  if (isPhoto || isVideo || isDoc) {
     cb(null, true);
   } else {
-    cb(new Error('نوع الملف غير مسموح'), false);
+    cb(new Error('نوع الملف غير مسموح - يُسمح بالصور JPG/PNG/WebP وملفات PDF للمستندات والوثائق'), false);
   }
 };
 
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 20 * 1024 * 1024 } // 20MB
+  limits: { fileSize: 30 * 1024 * 1024 } // 30MB
 });
 
 // Initialize database
@@ -1140,6 +1145,144 @@ app.get('/api/analytics/overview', async (req, res) => {
   } catch (error) {
     console.error('Error fetching analytics overview:', error);
     res.status(500).json({ error: 'خطأ في جلب تحليلات المنظومة' });
+  }
+});
+
+// -------------------------------------------------------------
+// 11. Recruit Scanned Documents (وثيقة التعارف والسجل العسكري)
+// -------------------------------------------------------------
+
+// جلب مستندات المجند الممسوحة ضوئياً
+app.get('/api/recruits/:id/documents', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const docs = await query(
+      `SELECT * FROM recruit_documents WHERE recruit_id = ? ORDER BY id ASC`,
+      [id]
+    );
+
+    const recruit = await get(
+      `SELECT id, name, id_doc_front_path, id_doc_back_path, military_record_path FROM recruits WHERE id = ?`,
+      [id]
+    );
+
+    res.json({
+      documents: docs,
+      quickPaths: {
+        id_doc_front: recruit?.id_doc_front_path || null,
+        id_doc_back: recruit?.id_doc_back_path || null,
+        military_record: recruit?.military_record_path || null
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching recruit documents:', error);
+    res.status(500).json({ error: 'خطأ في استرجاع الوثائق الممسوحة' });
+  }
+});
+
+// رفع أو مسح وثيقة للمجند (يدعم ملف من الجهاز أو ماسح ضوئي Base64)
+app.post('/api/recruits/:id/documents', requireAuth, upload.single('document'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { doc_type, title, notes, base64_data } = req.body;
+
+    const existingRecruit = await get(`SELECT id FROM recruits WHERE id = ?`, [id]);
+    if (!existingRecruit) {
+      return res.status(404).json({ error: 'المجند غير موجود' });
+    }
+
+    let filePath = '';
+    let fileName = '';
+    let fileSize = 0;
+    let mimeType = 'image/jpeg';
+
+    if (req.file) {
+      filePath = `uploads/documents/${req.file.filename}`;
+      fileName = req.file.originalname;
+      fileSize = req.file.size;
+      mimeType = req.file.mimetype;
+    } else if (base64_data) {
+      // Direct Scanner / WebCam Base64 payload
+      const matches = base64_data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (!matches || matches.length !== 3) {
+        return res.status(400).json({ error: 'صيغة بيانات الصورة غير صحيحة' });
+      }
+      mimeType = matches[1];
+      const buffer = Buffer.from(matches[2], 'base64');
+      const ext = mimeType.includes('png') ? '.png' : mimeType.includes('pdf') ? '.pdf' : '.jpg';
+      const uniqueName = `scan_${Date.now()}_${crypto.randomUUID()}${ext}`;
+      const fullPath = path.join(docsDir, uniqueName);
+      fs.writeFileSync(fullPath, buffer);
+
+      filePath = `uploads/documents/${uniqueName}`;
+      fileName = title || `مسح_ضوئي_${Date.now()}${ext}`;
+      fileSize = buffer.length;
+    } else {
+      return res.status(400).json({ error: 'يجب إرفاق ملف أو إرسال صورة ممسوحة' });
+    }
+
+    const docTitle = title || (
+      doc_type === 'id_doc_front' ? 'وثيقة تعارف (الوجه الأول)' :
+      doc_type === 'id_doc_back' ? 'وثيقة تعارف (الوجه الثاني)' :
+      doc_type === 'military_record' ? 'أصل السجل العسكري' : 'مستند ضوئي'
+    );
+
+    // Save in recruit_documents table
+    const result = await run(
+      `INSERT INTO recruit_documents (recruit_id, doc_type, title, file_path, file_name, file_size, mime_type, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, doc_type || 'other', docTitle, filePath, fileName, fileSize, mimeType, notes || '']
+    );
+
+    // Update quick lookup columns in recruits table if applicable
+    if (doc_type === 'id_doc_front') {
+      await run(`UPDATE recruits SET id_doc_front_path = ? WHERE id = ?`, [filePath, id]);
+    } else if (doc_type === 'id_doc_back') {
+      await run(`UPDATE recruits SET id_doc_back_path = ? WHERE id = ?`, [filePath, id]);
+    } else if (doc_type === 'military_record') {
+      await run(`UPDATE recruits SET military_record_path = ? WHERE id = ?`, [filePath, id]);
+    }
+
+    const savedDoc = await get(`SELECT * FROM recruit_documents WHERE id = ?`, [result.lastID]);
+    res.status(201).json(savedDoc);
+  } catch (error) {
+    console.error('Error uploading document:', error);
+    res.status(500).json({ error: 'خطأ في حفظ المستند الممسوح ضوئياً' });
+  }
+});
+
+// حذف مستند
+app.delete('/api/documents/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const doc = await get(`SELECT * FROM recruit_documents WHERE id = ?`, [id]);
+    if (!doc) {
+      return res.status(404).json({ error: 'المستند غير موجود' });
+    }
+
+    await run(`DELETE FROM recruit_documents WHERE id = ?`, [id]);
+
+    // Clean up physical file
+    if (doc.file_path) {
+      const fullPath = path.join(__dirname, '..', doc.file_path);
+      if (fs.existsSync(fullPath)) {
+        try { fs.unlinkSync(fullPath); } catch (e) {}
+      }
+    }
+
+    // Reset quick column in recruits table if matched
+    if (doc.doc_type === 'id_doc_front') {
+      await run(`UPDATE recruits SET id_doc_front_path = '' WHERE id = ? AND id_doc_front_path = ?`, [doc.recruit_id, doc.file_path]);
+    } else if (doc.doc_type === 'id_doc_back') {
+      await run(`UPDATE recruits SET id_doc_back_path = '' WHERE id = ? AND id_doc_back_path = ?`, [doc.recruit_id, doc.file_path]);
+    } else if (doc.doc_type === 'military_record') {
+      await run(`UPDATE recruits SET military_record_path = '' WHERE id = ? AND military_record_path = ?`, [doc.recruit_id, doc.file_path]);
+    }
+
+    res.json({ message: 'تم حذف المستند بنجاح' });
+  } catch (error) {
+    console.error('Error deleting document:', error);
+    res.status(500).json({ error: 'خطأ في حذف المستند' });
   }
 });
 

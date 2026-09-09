@@ -29,7 +29,9 @@ import {
   MapPin,
   Clock,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Scan,
+  FileCheck
 } from 'lucide-react';
 import AnalyticsCharts from './AnalyticsCharts';
 import AnalyticsOverview from './AnalyticsOverview';
@@ -37,6 +39,7 @@ import SideInvestigationPanel from './SideInvestigationPanel';
 import ExportModal from './ExportModal';
 import CompanyColorsModal from './CompanyColorsModal';
 import ActivityLogModal from './ActivityLogModal';
+import RecruitDocumentsModal from './RecruitDocumentsModal';
 import { fetchCompanyColors, DEFAULT_COMPANY_COLORS, getCompanyStyle } from '../utils/companyColors';
 import { authHeaders } from '../utils/auth';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -74,6 +77,7 @@ export default function Dashboard({
   const [showExportModal, setShowExportModal] = useState(false);
   const [showCompanyColorsModal, setShowCompanyColorsModal] = useState(false);
   const [activityRecruit, setActivityRecruit] = useState(null);
+  const [documentsRecruit, setDocumentsRecruit] = useState(null);
   const [companyColors, setCompanyColors] = useState(DEFAULT_COMPANY_COLORS);
   
   const userClosedPanel = useRef(false);
@@ -110,7 +114,7 @@ export default function Dashboard({
       }
     },
     searchInputRef,
-    enabled: !showExportModal && !showCompanyColorsModal && !activityRecruit
+    enabled: !showExportModal && !showCompanyColorsModal && !activityRecruit && !documentsRecruit
   });
 
   const handleClosePanel = () => {
@@ -440,18 +444,27 @@ export default function Dashboard({
                             </span>
                           </div>
 
-                          {/* Medical or Activity Flag */}
-                          {isHospitalized ? (
-                            <span className="text-[11px] font-bold px-2 py-0.5 bg-red-600/20 text-red-400 border border-red-500/40 animate-pulse flex items-center gap-1">
-                              <Stethoscope className="w-3 h-3" />
-                              بالمستشفى
-                            </span>
-                          ) : r.activities_count > 0 ? (
-                            <span className="text-[10px] font-medium text-gray-400 flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                              {r.activities_count} متابعة
-                            </span>
-                          ) : null}
+                          {/* Medical, Activity or Document Flags */}
+                          <div className="flex items-center gap-1.5">
+                            {(r.id_doc_front_path || r.id_doc_back_path) ? (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-500/10 text-blue-300 border border-blue-500/30 flex items-center gap-1" title="تم مسح وثيقة التعارف المفصلة">
+                                <FileCheck className="w-3 h-3 text-blue-400" />
+                                وثيقة التعارف
+                              </span>
+                            ) : null}
+
+                            {isHospitalized ? (
+                              <span className="text-[11px] font-bold px-2 py-0.5 bg-red-600/20 text-red-400 border border-red-500/40 animate-pulse flex items-center gap-1">
+                                <Stethoscope className="w-3 h-3" />
+                                بالمستشفى
+                              </span>
+                            ) : r.activities_count > 0 ? (
+                              <span className="text-[10px] font-medium text-gray-400 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                {r.activities_count} متابعة
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
 
                         {/* Middle Content: Photo & Details */}
@@ -521,6 +534,21 @@ export default function Dashboard({
                           </button>
 
                           <div className="flex items-center gap-1">
+                            {/* Scanned Identification & Military Documents */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDocumentsRecruit(r);
+                              }}
+                              className={`p-1.5 transition-colors ${
+                                (r.id_doc_front_path || r.id_doc_back_path || r.military_record_path)
+                                  ? 'bg-blue-900/40 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/40'
+                                  : 'bg-[#2d2d2d] hover:bg-[#383838] text-gray-400 hover:text-white'
+                              }`}
+                              title="وثيقة التعارف والسجل العسكري الممسوح ضوئياً"
+                            >
+                              <Scan className="w-3.5 h-3.5 text-blue-400" />
+                            </button>
                             {/* Locker Card Preview (P) */}
                             <button
                               onClick={(e) => {
@@ -697,6 +725,17 @@ export default function Dashboard({
                                 <Eye className="w-3.5 h-3.5" />
                               </button>
                               <button
+                                onClick={() => setDocumentsRecruit(r)}
+                                className={`p-1 border border-[#444] transition-colors ${
+                                  (r.id_doc_front_path || r.id_doc_back_path || r.military_record_path)
+                                    ? 'bg-blue-900/40 text-blue-300 hover:bg-blue-600 hover:text-white'
+                                    : 'bg-[#262626] hover:bg-[#383838] text-gray-400 hover:text-white'
+                                }`}
+                                title="وثيقة التعارف والسجل العسكري"
+                              >
+                                <Scan className="w-3.5 h-3.5" />
+                              </button>
+                              <button
                                 onClick={() => {
                                   setSelectedIds([r.id]);
                                   setShowExportModal(true);
@@ -776,11 +815,21 @@ export default function Dashboard({
                 setSelectedIds([r.id]);
                 setShowExportModal(true);
               }}
+              onOpenDocuments={(r) => setDocumentsRecruit(r)}
             />
           </div>
         )}
 
       </div>
+
+      {/* Scanned Identification & Military Documents Modal */}
+      {documentsRecruit && (
+        <RecruitDocumentsModal
+          recruit={documentsRecruit}
+          onClose={() => setDocumentsRecruit(null)}
+          onRefreshRecruits={() => fetchRecruits()}
+        />
+      )}
 
       {/* Medical & Movement Tracking Modal */}
       {activityRecruit && (

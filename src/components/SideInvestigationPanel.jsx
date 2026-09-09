@@ -1,11 +1,12 @@
-import React from 'react';
 import { 
   X, 
   Printer, 
   Eye, 
   Camera, 
   Video,
-  IdCard
+  IdCard,
+  FileText,
+  Scan
 } from 'lucide-react';
 
 export default function SideInvestigationPanel({ 
@@ -13,7 +14,8 @@ export default function SideInvestigationPanel({
   onClose, 
   onOpenFullDossier, 
   onPrint,
-  onOpenLockerCard 
+  onOpenLockerCard,
+  onOpenDocuments 
 }) {
   if (!recruit) return null;
 
@@ -130,6 +132,17 @@ export default function SideInvestigationPanel({
 
       {/* Footer Action Buttons */}
       <div className="p-4 border-t border-slate-800 bg-darkslate-850 space-y-2">
+        <button
+          onClick={() => onOpenDocuments?.(recruit)}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 font-bold text-xs border border-blue-500/30 transition-all"
+        >
+          <Scan className="w-4 h-4 text-blue-400" />
+          <span>وثيقة التعارف وأصل السجل العسكري</span>
+          {(recruit.id_doc_front_path || recruit.id_doc_back_path) && (
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          )}
+        </button>
+
         <button
           onClick={() => onOpenLockerCard?.(recruit)}
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-orange-600/20 hover:bg-orange-600/30 text-orange-300 font-bold text-xs border border-orange-500/30 transition-all"
