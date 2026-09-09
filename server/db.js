@@ -127,6 +127,30 @@ export const initDb = async () => {
     console.log('✅ تم تحديث المخطط: إضافة عمود company');
   }
 
+  // 3. System Settings table (إعدادات المنظومة وألوان السرايا)
+  await run(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Seed default company colors if not set
+  const companyColorsRow = await get(`SELECT value FROM settings WHERE key = 'company_colors'`);
+  if (!companyColorsRow) {
+    const defaultColors = [
+      { id: 'c1', match: 'الأولى', name: 'السرية الأولى ( ١ )', color: '#16a34a', textColor: '#ffffff' },
+      { id: 'c2', match: 'الثانية', name: 'السرية الثانية ( ٢ )', color: '#dc2626', textColor: '#ffffff' },
+      { id: 'c3', match: 'الثالثة', name: 'السرية الثالثة ( ٣ )', color: '#2563eb', textColor: '#ffffff' },
+      { id: 'c4', match: 'الرابعة', name: 'السرية الرابعة ( ٤ )', color: '#ffffff', textColor: '#000000' },
+      { id: 'c5', match: 'الخامسة', name: 'السرية الخامسة ( ٥ )', color: '#f97316', textColor: '#000000' },
+      { id: 'c6', match: 'السادسة', name: 'السرية السادسة ( ٦ )', color: '#38bdf8', textColor: '#000000' }
+    ];
+    await run(`INSERT INTO settings (key, value) VALUES (?, ?)`, ['company_colors', JSON.stringify(defaultColors)]);
+    console.log('✅ تم تهيئة إعدادات ألوان السرايا الافتراضية');
+  }
+
   // Indexing for instant search + uniqueness (partial: only non-empty IDs)
   await run(`CREATE INDEX IF NOT EXISTS idx_recruits_name ON recruits(name)`);
   await run(`CREATE INDEX IF NOT EXISTS idx_recruits_batch_id ON recruits(batch_id)`);

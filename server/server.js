@@ -114,6 +114,47 @@ app.get('/api/network-info', (req, res) => {
   });
 });
 
+// 1.1 Company Colors Settings (GET public so Kiosk & Dashboard can read; POST requires auth)
+app.get('/api/settings/company-colors', async (req, res) => {
+  try {
+    const row = await get(`SELECT value FROM settings WHERE key = 'company_colors'`);
+    if (row && row.value) {
+      return res.json(JSON.parse(row.value));
+    }
+    const defaultColors = [
+      { id: 'c1', match: 'الأولى', name: 'السرية الأولى ( ١ )', color: '#16a34a', textColor: '#ffffff' },
+      { id: 'c2', match: 'الثانية', name: 'السرية الثانية ( ٢ )', color: '#dc2626', textColor: '#ffffff' },
+      { id: 'c3', match: 'الثالثة', name: 'السرية الثالثة ( ٣ )', color: '#2563eb', textColor: '#ffffff' },
+      { id: 'c4', match: 'الرابعة', name: 'السرية الرابعة ( ٤ )', color: '#ffffff', textColor: '#000000' },
+      { id: 'c5', match: 'الخامسة', name: 'السرية الخامسة ( ٥ )', color: '#f97316', textColor: '#000000' },
+      { id: 'c6', match: 'السادسة', name: 'السرية السادسة ( ٦ )', color: '#38bdf8', textColor: '#000000' }
+    ];
+    res.json(defaultColors);
+  } catch (err) {
+    console.error('Error fetching company colors:', err);
+    res.status(500).json({ error: 'خطأ في جلب ألوان السرايا' });
+  }
+});
+
+app.post('/api/settings/company-colors', requireAuth, async (req, res) => {
+  try {
+    const colors = req.body;
+    if (!Array.isArray(colors)) {
+      return res.status(400).json({ error: 'البيانات المرسلة يجب أن تكون مصفوفة' });
+    }
+    const jsonStr = JSON.stringify(colors);
+    await run(
+      `INSERT INTO settings (key, value, updated_at) VALUES ('company_colors', ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+      [jsonStr]
+    );
+    res.json({ message: 'تم حفظ ألوان السرايا بنجاح', colors });
+  } catch (err) {
+    console.error('Error saving company colors:', err);
+    res.status(500).json({ error: 'خطأ في حفظ ألوان السرايا' });
+  }
+});
+
 // 2. Dashboard Statistics (protected)
 app.get('/api/stats', requireAuth, async (req, res) => {
   try {

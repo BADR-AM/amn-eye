@@ -11,9 +11,12 @@ import {
   ChevronLeft,
   Loader2,
   Sparkles,
-  Edit3
+  Edit3,
+  Palette
 } from 'lucide-react';
 import LockerCard from './LockerCard';
+import CompanyColorsModal from './CompanyColorsModal';
+import { fetchCompanyColors, getCompanyColorConfig, DEFAULT_COMPANY_COLORS } from '../utils/companyColors';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
@@ -33,10 +36,19 @@ export default function ExportModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressMsg, setProgressMsg] = useState('');
 
-  // Editing police_number / company directly in preview if needed
   const [editingCard, setEditingCard] = useState(false);
   const [tempPoliceNum, setTempPoliceNum] = useState('');
   const [tempCompany, setTempCompany] = useState('');
+  
+  // Dynamic Company Colors configuration
+  const [companyColors, setCompanyColors] = useState(DEFAULT_COMPANY_COLORS);
+  const [showColorModal, setShowColorModal] = useState(false);
+
+  useEffect(() => {
+    fetchCompanyColors().then((data) => {
+      if (data && Array.isArray(data)) setCompanyColors(data);
+    });
+  }, [isOpen]);
 
   const cardRef = useRef(null);
   const batchContainerRef = useRef(null);
@@ -339,13 +351,24 @@ export default function ExportModal({
               </p>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            disabled={isProcessing}
-            className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowColorModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold border border-slate-700 transition-colors shadow-sm"
+              title="تعديل وتخصيص ألوان السرايا (أخضر، أحمر، أزرق، أبيض، برتقالي، لبني...)"
+            >
+              <Palette className="w-4 h-4 text-orange-400" />
+              <span>ألوان السرايا</span>
+            </button>
+            <button 
+              onClick={onClose}
+              disabled={isProcessing}
+              className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Body */}
@@ -482,14 +505,28 @@ export default function ExportModal({
                             />
                           </div>
                           <div>
-                            <span className="text-[11px] text-slate-400 block mb-1">السرية:</span>
-                            <input
-                              type="text"
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[11px] text-slate-400">السرية ولون الشريط:</span>
+                              <span 
+                                style={{ 
+                                  backgroundColor: getCompanyColorConfig(tempCompany, companyColors).color,
+                                  color: getCompanyColorConfig(tempCompany, companyColors).textColor
+                                }}
+                                className="w-3.5 h-3.5 rounded-full border border-black inline-block shadow-sm"
+                                title="لون شريط الكارت"
+                              />
+                            </div>
+                            <select
                               value={tempCompany}
                               onChange={(e) => setTempCompany(e.target.value)}
-                              placeholder="مثال: السرية الثالثة ( ٣ )"
-                              className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
-                            />
+                              className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white font-bold"
+                            >
+                              {companyColors.map((c) => (
+                                <option key={c.id || c.name} value={c.name}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                           <button
                             type="button"
@@ -500,9 +537,20 @@ export default function ExportModal({
                           </button>
                         </div>
                       ) : (
-                        <div className="text-[11px] text-slate-400 space-y-0.5">
-                          <div>رقم الشرطة: <span className="text-white font-mono">{currentRecruit.police_number || 'غير مسجل'}</span></div>
-                          <div>السرية: <span className="text-white">{currentRecruit.company || 'السرية الثالثة ( ٣ )'}</span></div>
+                        <div className="text-[11px] text-slate-400 space-y-1">
+                          <div>رقم الشرطة: <span className="text-white font-mono font-bold">{currentRecruit.police_number || 'غير مسجل'}</span></div>
+                          <div className="flex items-center gap-1.5">
+                            <span>السرية:</span>
+                            <span 
+                              style={{ 
+                                backgroundColor: getCompanyColorConfig(currentRecruit.company, companyColors).color, 
+                                color: getCompanyColorConfig(currentRecruit.company, companyColors).textColor 
+                              }}
+                              className="px-2 py-0.5 rounded text-[10px] font-black border border-black/30 shadow-sm"
+                            >
+                              {currentRecruit.company || 'السرية الثالثة ( ٣ )'}
+                            </span>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -617,6 +665,7 @@ export default function ExportModal({
                     ref={cardRef} 
                     recruit={currentRecruit} 
                     scale={0.92}
+                    companyColors={companyColors}
                   />
                 </div>
               ) : (
@@ -637,6 +686,14 @@ export default function ExportModal({
         </div>
 
       </div>
+
+      {/* Settings Modal for Company Colors */}
+      <CompanyColorsModal
+        isOpen={showColorModal}
+        onClose={() => setShowColorModal(false)}
+        companyColors={companyColors}
+        onColorsUpdated={(newColors) => setCompanyColors(newColors)}
+      />
     </div>
   );
 }

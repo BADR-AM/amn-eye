@@ -53,11 +53,21 @@ export const CentralSecurityEmblem = ({ className = "w-16 h-16" }) => (
   </svg>
 );
 
+import { getCompanyColorConfig } from '../utils/companyColors';
+
 /**
  * LockerCard Component — كارت الدولاب للمجند
  * Matched 1:1 with official Central Security locker card format.
+ * Dynamic header & badge color based on military company (السرية).
  */
-const LockerCard = forwardRef(({ recruit, scale = 1, className = "" }, ref) => {
+const LockerCard = forwardRef(({ 
+  recruit, 
+  scale = 1, 
+  className = "",
+  companyColors = null,
+  customHeaderColor = null,
+  customTextColor = null
+}, ref) => {
   if (!recruit) return null;
 
   // Extract first name (large emphasis on card) and full remaining name
@@ -73,8 +83,13 @@ const LockerCard = forwardRef(({ recruit, scale = 1, className = "" }, ref) => {
   const dateArabic = toArabicNumerals(formattedDate);
   const policeNumArabic = toArabicNumerals(recruit.police_number || recruit.national_id?.slice(-6) || '------');
 
-  // Company default
+  // Company and Color Resolution
   const companyLabel = recruit.company?.trim() || 'السرية الثالثة ( ٣ )';
+  const colorConfig = getCompanyColorConfig(companyLabel, companyColors);
+  
+  const headerBg = customHeaderColor || colorConfig.color || '#f37021';
+  const headerText = customTextColor || colorConfig.textColor || (headerBg === '#ffffff' ? '#000000' : '#ffffff');
+  const dividerColor = headerText === '#ffffff' ? 'rgba(255,255,255,0.85)' : '#000000';
 
   return (
     <div
@@ -84,18 +99,24 @@ const LockerCard = forwardRef(({ recruit, scale = 1, className = "" }, ref) => {
         height: `${380 * scale}px`,
         transformOrigin: 'top right',
       }}
-      className={`relative bg-white text-black font-sans select-none overflow-hidden border border-slate-300 shadow-md flex flex-col ${className}`}
+      className={`relative bg-white text-black font-sans select-none overflow-hidden border-2 border-black shadow-md flex flex-col ${className}`}
       dir="rtl"
     >
-      {/* 1. Header Bar: Orange with black border & central title */}
-      <div className="w-full bg-[#f37021] border-b-2 border-black pt-3 pb-2 px-4 flex flex-col items-center justify-center">
+      {/* 1. Header Bar: Color determined dynamically by company */}
+      <div 
+        style={{ backgroundColor: headerBg, color: headerText }}
+        className="w-full border-b-2 border-black pt-3 pb-2 px-4 flex flex-col items-center justify-center transition-colors"
+      >
         <h1 
-          className="text-black font-black tracking-widest text-[28px] sm:text-[30px] leading-tight"
-          style={{ fontFamily: "'Cairo', sans-serif" }}
+          className="font-black tracking-widest text-[28px] sm:text-[30px] leading-tight"
+          style={{ fontFamily: "'Cairo', sans-serif", color: headerText }}
         >
           مركز تدريب المجندين
         </h1>
-        <div className="w-11/12 h-[2px] bg-black mt-1"></div>
+        <div 
+          className="w-11/12 h-[2px] mt-1"
+          style={{ backgroundColor: dividerColor }}
+        ></div>
       </div>
 
       {/* 2. Main Card Body */}
@@ -138,9 +159,15 @@ const LockerCard = forwardRef(({ recruit, scale = 1, className = "" }, ref) => {
             {restName || recruit.name}
           </div>
 
-          {/* Company Badge (Orange border & fill) */}
-          <div className="bg-[#f37021] border-2 border-black px-6 py-1 rounded-[2px] shadow-sm mb-3">
-            <span className="text-black font-extrabold text-[15px] sm:text-[16px]">
+          {/* Company Badge (Color-coded with company) */}
+          <div 
+            style={{ backgroundColor: headerBg, borderColor: '#000000' }}
+            className="border-2 px-6 py-1 rounded-[2px] shadow-sm mb-3 transition-colors"
+          >
+            <span 
+              className="font-extrabold text-[15px] sm:text-[16px]"
+              style={{ color: headerText }}
+            >
               {companyLabel}
             </span>
           </div>

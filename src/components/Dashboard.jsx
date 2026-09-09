@@ -20,11 +20,14 @@ import {
   TrendingUp,
   Sparkles,
   Download,
-  IdCard
+  IdCard,
+  Palette
 } from 'lucide-react';
 import AnalyticsCharts from './AnalyticsCharts';
 import SideInvestigationPanel from './SideInvestigationPanel';
 import ExportModal from './ExportModal';
+import CompanyColorsModal from './CompanyColorsModal';
+import { fetchCompanyColors, DEFAULT_COMPANY_COLORS } from '../utils/companyColors';
 import { authHeaders } from '../utils/auth';
 
 export default function Dashboard({ 
@@ -52,7 +55,15 @@ export default function Dashboard({
   const [sidePanelRecruit, setSidePanelRecruit] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showCompanyColorsModal, setShowCompanyColorsModal] = useState(false);
+  const [companyColors, setCompanyColors] = useState(DEFAULT_COMPANY_COLORS);
   const userClosedPanel = useRef(false);
+
+  useEffect(() => {
+    fetchCompanyColors().then(data => {
+      if (data && Array.isArray(data)) setCompanyColors(data);
+    });
+  }, []);
 
   const handleClosePanel = () => {
     userClosedPanel.current = true;
@@ -336,6 +347,16 @@ export default function Dashboard({
             )}
           </button>
 
+          {/* Company Colors Customization Button */}
+          <button
+            onClick={() => setShowCompanyColorsModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700/80 transition-all shadow-sm"
+            title="تخصيص ألوان سرايا كروت الدولاب (الأولى، الثانية، الثالثة...)"
+          >
+            <Palette className="w-4 h-4 text-orange-400" />
+            <span>ألوان السرايا</span>
+          </button>
+
           {/* Refresh Button */}
           <button
             onClick={() => {
@@ -614,6 +635,14 @@ export default function Dashboard({
         selectedRecruitIds={selectedIds}
         activeBatch={activeBatch}
         onUpdateRecruit={handleUpdateRecruit}
+      />
+
+      {/* Settings Modal for Military Company Colors */}
+      <CompanyColorsModal
+        isOpen={showCompanyColorsModal}
+        onClose={() => setShowCompanyColorsModal(false)}
+        companyColors={companyColors}
+        onColorsUpdated={(updated) => setCompanyColors(updated)}
       />
 
     </div>
