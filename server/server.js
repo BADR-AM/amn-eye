@@ -546,16 +546,17 @@ app.put('/api/batches/:id/set-active', requireAuth, async (req, res) => {
 // 4. Recruits List & Advanced Search (protected)
 app.get('/api/recruits', requireAuth, async (req, res) => {
   try {
-    const { search, batch_id, qualification, page = 1, limit = 50 } = req.query;
-    const safeLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 100);
+    const { search, batch_id, qualification, company, attendance_date, page = 1, limit = 50 } = req.query;
+    const isUnlimited = limit === 'all' || parseInt(limit) >= 5000;
+    const safeLimit = isUnlimited ? 10000 : Math.min(Math.max(parseInt(limit) || 50, 1), 500);
     const safePage = Math.max(parseInt(page) || 1, 1);
     let whereClauses = [];
     let params = [];
 
     if (search && search.trim()) {
       const s = `%${search.trim()}%`;
-      whereClauses.push(`(r.name LIKE ? OR r.national_id LIKE ? OR r.address LIKE ? OR r.current_job LIKE ?)`);
-      params.push(s, s, s, s);
+      whereClauses.push(`(r.name LIKE ? OR r.national_id LIKE ? OR r.address LIKE ? OR r.current_job LIKE ? OR r.police_number LIKE ?)`);
+      params.push(s, s, s, s, s);
     }
 
     if (batch_id && batch_id !== 'all') {
@@ -568,8 +569,18 @@ app.get('/api/recruits', requireAuth, async (req, res) => {
       params.push(qualification);
     }
 
+    if (company && company !== 'all') {
+      whereClauses.push(`(r.company = ? OR r.company LIKE ?)`);
+      params.push(company, `%${company}%`);
+    }
+
+    if (attendance_date && attendance_date !== 'all') {
+      whereClauses.push(`r.attendance_date = ?`);
+      params.push(attendance_date);
+    }
+
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-    const offset = (safePage - 1) * safeLimit;
+    const offset = isUnlimited ? 0 : (safePage - 1) * safeLimit;
 
     const countRow = await get(`SELECT COUNT(*) as count FROM recruits r ${whereSql}`, params);
     const total = countRow ? countRow.count : 0;
@@ -589,11 +600,34 @@ app.get('/api/recruits', requireAuth, async (req, res) => {
       total,
       page: safePage,
       limit: safeLimit,
-      totalPages: Math.ceil(total / safeLimit)
+      totalPages: isUnlimited ? 1 : Math.ceil(total / safeLimit)
     });
   } catch (error) {
     console.error('Error fetching recruits:', error);
     res.status(500).json({ error: 'خطأ في جلب بيانات المجندين' });
+  }
+});
+
+// 4.1 Filter options for bulk export and advanced filters
+app.get('/api/recruits/filter-options', requireAuth, async (req, res) => {
+  try {
+    const companies = await query(`
+      SELECT DISTINCT company FROM recruits 
+      WHERE company IS NOT NULL AND company != '' 
+      ORDER BY company ASC
+    `);
+    const dates = await query(`
+      SELECT DISTINCT attendance_date FROM recruits 
+      WHERE attendance_date IS NOT NULL AND attendance_date != '' 
+      ORDER BY attendance_date DESC
+    `);
+    res.json({
+      companies: companies.map(c => c.company),
+      attendance_dates: dates.map(d => d.attendance_date)
+    });
+  } catch (err) {
+    console.error('Error fetching filter options:', err);
+    res.status(500).json({ error: 'خطأ في جلب خيارات التصفية' });
   }
 });
 

@@ -12,11 +12,16 @@ import {
   Loader2,
   Sparkles,
   Edit3,
-  Palette
+  Palette,
+  Calendar,
+  Users,
+  CalendarDays,
+  ShieldAlert
 } from 'lucide-react';
 import LockerCard from './LockerCard';
 import CompanyColorsModal from './CompanyColorsModal';
 import { fetchCompanyColors, getCompanyColorConfig, DEFAULT_COMPANY_COLORS } from '../utils/companyColors';
+import { authHeaders } from '../utils/auth';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
@@ -30,7 +35,15 @@ export default function ExportModal({
   onUpdateRecruit
 }) {
   const [exportType, setExportType] = useState('cards'); // 'cards' | 'excel' | 'csv'
-  const [scope, setScope] = useState('selected'); // 'selected' | 'all'
+  const [scope, setScope] = useState('selected'); // 'selected' | 'company' | 'date' | 'all'
+  const [selectedCompany, setSelectedCompany] = useState('السرية الأولى ( ١ )');
+  const [selectedDate, setSelectedDate] = useState('');
+  
+  const [availableCompanies, setAvailableCompanies] = useState([]);
+  const [availableDates, setAvailableDates] = useState([]);
+  const [bulkRecruits, setBulkRecruits] = useState([]);
+  const [loadingBulk, setLoadingBulk] = useState(false);
+
   const [pdfLayout, setPdfLayout] = useState('a4_grid'); // 'a4_grid' (4 per page) | 'single' (1 per page)
   const [previewIndex, setPreviewIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -44,22 +57,85 @@ export default function ExportModal({
   const [companyColors, setCompanyColors] = useState(DEFAULT_COMPANY_COLORS);
   const [showColorModal, setShowColorModal] = useState(false);
 
+  // 1. Fetch Company Colors & Filter Options on Open
   useEffect(() => {
+    if (!isOpen) return;
+
     fetchCompanyColors().then((data) => {
-      if (data && Array.isArray(data)) setCompanyColors(data);
+      if (data && Array.isArray(data)) {
+        setCompanyColors(data);
+        if (!selectedCompany && data.length > 0) {
+          setSelectedCompany(data[0].name);
+        }
+      }
     });
+
+    // Fetch distinct companies and attendance dates from DB
+    fetch('/api/recruits/filter-options', { headers: authHeaders() })
+      .then(r => r.json())
+      .then(data => {
+        if (data.companies && data.companies.length > 0) {
+          setAvailableCompanies(data.companies);
+          if (!selectedCompany) setSelectedCompany(data.companies[0]);
+        }
+        if (data.attendance_dates && data.attendance_dates.length > 0) {
+          setAvailableDates(data.attendance_dates);
+          if (!selectedDate) setSelectedDate(data.attendance_dates[0]);
+        }
+      })
+      .catch(err => console.warn('Could not fetch filter options:', err));
   }, [isOpen]);
+
+  // 2. Fetch Bulk Recruits when scope is company / date / all
+  useEffect(() => {
+    if (!isOpen) return;
+    if (scope === 'selected') return;
+
+    const fetchBulk = async () => {
+      setLoadingBulk(true);
+      try {
+        const params = new URLSearchParams({
+          limit: 'all',
+          batch_id: activeBatch?.id ? String(activeBatch.id) : 'all'
+        });
+
+        if (scope === 'company' && selectedCompany) {
+          params.append('company', selectedCompany);
+        } else if (scope === 'date' && selectedDate) {
+          params.append('attendance_date', selectedDate);
+        }
+
+        const res = await fetch(`/api/recruits?${params.toString()}`, { headers: authHeaders() });
+        if (res.ok) {
+          const data = await res.json();
+          setBulkRecruits(data.recruits || []);
+        }
+      } catch (e) {
+        console.error('Failed to fetch bulk recruits:', e);
+      } finally {
+        setLoadingBulk(false);
+      }
+    };
+
+    fetchBulk();
+  }, [scope, selectedCompany, selectedDate, isOpen, activeBatch?.id]);
 
   const cardRef = useRef(null);
   const batchContainerRef = useRef(null);
 
   // Filter target recruits based on selected scope
   const targetRecruits = React.useMemo(() => {
-    if (scope === 'selected' && selectedRecruitIds.length > 0) {
-      return recruits.filter(r => selectedRecruitIds.includes(r.id));
+    if (scope === 'selected') {
+      if (selectedRecruitIds.length > 0) {
+        return recruits.filter(r => selectedRecruitIds.includes(r.id));
+      }
+      return recruits;
+    }
+    if (scope === 'company' || scope === 'date' || scope === 'all') {
+      return bulkRecruits;
     }
     return recruits;
-  }, [scope, selectedRecruitIds, recruits]);
+  }, [scope, selectedRecruitIds, recruits, bulkRecruits]);
 
   // Adjust preview index if bounds change
   useEffect(() => {
@@ -409,11 +485,22 @@ export default function ExportModal({
               </div>
             </div>
 
-            {/* 2. Scope Selection (Selected vs All) */}
+            {/* 2. Scope Selection (Selected / Company / Date / All) */}
             <div>
-              <label className="text-xs font-bold text-slate-300 mb-2 block">نطاق التصدير:</label>
-              <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
-                <label className="flex items-center gap-3 cursor-pointer text-sm text-slate-200">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-bold text-slate-300">نطاق وتصفية التصدير:</label>
+                {loadingBulk && (
+                  <span className="text-[11px] text-orange-400 flex items-center gap-1 font-bold animate-pulse">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    جاري جلب البيانات...
+                  </span>
+                )}
+              </div>
+
+              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 space-y-3">
+                
+                {/* Option 1: Selected in table */}
+                <label className="flex items-center gap-3 cursor-pointer text-xs text-slate-200">
                   <input
                     type="radio"
                     name="scope"
@@ -423,25 +510,125 @@ export default function ExportModal({
                     className="text-orange-500 focus:ring-orange-500 bg-slate-800 border-slate-700"
                   />
                   <span>
-                    المجندين المحددين في الجدول 
+                    المجندين المحددين بالجدول 
                     <strong className="text-orange-400 mx-1">({selectedRecruitIds.length})</strong>
                   </span>
                 </label>
 
-                <label className="flex items-center gap-3 cursor-pointer text-sm text-slate-200">
-                  <input
-                    type="radio"
-                    name="scope"
-                    value="all"
-                    checked={scope === 'all'}
-                    onChange={() => setScope('all')}
-                    className="text-orange-500 focus:ring-orange-500 bg-slate-800 border-slate-700"
-                  />
-                  <span>
-                    جميع مجندين الدفع المعروضين
-                    <strong className="text-slate-400 mx-1">({recruits.length})</strong>
-                  </span>
-                </label>
+                {/* Option 2: Full Company Bulk */}
+                <div className="space-y-2 pt-1 border-t border-slate-800/80">
+                  <label className="flex items-center gap-3 cursor-pointer text-xs text-slate-200">
+                    <input
+                      type="radio"
+                      name="scope"
+                      value="company"
+                      checked={scope === 'company'}
+                      onChange={() => setScope('company')}
+                      className="text-orange-500 focus:ring-orange-500 bg-slate-800 border-slate-700"
+                    />
+                    <span className="font-bold text-white flex items-center gap-1.5">
+                      <ShieldAlert className="w-3.5 h-3.5 text-orange-400" />
+                      <span>تصدير بلك: سرية كاملة</span>
+                    </span>
+                  </label>
+
+                  {scope === 'company' && (
+                    <div className="pr-6 space-y-2 animate-in fade-in duration-150">
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={selectedCompany}
+                          onChange={(e) => setSelectedCompany(e.target.value)}
+                          className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white font-bold focus:border-orange-500 focus:outline-none"
+                        >
+                          {companyColors.map((c) => (
+                            <option key={c.id || c.name} value={c.name}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                        <span
+                          style={{
+                            backgroundColor: getCompanyColorConfig(selectedCompany, companyColors).color,
+                            color: getCompanyColorConfig(selectedCompany, companyColors).textColor
+                          }}
+                          className="w-5 h-5 rounded-full border border-black shrink-0 shadow-sm"
+                          title="لون شريط الكارت"
+                        />
+                      </div>
+                      <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                        <span>مجندين هذه السرية:</span>
+                        <strong className="text-orange-400 font-mono text-xs">{targetRecruits.length} مجند</strong>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Option 3: Full Attendance Date Bulk */}
+                <div className="space-y-2 pt-1 border-t border-slate-800/80">
+                  <label className="flex items-center gap-3 cursor-pointer text-xs text-slate-200">
+                    <input
+                      type="radio"
+                      name="scope"
+                      value="date"
+                      checked={scope === 'date'}
+                      onChange={() => setScope('date')}
+                      className="text-orange-500 focus:ring-orange-500 bg-slate-800 border-slate-700"
+                    />
+                    <span className="font-bold text-white flex items-center gap-1.5">
+                      <CalendarDays className="w-3.5 h-3.5 text-blue-400" />
+                      <span>تصدير بلك: حضور يوم معين</span>
+                    </span>
+                  </label>
+
+                  {scope === 'date' && (
+                    <div className="pr-6 space-y-2 animate-in fade-in duration-150">
+                      <div className="flex items-center gap-2">
+                        {availableDates.length > 0 ? (
+                          <select
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                            className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white font-mono font-bold focus:border-orange-500 focus:outline-none"
+                          >
+                            {availableDates.map((d) => (
+                              <option key={d} value={d}>
+                                حضور يوم: {d}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
+                        <input
+                          type="date"
+                          value={selectedDate}
+                          onChange={(e) => setSelectedDate(e.target.value)}
+                          className="bg-slate-950 border border-slate-700 rounded-xl px-2 py-1 text-xs text-white font-mono focus:border-orange-500 focus:outline-none"
+                        />
+                      </div>
+                      <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                        <span>المسجلين في تاريخ {selectedDate || 'المحدد'}:</span>
+                        <strong className="text-blue-400 font-mono text-xs">{targetRecruits.length} مجند</strong>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Option 4: All Recruits in Batch */}
+                <div className="pt-1 border-t border-slate-800/80">
+                  <label className="flex items-center gap-3 cursor-pointer text-xs text-slate-200">
+                    <input
+                      type="radio"
+                      name="scope"
+                      value="all"
+                      checked={scope === 'all'}
+                      onChange={() => setScope('all')}
+                      className="text-orange-500 focus:ring-orange-500 bg-slate-800 border-slate-700"
+                    />
+                    <span>
+                      جميع مجندين الدفع التجنيدي 
+                      <strong className="text-slate-400 mx-1">({targetRecruits.length})</strong>
+                    </span>
+                  </label>
+                </div>
+
               </div>
             </div>
 
