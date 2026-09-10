@@ -6,7 +6,8 @@ import {
   Video,
   IdCard,
   FileText,
-  Scan
+  Scan,
+  ShieldAlert
 } from 'lucide-react';
 
 export default function SideInvestigationPanel({ 
@@ -15,7 +16,9 @@ export default function SideInvestigationPanel({
   onOpenFullDossier, 
   onPrint,
   onOpenLockerCard,
-  onOpenDocuments 
+  onOpenDocuments,
+  onOpenTickets,
+  onOpenPsychological
 }) {
   if (!recruit) return null;
 
@@ -132,6 +135,50 @@ export default function SideInvestigationPanel({
 
       {/* Footer Action Buttons */}
       <div className="p-4 border-t border-slate-800 bg-darkslate-850 space-y-2">
+        {/* Ticket & Suspicion Alerts Button */}
+        <button
+          onClick={() => onOpenTickets?.(recruit)}
+          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+            recruit.open_tickets_count > 0
+              ? 'bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border-rose-500/50 shadow-md'
+              : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-rose-400" />
+            <span>التيكتات وبلاغات الاشتباه</span>
+          </div>
+          {recruit.open_tickets_count > 0 ? (
+            <span className="bg-rose-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse">
+              {recruit.open_tickets_count} نشط
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-400">إضافة تيكت +</span>
+          )}
+        </button>
+
+        {/* Psychological Follow-up Button */}
+        <button
+          onClick={() => onOpenPsychological?.(recruit)}
+          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+            recruit.is_psychological_case
+              ? 'bg-fuchsia-950/60 hover:bg-fuchsia-900/80 text-fuchsia-300 border-fuchsia-500/50 shadow-md'
+              : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-base">🧠</span>
+            <span>المتابعة النفسية والعصبية</span>
+          </div>
+          {recruit.is_psychological_case ? (
+            <span className="bg-fuchsia-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
+              حالة متابعة
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-400">تسجيل / فحص</span>
+          )}
+        </button>
+
         <button
           onClick={() => onOpenDocuments?.(recruit)}
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 font-bold text-xs border border-blue-500/30 transition-all"

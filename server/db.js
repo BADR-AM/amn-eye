@@ -138,6 +138,18 @@ export const initDb = async () => {
     await run(`ALTER TABLE recruits ADD COLUMN military_record_path TEXT DEFAULT ''`);
     console.log('✅ تم تحديث المخطط: إضافة عمود military_record_path (أصل السجل العسكري)');
   }
+  if (!colNames.includes('is_psychological_case')) {
+    await run(`ALTER TABLE recruits ADD COLUMN is_psychological_case INTEGER DEFAULT 0`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود is_psychological_case (حالات غير متزنين نفسياً)');
+  }
+  if (!colNames.includes('psychological_notes')) {
+    await run(`ALTER TABLE recruits ADD COLUMN psychological_notes TEXT DEFAULT ''`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود psychological_notes');
+  }
+  if (!colNames.includes('last_psychological_followup')) {
+    await run(`ALTER TABLE recruits ADD COLUMN last_psychological_followup TEXT DEFAULT ''`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود last_psychological_followup');
+  }
 
   // 3. System Settings table (إعدادات المنظومة وألوان السرايا)
   await run(`
@@ -189,6 +201,30 @@ export const initDb = async () => {
 
   await run(`CREATE INDEX IF NOT EXISTS idx_documents_recruit_id ON recruit_documents(recruit_id)`);
   await run(`CREATE INDEX IF NOT EXISTS idx_documents_type ON recruit_documents(doc_type)`);
+
+  // 6. Recruit Tickets / Alert & Suspicion Tickets table (تيكتات الاشتباه الجنائي والسياسي والحالات المرضية والنفسية)
+  await run(`
+    CREATE TABLE IF NOT EXISTS recruit_tickets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recruit_id INTEGER NOT NULL,
+      ticket_type TEXT NOT NULL, -- criminal_suspicion, political_suspicion, medical_condition, psychological_condition, security_alert
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      severity TEXT DEFAULT 'medium', -- low, medium, high, critical
+      status TEXT DEFAULT 'open', -- open, resolved, closed
+      resolution_notes TEXT DEFAULT '',
+      resolved_at DATETIME,
+      resolved_by TEXT DEFAULT '',
+      officer_name TEXT DEFAULT '',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (recruit_id) REFERENCES recruits(id) ON DELETE CASCADE
+    )
+  `);
+
+  await run(`CREATE INDEX IF NOT EXISTS idx_tickets_recruit_id ON recruit_tickets(recruit_id)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_tickets_type ON recruit_tickets(ticket_type)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_tickets_status ON recruit_tickets(status)`);
 
   // Seed default company colors if not set
   const companyColorsRow = await get(`SELECT value FROM settings WHERE key = 'company_colors'`);

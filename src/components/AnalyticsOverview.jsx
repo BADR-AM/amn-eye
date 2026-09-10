@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, ShieldAlert, ShieldCheck, Stethoscope, ChevronRight, 
-  Layers, Calendar, Activity, BarChart2, CheckCircle2, ArrowUpRight
+  Layers, Calendar, Activity, BarChart2, CheckCircle2, ArrowUpRight,
+  Brain, AlertOctagon
 } from 'lucide-react';
 import { getCompanyStyle } from '../utils/companyColors';
 
@@ -10,7 +11,9 @@ export default function AnalyticsOverview({
   companyColors = [], 
   onSelectCompany, 
   onSelectAttendanceDate,
-  onOpenExportModal 
+  onOpenExportModal,
+  onSelectCategory,
+  activeCategory = 'all'
 }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -36,8 +39,8 @@ export default function AnalyticsOverview({
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
-        {[1, 2, 3, 4].map(i => (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+        {[1, 2, 3, 4, 5].map(i => (
           <div key={i} className="bg-[#161616] border border-[#262626] p-4 animate-pulse h-24"></div>
         ))}
       </div>
@@ -50,10 +53,16 @@ export default function AnalyticsOverview({
     <div className="space-y-4 mb-6">
       
       {/* 1. Top IBM Carbon Metric Tiles (كروت الأرقام التكتيكية الكبيرة) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         
         {/* Total Strength */}
-        <div className="bg-[#161616] border border-[#393939] hover:border-[#525252] p-4 transition-all relative overflow-hidden group">
+        <div 
+          onClick={() => onSelectCategory && onSelectCategory('all')}
+          className={`bg-[#161616] border p-4 transition-all relative overflow-hidden group cursor-pointer ${
+            activeCategory === 'all' ? 'border-[#0f62fe] ring-1 ring-[#0f62fe]' : 'border-[#393939] hover:border-[#525252]'
+          }`}
+          title="عرض جميع المجندين"
+        >
           <div className="flex justify-between items-start">
             <span className="text-xs font-mono tracking-wider text-gray-400 uppercase">إجمالي القوة المقيدة</span>
             <Users className="w-5 h-5 text-[#0f62fe]" />
@@ -69,8 +78,110 @@ export default function AnalyticsOverview({
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#0f62fe]"></div>
         </div>
 
+        {/* NEW: Psychological & Nervous Cases (غير متزنين نفسياً للمتابعة الدورية) */}
+        <div 
+          onClick={() => onSelectCategory && onSelectCategory('psychological')}
+          className={`p-4 transition-all relative overflow-hidden border cursor-pointer group ${
+            activeCategory === 'psychological'
+              ? 'bg-[#29132d] border-fuchsia-500 ring-2 ring-fuchsia-500/50 shadow-xl'
+              : data.psychologicalCount > 0
+                ? 'bg-[#1e1022] border-fuchsia-500/40 hover:border-fuchsia-400'
+                : 'bg-[#161616] border-[#393939] hover:border-[#525252]'
+          }`}
+          title="انقر لفلترة وعرض الحالات النفسية والعصبية للمتابعة الدورية"
+        >
+          <div className="flex justify-between items-start">
+            <span className="text-xs font-mono tracking-wider text-fuchsia-300 uppercase font-bold flex items-center gap-1.5">
+              <span>غير متزنين نفسياً</span>
+              {data.psychologicalCount > 0 && (
+                <span className="w-2 h-2 rounded-full bg-fuchsia-500 animate-pulse"></span>
+              )}
+            </span>
+            <Brain className="w-5 h-5 text-fuchsia-400" />
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-3xl font-black text-fuchsia-300 font-mono">{data.psychologicalCount || 0}</span>
+            <span className="text-xs text-fuchsia-400 font-semibold">حالة عصبية / نفسية</span>
+          </div>
+          <div className="mt-2 text-xs text-gray-400 flex items-center justify-between border-t border-fuchsia-900/40 pt-2">
+            <span className="text-fuchsia-300/80">متابعة دورية:</span>
+            <span className="text-fuchsia-400 font-bold">نشطة ومستمرة</span>
+          </div>
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-fuchsia-500"></div>
+        </div>
+
+        {/* NEW: Active Tickets & Suspicion Alerts (تيكتات وبلاغات الاشتباه النشطة) */}
+        <div 
+          onClick={() => onSelectCategory && onSelectCategory('tickets')}
+          className={`p-4 transition-all relative overflow-hidden border cursor-pointer group ${
+            activeCategory === 'tickets'
+              ? 'bg-[#2b1016] border-rose-500 ring-2 ring-rose-500/50 shadow-xl'
+              : data.activeTicketsCount > 0
+                ? 'bg-[#220d12] border-rose-500/50 hover:border-rose-400'
+                : 'bg-[#161616] border-[#393939] hover:border-[#525252]'
+          }`}
+          title="انقر لفلترة المجندين الذين لديهم تيكتات وبلاغات اشتباه نشطة"
+        >
+          <div className="flex justify-between items-start">
+            <span className="text-xs font-mono tracking-wider text-rose-300 uppercase font-bold flex items-center gap-1">
+              <span>تيكتات اشتباه نشطة</span>
+              {data.activeTicketsCount > 0 && (
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+              )}
+            </span>
+            <AlertOctagon className="w-5 h-5 text-rose-400" />
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-3xl font-black text-rose-400 font-mono">{data.activeTicketsCount || 0}</span>
+            <span className="text-xs text-rose-300">بلاغ مفتوح</span>
+          </div>
+          <div className="mt-2 text-[11px] text-gray-400 flex items-center justify-between border-t border-rose-900/40 pt-2">
+            <span>جنائي ({data.criminalTicketsCount || 0})</span>
+            <span>•</span>
+            <span>سياسي ({data.politicalTicketsCount || 0})</span>
+          </div>
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-rose-500"></div>
+        </div>
+
+        {/* Currently in Police Hospital */}
+        <div 
+          onClick={() => onSelectCategory && onSelectCategory('medical')}
+          className={`p-4 transition-all relative overflow-hidden border cursor-pointer ${
+            activeCategory === 'medical'
+              ? 'bg-[#261010] border-red-500 ring-2 ring-red-500/50'
+              : data.inHospitalNow > 0 
+                ? 'bg-[#241212] border-red-500/60 shadow-lg' 
+                : 'bg-[#161616] border-[#393939] hover:border-[#525252]'
+          }`}
+          title="انقر لفلترة الحالات المرضية ومستشفى الشرطة"
+        >
+          <div className="flex justify-between items-start">
+            <span className="text-xs font-mono tracking-wider text-gray-300 uppercase flex items-center gap-1.5">
+              <span>بمستشفى الشرطة حالياً</span>
+              {data.inHospitalNow > 0 && (
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+              )}
+            </span>
+            <Stethoscope className="w-5 h-5 text-red-400" />
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-3xl font-black text-red-400 font-mono">{data.inHospitalNow}</span>
+            <span className="text-xs text-gray-400">مجند بالعيادات</span>
+          </div>
+          <div className="mt-2 text-xs text-gray-400 flex items-center justify-between border-t border-[#333333] pt-2">
+            <span>الموقف:</span>
+            <span className="text-red-400 font-bold">
+              {data.inHospitalNow > 0 ? 'متابعة مفتوحة' : 'الجميع بالمعسكر'}
+            </span>
+          </div>
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-500"></div>
+        </div>
+
         {/* Medically / Security Sound */}
-        <div className="bg-[#161616] border border-[#393939] hover:border-[#525252] p-4 transition-all relative overflow-hidden group">
+        <div 
+          onClick={() => onSelectCategory && onSelectCategory('all')}
+          className="bg-[#161616] border border-[#393939] hover:border-[#525252] p-4 transition-all relative overflow-hidden group cursor-pointer"
+        >
           <div className="flex justify-between items-start">
             <span className="text-xs font-mono tracking-wider text-gray-400 uppercase">موقف أمني وجنائي لائق</span>
             <ShieldCheck className="w-5 h-5 text-emerald-500" />
@@ -86,53 +197,6 @@ export default function AnalyticsOverview({
             </span>
           </div>
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-emerald-500"></div>
-        </div>
-
-        {/* Security / Investigation Flags */}
-        <div className="bg-[#161616] border border-[#393939] hover:border-[#525252] p-4 transition-all relative overflow-hidden group">
-          <div className="flex justify-between items-start">
-            <span className="text-xs font-mono tracking-wider text-gray-400 uppercase">ملاحظات وتحفظات أمنية</span>
-            <ShieldAlert className="w-5 h-5 text-amber-500" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-amber-400 font-mono">{data.flagged}</span>
-            <span className="text-xs text-gray-400">حالة</span>
-          </div>
-          <div className="mt-2 text-xs text-gray-400 flex items-center justify-between border-t border-[#262626] pt-2">
-            <span>تستوجب متابعة التحريات:</span>
-            <span className="text-amber-400 font-bold">
-              {data.total > 0 ? Math.round((data.flagged / data.total) * 100) : 0}%
-            </span>
-          </div>
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-amber-500"></div>
-        </div>
-
-        {/* Currently in Police Hospital */}
-        <div className={`p-4 transition-all relative overflow-hidden border ${
-          data.inHospitalNow > 0 
-            ? 'bg-[#241212] border-red-500/60 shadow-lg' 
-            : 'bg-[#161616] border-[#393939]'
-        }`}>
-          <div className="flex justify-between items-start">
-            <span className="text-xs font-mono tracking-wider text-gray-300 uppercase flex items-center gap-1.5">
-              <span>بمستشفى الشرطة حالياً</span>
-              {data.inHospitalNow > 0 && (
-                <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-              )}
-            </span>
-            <Stethoscope className="w-5 h-5 text-red-400" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-red-400 font-mono">{data.inHospitalNow}</span>
-            <span className="text-xs text-gray-400">مجند خارج المعسكر</span>
-          </div>
-          <div className="mt-2 text-xs text-gray-400 flex items-center justify-between border-t border-[#333333] pt-2">
-            <span>الموقف الإجمالي:</span>
-            <span className="text-red-400 font-bold">
-              {data.inHospitalNow > 0 ? 'متابعة مفتوحة' : 'الجميع بالمعسكر'}
-            </span>
-          </div>
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-500"></div>
         </div>
 
       </div>

@@ -31,7 +31,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   Scan,
-  FileCheck
+  FileCheck,
+  Brain,
+  AlertOctagon
 } from 'lucide-react';
 import AnalyticsCharts from './AnalyticsCharts';
 import AnalyticsOverview from './AnalyticsOverview';
@@ -40,6 +42,8 @@ import ExportModal from './ExportModal';
 import CompanyColorsModal from './CompanyColorsModal';
 import ActivityLogModal from './ActivityLogModal';
 import RecruitDocumentsModal from './RecruitDocumentsModal';
+import TicketModal from './TicketModal';
+import PsychologicalFollowupModal from './PsychologicalFollowupModal';
 import { fetchCompanyColors, DEFAULT_COMPANY_COLORS, getCompanyStyle } from '../utils/companyColors';
 import { authHeaders } from '../utils/auth';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -60,6 +64,7 @@ export default function Dashboard({
   const [selectedQualification, setSelectedQualification] = useState('all');
   const [selectedCompanyFilter, setSelectedCompanyFilter] = useState('all');
   const [selectedDateFilter, setSelectedDateFilter] = useState('all');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
   const [recruits, setRecruits] = useState([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
@@ -78,6 +83,8 @@ export default function Dashboard({
   const [showCompanyColorsModal, setShowCompanyColorsModal] = useState(false);
   const [activityRecruit, setActivityRecruit] = useState(null);
   const [documentsRecruit, setDocumentsRecruit] = useState(null);
+  const [ticketRecruit, setTicketRecruit] = useState(null);
+  const [psychologicalRecruit, setPsychologicalRecruit] = useState(null);
   const [companyColors, setCompanyColors] = useState(DEFAULT_COMPANY_COLORS);
   
   const userClosedPanel = useRef(false);
@@ -168,6 +175,7 @@ export default function Dashboard({
         qualification: selectedQualification,
         company: selectedCompanyFilter,
         attendance_date: selectedDateFilter,
+        category: selectedCategoryFilter,
         page: page.toString(),
         limit: '24'
       });
@@ -195,7 +203,7 @@ export default function Dashboard({
       fetchRecruits();
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchTerm, selectedBatchId, selectedQualification, selectedCompanyFilter, selectedDateFilter, page]);
+  }, [searchTerm, selectedBatchId, selectedQualification, selectedCompanyFilter, selectedDateFilter, selectedCategoryFilter, page]);
 
   return (
     <div className="max-w-[1700px] w-full mx-auto px-4 sm:px-6 py-6 space-y-5 text-gray-100 font-sans">
@@ -213,7 +221,87 @@ export default function Dashboard({
           setPage(1);
         }}
         onOpenExportModal={() => setShowExportModal(true)}
+        onSelectCategory={(cat) => {
+          setSelectedCategoryFilter(cat === selectedCategoryFilter ? 'all' : cat);
+          setPage(1);
+        }}
+        activeCategory={selectedCategoryFilter}
       />
+
+      {/* 1.5 Quick Tactical Category Filters (تبويبات الحالات الخاصة والاشتباهات والمتابعة الدورية) */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#333333] pb-3">
+        <button
+          onClick={() => { setSelectedCategoryFilter('all'); setPage(1); }}
+          className={`px-3 py-1.5 text-xs font-bold transition-all border flex items-center gap-1.5 ${
+            selectedCategoryFilter === 'all'
+              ? 'bg-[#0f62fe] text-white border-[#0f62fe] shadow-md'
+              : 'bg-[#161616] text-gray-400 hover:text-white border-[#393939]'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>كافة المجندين ({totalCount})</span>
+        </button>
+
+        <button
+          onClick={() => { setSelectedCategoryFilter('psychological'); setPage(1); }}
+          className={`px-3 py-1.5 text-xs font-bold transition-all border flex items-center gap-1.5 ${
+            selectedCategoryFilter === 'psychological'
+              ? 'bg-fuchsia-600 text-white border-fuchsia-500 shadow-md ring-2 ring-fuchsia-400/50'
+              : 'bg-[#1a0f1e] text-fuchsia-300 hover:bg-fuchsia-950/60 border-fuchsia-800/60'
+          }`}
+        >
+          <Brain className="w-3.5 h-3.5 text-fuchsia-400" />
+          <span>غير متزنين نفسياً (الحالات النفسية والعصبية)</span>
+        </button>
+
+        <button
+          onClick={() => { setSelectedCategoryFilter('tickets'); setPage(1); }}
+          className={`px-3 py-1.5 text-xs font-bold transition-all border flex items-center gap-1.5 ${
+            selectedCategoryFilter === 'tickets'
+              ? 'bg-rose-600 text-white border-rose-500 shadow-md ring-2 ring-rose-400/50'
+              : 'bg-[#220d12] text-rose-300 hover:bg-rose-950/60 border-rose-800/60'
+          }`}
+        >
+          <AlertOctagon className="w-3.5 h-3.5 text-rose-400" />
+          <span>تيكتات وبلاغات نشطة</span>
+        </button>
+
+        <button
+          onClick={() => { setSelectedCategoryFilter('criminal_suspicion'); setPage(1); }}
+          className={`px-3 py-1.5 text-xs font-bold transition-all border flex items-center gap-1.5 ${
+            selectedCategoryFilter === 'criminal_suspicion'
+              ? 'bg-red-700 text-white border-red-600 shadow-md ring-2 ring-red-400/50'
+              : 'bg-[#1f1616] text-red-300 hover:bg-red-950/60 border-red-900/60'
+          }`}
+        >
+          <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+          <span>اشتباه جنائي</span>
+        </button>
+
+        <button
+          onClick={() => { setSelectedCategoryFilter('political_suspicion'); setPage(1); }}
+          className={`px-3 py-1.5 text-xs font-bold transition-all border flex items-center gap-1.5 ${
+            selectedCategoryFilter === 'political_suspicion'
+              ? 'bg-purple-700 text-white border-purple-600 shadow-md ring-2 ring-purple-400/50'
+              : 'bg-[#18111f] text-purple-300 hover:bg-purple-950/60 border-purple-900/60'
+          }`}
+        >
+          <AlertTriangle className="w-3.5 h-3.5 text-purple-400" />
+          <span>اشتباه سياسي</span>
+        </button>
+
+        <button
+          onClick={() => { setSelectedCategoryFilter('medical'); setPage(1); }}
+          className={`px-3 py-1.5 text-xs font-bold transition-all border flex items-center gap-1.5 ${
+            selectedCategoryFilter === 'medical'
+              ? 'bg-amber-600 text-white border-amber-500 shadow-md ring-2 ring-amber-400/50'
+              : 'bg-[#1e1911] text-amber-300 hover:bg-amber-950/60 border-amber-800/60'
+          }`}
+        >
+          <Stethoscope className="w-3.5 h-3.5 text-amber-400" />
+          <span>حالات مرضية / مستشفى الشرطة</span>
+        </button>
+      </div>
 
       {/* 2. Tactical Control & Search Bar */}
       <div className="bg-[#161616] border border-[#393939] p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-md">
@@ -444,8 +532,22 @@ export default function Dashboard({
                             </span>
                           </div>
 
-                          {/* Medical, Activity or Document Flags */}
-                          <div className="flex items-center gap-1.5">
+                          {/* Medical, Psychological, Tickets or Document Flags */}
+                          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                            {r.is_psychological_case ? (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-fuchsia-950/70 text-fuchsia-300 border border-fuchsia-500/50 flex items-center gap-1" title={r.psychological_notes || 'حالة متابعة دورية نفسية وعصبية'}>
+                                <Brain className="w-3 h-3 text-fuchsia-400" />
+                                غير متزن نفسياً
+                              </span>
+                            ) : null}
+
+                            {r.open_tickets_count > 0 ? (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-rose-950/70 text-rose-300 border border-rose-500/50 flex items-center gap-1 animate-pulse" title={`تيكت مفتوح: ${r.active_ticket_title || ''}`}>
+                                <AlertOctagon className="w-3 h-3 text-rose-400" />
+                                {r.open_tickets_count} تيكت
+                              </span>
+                            ) : null}
+
                             {(r.id_doc_front_path || r.id_doc_back_path) ? (
                               <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-500/10 text-blue-300 border border-blue-500/30 flex items-center gap-1" title="تم مسح وثيقة التعارف المفصلة">
                                 <FileCheck className="w-3 h-3 text-blue-400" />
@@ -534,6 +636,38 @@ export default function Dashboard({
                           </button>
 
                           <div className="flex items-center gap-1">
+                            {/* Security / Suspicion Ticket Button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTicketRecruit(r);
+                              }}
+                              className={`p-1.5 transition-colors ${
+                                r.open_tickets_count > 0
+                                  ? 'bg-rose-900/60 hover:bg-rose-600 text-rose-200 hover:text-white border border-rose-500/50 shadow'
+                                  : 'bg-[#2d2d2d] hover:bg-rose-900/40 text-rose-400 hover:text-white'
+                              }`}
+                              title="إضافة أو رفع تيكت / بلاغ أمني (اشتباه جنائي/سياسي/مرضي)"
+                            >
+                              <AlertOctagon className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Psychological & Nervous Follow-up Button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPsychologicalRecruit(r);
+                              }}
+                              className={`p-1.5 transition-colors ${
+                                r.is_psychological_case
+                                  ? 'bg-fuchsia-900/60 hover:bg-fuchsia-600 text-fuchsia-200 hover:text-white border border-fuchsia-500/50 shadow'
+                                  : 'bg-[#2d2d2d] hover:bg-fuchsia-900/40 text-fuchsia-400 hover:text-white'
+                              }`}
+                              title="المتابعة الدورية للحالات النفسية والعصبية"
+                            >
+                              <Brain className="w-3.5 h-3.5" />
+                            </button>
+
                             {/* Scanned Identification & Military Documents */}
                             <button
                               onClick={(e) => {
@@ -698,18 +832,56 @@ export default function Dashboard({
                           </td>
                           <td className="py-2 px-3 font-mono text-gray-300">{r.national_id || '---'}</td>
                           <td className="py-2 px-3">
-                            {isHospitalized ? (
-                              <span className="px-2 py-0.5 bg-red-600/20 text-red-400 border border-red-500/40 text-[10px] font-bold animate-pulse">
-                                🏥 بمستشفى الشرطة
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-gray-400">
-                                {r.medical_status?.includes('لائق') ? '✅ لائق' : r.medical_status || 'سليم'}
-                              </span>
-                            )}
+                            <div className="flex flex-col gap-1">
+                              {isHospitalized ? (
+                                <span className="px-2 py-0.5 bg-red-600/20 text-red-400 border border-red-500/40 text-[10px] font-bold animate-pulse">
+                                  🏥 بمستشفى الشرطة
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-gray-400">
+                                  {r.medical_status?.includes('لائق') ? '✅ لائق' : r.medical_status || 'سليم'}
+                                </span>
+                              )}
+                              {r.is_psychological_case ? (
+                                <span className="px-1.5 py-0.5 bg-fuchsia-950/70 text-fuchsia-300 border border-fuchsia-500/50 text-[10px] font-bold flex items-center gap-1 w-fit">
+                                  <Brain className="w-3 h-3 text-fuchsia-400" /> غير متزن نفسياً
+                                </span>
+                              ) : null}
+                              {r.open_tickets_count > 0 ? (
+                                <span className="px-1.5 py-0.5 bg-rose-950/70 text-rose-300 border border-rose-500/50 text-[10px] font-bold flex items-center gap-1 w-fit animate-pulse">
+                                  <AlertOctagon className="w-3 h-3 text-rose-400" /> {r.open_tickets_count} تيكت نشط
+                                </span>
+                              ) : null}
+                            </div>
                           </td>
                           <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-1">
+                              {/* Security Ticket Button */}
+                              <button
+                                onClick={() => setTicketRecruit(r)}
+                                className={`p-1 border border-[#444] transition-colors ${
+                                  r.open_tickets_count > 0
+                                    ? 'bg-rose-900/60 hover:bg-rose-600 text-rose-200'
+                                    : 'bg-[#262626] hover:bg-rose-900/40 text-rose-400 hover:text-white'
+                                }`}
+                                title="إضافة أو رفع تيكت / بلاغ أمني (اشتباه جنائي/سياسي/مرضي)"
+                              >
+                                <AlertOctagon className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Psychological Follow-up Button */}
+                              <button
+                                onClick={() => setPsychologicalRecruit(r)}
+                                className={`p-1 border border-[#444] transition-colors ${
+                                  r.is_psychological_case
+                                    ? 'bg-fuchsia-900/60 hover:bg-fuchsia-600 text-fuchsia-200'
+                                    : 'bg-[#262626] hover:bg-fuchsia-900/40 text-fuchsia-400 hover:text-white'
+                                }`}
+                                title="المتابعة الدورية للحالات النفسية والعصبية"
+                              >
+                                <Brain className="w-3.5 h-3.5" />
+                              </button>
+
                               <button
                                 onClick={() => setActivityRecruit(r)}
                                 className="p-1 bg-[#262626] hover:bg-red-700 text-gray-300 hover:text-white border border-[#444]"
@@ -816,30 +988,50 @@ export default function Dashboard({
                 setShowExportModal(true);
               }}
               onOpenDocuments={(r) => setDocumentsRecruit(r)}
+              onOpenTickets={(r) => setTicketRecruit(r)}
+              onOpenPsychological={(r) => setPsychologicalRecruit(r)}
             />
           </div>
         )}
 
       </div>
 
+      {/* Security / Suspicion Ticket Modal */}
+      <TicketModal
+        isOpen={!!ticketRecruit}
+        recruit={ticketRecruit}
+        onClose={() => setTicketRecruit(null)}
+        onTicketChanged={() => {
+          fetchRecruits();
+          onRefresh();
+        }}
+      />
+
+      {/* Psychological & Nervous Periodic Follow-up Modal */}
+      <PsychologicalFollowupModal
+        isOpen={!!psychologicalRecruit}
+        recruit={psychologicalRecruit}
+        onClose={() => setPsychologicalRecruit(null)}
+        onUpdated={() => {
+          fetchRecruits();
+          onRefresh();
+        }}
+      />
+
       {/* Scanned Identification & Military Documents Modal */}
-      {documentsRecruit && (
-        <RecruitDocumentsModal
-          recruit={documentsRecruit}
-          onClose={() => setDocumentsRecruit(null)}
-          onRefreshRecruits={() => fetchRecruits()}
-        />
-      )}
+      <RecruitDocumentsModal
+        recruit={documentsRecruit}
+        onClose={() => setDocumentsRecruit(null)}
+        onRefreshRecruits={() => fetchRecruits()}
+      />
 
       {/* Medical & Movement Tracking Modal */}
-      {activityRecruit && (
-        <ActivityLogModal
-          recruit={activityRecruit}
-          onClose={() => setActivityRecruit(null)}
-          onRefreshRecruits={() => fetchRecruits()}
-          companyColors={companyColors}
-        />
-      )}
+      <ActivityLogModal
+        recruit={activityRecruit}
+        onClose={() => setActivityRecruit(null)}
+        onRefreshRecruits={() => fetchRecruits()}
+        companyColors={companyColors}
+      />
 
       {/* Export & Locker Cards Modal */}
       <ExportModal

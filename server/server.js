@@ -552,7 +552,7 @@ app.put('/api/batches/:id/set-active', requireAuth, async (req, res) => {
 // 4. Recruits List & Advanced Search (protected)
 app.get('/api/recruits', requireAuth, async (req, res) => {
   try {
-    const { search, batch_id, qualification, company, attendance_date, page = 1, limit = 50 } = req.query;
+    const { search, batch_id, qualification, company, attendance_date, category, page = 1, limit = 50 } = req.query;
     const isUnlimited = limit === 'all' || parseInt(limit) >= 5000;
     const safeLimit = isUnlimited ? 10000 : Math.min(Math.max(parseInt(limit) || 50, 1), 500);
     const safePage = Math.max(parseInt(page) || 1, 1);
@@ -585,6 +585,21 @@ app.get('/api/recruits', requireAuth, async (req, res) => {
       params.push(attendance_date);
     }
 
+    // Category filter: psychological, tickets, criminal_suspicion, political_suspicion, medical
+    if (category && category !== 'all') {
+      if (category === 'psychological') {
+        whereClauses.push(`(r.is_psychological_case = 1 OR r.inspection LIKE '%نفسي%' OR r.inspection LIKE '%عصبي%' OR r.medical_status LIKE '%نفسي%' OR r.medical_status LIKE '%عصبي%' OR EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'psychological_condition' AND t.status = 'open'))`);
+      } else if (category === 'tickets') {
+        whereClauses.push(`EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.status = 'open')`);
+      } else if (category === 'criminal_suspicion') {
+        whereClauses.push(`(EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'criminal_suspicion' AND t.status = 'open') OR r.family_security_status LIKE '%جنائي%' OR r.inspection LIKE '%جنائي%')`);
+      } else if (category === 'political_suspicion') {
+        whereClauses.push(`(EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'political_suspicion' AND t.status = 'open') OR r.family_security_status LIKE '%سياسي%' OR r.inspection LIKE '%سياسي%')`);
+      } else if (category === 'medical') {
+        whereClauses.push(`(r.medical_status NOT LIKE '%لائق%' OR EXISTS (SELECT 1 FROM recruit_activities a WHERE a.recruit_id = r.id AND a.activity_type = 'medical_referral' AND (a.return_date IS NULL OR a.return_date = '')) OR EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'medical_condition' AND t.status = 'open'))`);
+      }
+    }
+
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
     const offset = isUnlimited ? 0 : (safePage - 1) * safeLimit;
 
@@ -596,7 +611,11 @@ app.get('/api/recruits', requireAuth, async (req, res) => {
         (SELECT activity_type FROM recruit_activities WHERE recruit_id = r.id AND (return_date IS NULL OR return_date = '') ORDER BY id DESC LIMIT 1) as active_activity,
         (SELECT destination FROM recruit_activities WHERE recruit_id = r.id AND (return_date IS NULL OR return_date = '') ORDER BY id DESC LIMIT 1) as active_destination,
         (SELECT diagnosis FROM recruit_activities WHERE recruit_id = r.id ORDER BY id DESC LIMIT 1) as latest_diagnosis,
-        (SELECT COUNT(*) FROM recruit_activities WHERE recruit_id = r.id) as activities_count
+        (SELECT COUNT(*) FROM recruit_activities WHERE recruit_id = r.id) as activities_count,
+        (SELECT COUNT(*) FROM recruit_tickets WHERE recruit_id = r.id AND status = 'open') as open_tickets_count,
+        (SELECT ticket_type FROM recruit_tickets WHERE recruit_id = r.id AND status = 'open' ORDER BY id DESC LIMIT 1) as active_ticket_type,
+        (SELECT severity FROM recruit_tickets WHERE recruit_id = r.id AND status = 'open' ORDER BY id DESC LIMIT 1) as active_ticket_severity,
+        (SELECT title FROM recruit_tickets WHERE recruit_id = r.id AND status = 'open' ORDER BY id DESC LIMIT 1) as active_ticket_title
       FROM recruits r
       JOIN batches b ON r.batch_id = b.id
       ${whereSql}
@@ -1054,6 +1073,131 @@ app.delete('/api/activities/:activityId', requireAuth, async (req, res) => {
 });
 
 // -------------------------------------------------------------
+// 9.5. Recruit Tickets & Security Alerts (نظام التيكتات وبلاغات الاشتباه ورفعها)
+// -------------------------------------------------------------
+
+// جلب تيكتات وبلاغات المجند
+app.get('/api/recruits/:id/tickets', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tickets = await query(
+      `SELECT * FROM recruit_tickets WHERE recruit_id = ? ORDER BY id DESC`,
+      [id]
+    );
+    res.json({ tickets });
+  } catch (error) {
+    console.error('Error fetching tickets:', error);
+    res.status(500).json({ error: 'خطأ في جلب التيكتات' });
+  }
+});
+
+// فتح تيكت جديد لمجند (اشتباه جنائي / سياسي / مرضي / نفسي وعصبي)
+app.post('/api/recruits/:id/tickets', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { ticket_type, title, description, severity, officer_name } = req.body;
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: 'عنوان التيكت مطلوب' });
+    }
+    if (!description || !description.trim()) {
+      return res.status(400).json({ error: 'تفاصيل البلاغ / التيكت مطلوبة' });
+    }
+
+    const type = ticket_type || 'criminal_suspicion';
+    const sev = severity || 'medium';
+
+    const result = await run(
+      `INSERT INTO recruit_tickets (recruit_id, ticket_type, title, description, severity, status, officer_name)
+       VALUES (?, ?, ?, ?, ?, 'open', ?)`,
+      [id, type, title.trim(), description.trim(), sev, officer_name || '']
+    );
+
+    // إذا كان التيكت حالة نفسية وعصبية، يتم تصنيف المجند تلقائياً للمتابعة الدورية
+    if (type === 'psychological_condition') {
+      await run(
+        `UPDATE recruits SET is_psychological_case = 1, last_psychological_followup = CURRENT_TIMESTAMP WHERE id = ?`,
+        [id]
+      );
+    }
+
+    const newTicket = await get(`SELECT * FROM recruit_tickets WHERE id = ?`, [result.lastID]);
+    res.status(201).json({ ticket: newTicket, message: 'تم فتح التيكت بنجاح' });
+  } catch (error) {
+    console.error('Error creating ticket:', error);
+    res.status(500).json({ error: 'خطأ في إنشاء التيكت' });
+  }
+});
+
+// رفع التيكت (تسوية وإغلاق البلاغ)
+app.put('/api/recruits/:id/tickets/:ticketId/resolve', requireAuth, async (req, res) => {
+  try {
+    const { id, ticketId } = req.params;
+    const { resolution_notes, resolved_by } = req.body;
+
+    const existing = await get(`SELECT * FROM recruit_tickets WHERE id = ? AND recruit_id = ?`, [ticketId, id]);
+    if (!existing) {
+      return res.status(404).json({ error: 'التيكت غير موجود' });
+    }
+
+    await run(
+      `UPDATE recruit_tickets 
+       SET status = 'resolved',
+           resolution_notes = ?,
+           resolved_by = ?,
+           resolved_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND recruit_id = ?`,
+      [
+        resolution_notes || 'تم استيفاء الفحص والمتابعة ورفع البلاغ رسمياً',
+        resolved_by || '',
+        ticketId,
+        id
+      ]
+    );
+
+    const updated = await get(`SELECT * FROM recruit_tickets WHERE id = ?`, [ticketId]);
+    res.json({ ticket: updated, message: 'تم رفع التيكت بنجاح وإغلاق البلاغ' });
+  } catch (error) {
+    console.error('Error resolving ticket:', error);
+    res.status(500).json({ error: 'خطأ في رفع التيكت' });
+  }
+});
+
+// تحديث حالة المتابعة النفسية والعصبية وتدوين متابعة دورية
+app.put('/api/recruits/:id/psychological-status', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_psychological_case, psychological_notes, followup_action } = req.body;
+
+    await run(
+      `UPDATE recruits 
+       SET is_psychological_case = ?,
+           psychological_notes = ?,
+           last_psychological_followup = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [is_psychological_case ? 1 : 0, psychological_notes || '', id]
+    );
+
+    // إذا تم تدوين متابعة دورية، نضيف قيد في سجل الأنشطة والتحركات الطبية
+    if (followup_action || psychological_notes) {
+      await run(
+        `INSERT INTO recruit_activities (recruit_id, activity_type, destination, departure_date, diagnosis, medical_decision, notes)
+         VALUES (?, 'medical_referral', 'عيادة الفحص النفسي والعصبي بالمركز', CURRENT_TIMESTAMP, 'حالة نفسية وعصبية تحت المتابعة الدورية', ?, ?)`,
+        [id, is_psychological_case ? 'غير متزن نفسياً - متابعة دورية مستمرة' : 'استقرار الحالة', psychological_notes || followup_action || '']
+      );
+    }
+
+    const recruit = await get(`SELECT * FROM recruits WHERE id = ?`, [id]);
+    res.json({ recruit, message: 'تم تحديث ملف المتابعة النفسية والعصبية' });
+  } catch (error) {
+    console.error('Error updating psychological status:', error);
+    res.status(500).json({ error: 'خطأ في تحديث الحالة النفسية للمجند' });
+  }
+});
+
+// -------------------------------------------------------------
 // 10. Analytics & Telemetry Overview (إحصائيات الإنفوجرافيك التفاعلية)
 // -------------------------------------------------------------
 app.get('/api/analytics/overview', async (req, res) => {
@@ -1078,6 +1222,44 @@ app.get('/api/analytics/overview', async (req, res) => {
       params
     );
 
+    // عدد الحالات النفسية والعصبية (غير متزنين نفسياً للمتابعة الدورية)
+    const psychologicalCases = await get(
+      `SELECT COUNT(*) as count FROM recruits 
+       ${batchFilter ? batchFilter + ' AND' : 'WHERE'} 
+       (is_psychological_case = 1 OR inspection LIKE '%نفسي%' OR inspection LIKE '%عصبي%' OR medical_status LIKE '%نفسي%' OR medical_status LIKE '%عصبي%' OR EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = recruits.id AND t.ticket_type = 'psychological_condition' AND t.status = 'open'))`,
+      params
+    );
+
+    // عدد التيكتات والبلاغات النشطة المفتوحة
+    const activeTickets = await get(
+      `SELECT COUNT(*) as count 
+       FROM recruit_tickets t
+       JOIN recruits r ON t.recruit_id = r.id
+       ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
+       t.status = 'open'`,
+      params
+    );
+
+    // عدد بلاغات الاشتباه الجنائي المفتوحة
+    const criminalTickets = await get(
+      `SELECT COUNT(*) as count 
+       FROM recruit_tickets t
+       JOIN recruits r ON t.recruit_id = r.id
+       ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
+       t.status = 'open' AND t.ticket_type = 'criminal_suspicion'`,
+      params
+    );
+
+    // عدد بلاغات الاشتباه السياسي المفتوحة
+    const politicalTickets = await get(
+      `SELECT COUNT(*) as count 
+       FROM recruit_tickets t
+       JOIN recruits r ON t.recruit_id = r.id
+       ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
+       t.status = 'open' AND t.ticket_type = 'political_suspicion'`,
+      params
+    );
+
     // 2. توزيع السرايا
     const companyDistribution = await query(
       `SELECT company, COUNT(*) as count 
@@ -1089,7 +1271,6 @@ app.get('/api/analytics/overview', async (req, res) => {
     );
 
     // 3. الموقف الطبي وحالات مستشفى الشرطة الحالية
-    // حالات خرجت لمستشفى الشرطة ولم تعد حتى الآن (return_date IS NULL OR return_date = '')
     const inHospitalNow = await get(
       `SELECT COUNT(DISTINCT r.id) as count 
        FROM recruit_activities a
@@ -1138,6 +1319,10 @@ app.get('/api/analytics/overview', async (req, res) => {
       flagged: flaggedRecruits.count,
       clean: Math.max(0, totalRecruits.count - flaggedRecruits.count),
       inHospitalNow: inHospitalNow.count,
+      psychologicalCount: psychologicalCases.count,
+      activeTicketsCount: activeTickets.count,
+      criminalTicketsCount: criminalTickets.count,
+      politicalTicketsCount: politicalTickets.count,
       companyDistribution,
       medicalDecisions,
       attendanceTrends: attendanceTrends.reverse(),
