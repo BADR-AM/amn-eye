@@ -67,8 +67,14 @@ export default function Header({
                 </span>
               </h1>
             </div>
-            <p className="text-xs text-slate-400 font-medium">
-              الإدارة العامة للأمن المركزي • منطقة وسط الدلتا • وحدة الأمن والتحريات
+            <p className="text-xs text-slate-300 font-medium flex items-center gap-1.5 flex-wrap">
+              <span>قطاع الأمن المركزي</span>
+              <span>•</span>
+              <span>منطقة وسط الدلتا</span>
+              <span>•</span>
+              <span className="text-amber-400 font-bold">مركز تدريب المجندين</span>
+              <span>•</span>
+              <span className="text-blue-400 font-bold">وحدة الأمن والتحريات</span>
             </p>
           </div>
         </div>

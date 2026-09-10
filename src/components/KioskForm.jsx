@@ -370,9 +370,17 @@ export default function KioskForm({ activeBatch, onComplete, onCancel, initialDa
               <IconComp className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-xs font-semibold text-emerald-400">
-                نمط الإدخال السريع (Kiosk POS Mode)
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-emerald-400">
+                  نمط الإدخال السريع (Kiosk POS Mode)
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                  مركز تدريب المجندين
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-bold">
+                  وحدة الأمن والتحريات
+                </span>
+              </div>
               <h2 className="text-sm font-bold text-slate-300">
                 {activeBatch ? activeBatch.name : 'الدفع التجنيدي المعتمد'}
               </h2>

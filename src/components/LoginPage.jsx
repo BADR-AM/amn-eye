@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, LogIn, Loader2, Shield, Eye } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
+import splashBanner from '../assets/splash_banner.jpg';
 
 export default function LoginPage({ onLogin }) {
   const [password, setPassword] = useState('');
@@ -40,30 +41,37 @@ export default function LoginPage({ onLogin }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#0d1117] flex flex-col items-center justify-between p-6 select-none font-sans relative overflow-hidden">
+    <div className="min-h-screen bg-[#0d1117] flex flex-col items-center justify-between p-6 select-none font-sans relative overflow-hidden" dir="rtl">
       
-      {/* Background Subtle Ambience */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none"></div>
+      {/* Background Graphic with Cinematic Vignette */}
+      <div className="absolute inset-0 z-0 pointer-events-none">
+        <img 
+          src={splashBanner} 
+          alt="الأمن المركزي" 
+          className="w-full h-full object-cover opacity-25 filter blur-[2px] scale-105"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0d1117] via-[#0d1117]/85 to-[#0d1117]/95"></div>
+      </div>
 
       {/* Spacer */}
       <div></div>
 
       {/* Main Login Card */}
       <div className="w-full max-w-md relative z-10">
-        <div className="bg-[#161b22] border border-[#30363d] rounded-2xl shadow-2xl p-8 backdrop-blur-xl">
+        <div className="bg-[#161b22]/90 border border-[#30363d] rounded-2xl shadow-2xl p-8 backdrop-blur-xl">
           
           {/* Logo & Department Brand Header */}
           <div className="text-center mb-6">
-            <div className="w-24 h-24 mx-auto mb-3 flex items-center justify-center p-1 bg-[#21262d] border border-[#30363d] rounded-2xl shadow-inner">
+            <div className="w-20 h-20 mx-auto mb-3 flex items-center justify-center p-1 bg-[#21262d] border border-[#30363d] rounded-2xl shadow-inner">
               <img 
                 src={centralSecurityLogo} 
                 alt="شعار الأمن المركزي" 
-                className="w-20 h-20 object-contain drop-shadow-lg"
+                className="w-16 h-16 object-contain drop-shadow-lg"
               />
             </div>
 
             {/* System Name Badge */}
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-mono font-bold tracking-widest uppercase mb-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/15 border border-blue-500/40 text-blue-300 text-xs font-mono font-bold tracking-widest uppercase mb-2">
               <Eye className="w-3.5 h-3.5" />
               <span>SECURITY EYE</span>
             </div>
@@ -72,8 +80,18 @@ export default function LoginPage({ onLogin }) {
               منظومة فحص وتسجيل المجندين
             </h1>
             <p className="text-xs text-gray-400 mt-1 font-medium">
-              وزارة الداخلية • قطاع الأمن المركزي • وحدة الأمن والتحريات
+              وزارة الداخلية • قطاع الأمن المركزي • منطقة وسط الدلتا
             </p>
+
+            {/* Prominent Authority Badges */}
+            <div className="flex items-center justify-center gap-2 mt-2.5">
+              <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-bold">
+                مركز تدريب المجندين
+              </span>
+              <span className="px-2.5 py-0.5 rounded-lg bg-blue-500/15 text-blue-300 border border-blue-500/30 text-xs font-bold">
+                وحدة الأمن والتحريات
+              </span>
+            </div>
           </div>
 
           {/* Form */}
@@ -114,8 +132,8 @@ export default function LoginPage({ onLogin }) {
           </form>
 
           <div className="mt-6 pt-4 border-t border-[#21262d] text-center">
-            <span className="text-[11px] text-gray-500 font-mono">
-              منطقة وسط الدلتا — مركز تدريب المجندين
+            <span className="text-[11px] text-gray-400 font-mono">
+              قطاع الأمن المركزي • مركز تدريب المجندين • وحدة الأمن والتحريات
             </span>
           </div>
 

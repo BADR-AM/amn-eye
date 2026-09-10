@@ -10,10 +10,14 @@ import NetworkModal from './components/NetworkModal';
 import BackupManagerModal from './components/BackupManagerModal';
 import ChatPanel from './components/ChatPanel';
 import LoginPage from './components/LoginPage';
+import SplashScreen from './components/SplashScreen';
 import Toast from './components/Toast';
 import { isLoggedIn as checkLoggedIn, setToken, clearToken, authHeaders } from './utils/auth';
 
 export default function App() {
+  // Splash Screen initial load
+  const [showSplash, setShowSplash] = useState(true);
+
   // Auth
   const [loggedIn, setLoggedIn] = useState(checkLoggedIn());
 
@@ -159,6 +163,11 @@ export default function App() {
     }
   };
 
+  // Initial Application Launch / Splash Screen
+  if (showSplash) {
+    return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
+
   // Not logged in — show login page
   if (!loggedIn) {
     return <LoginPage onLogin={handleLogin} />;
@@ -290,12 +299,16 @@ export default function App() {
       />
 
       {/* System Footer Branding */}
-      <footer className="w-full text-center py-2.5 bg-darkslate-950/80 dark:bg-zinc-950/80 border-t border-slate-850 dark:border-zinc-850 no-print text-[11px] text-slate-500 font-mono flex items-center justify-center gap-2">
-        <span className="font-semibold text-slate-400">Security Eye System</span>
+      <footer className="w-full text-center py-2.5 bg-darkslate-950/90 dark:bg-zinc-950/90 border-t border-slate-850 dark:border-zinc-850 no-print text-[11px] text-slate-400 font-mono flex items-center justify-center gap-2 flex-wrap">
+        <span className="font-bold text-white">SECURITY EYE</span>
         <span>•</span>
-        <span className="text-slate-300 font-bold">Created by SHERIF A.ELRAHMAN</span>
+        <span className="text-amber-400 font-bold">مركز تدريب المجندين</span>
+        <span>•</span>
+        <span className="text-blue-400 font-bold">وحدة الأمن والتحريات</span>
         <span>•</span>
         <span>قطاع الأمن المركزي — منطقة وسط الدلتا</span>
+        <span>•</span>
+        <span className="text-slate-300 font-semibold">Created by SHERIF A.ELRAHMAN</span>
       </footer>
 
     </div>
