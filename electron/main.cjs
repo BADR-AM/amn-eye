@@ -32,14 +32,18 @@ async function startServer() {
     return false;
   }
 }
-
 async function createWindow() {
+  const iconPath = path.join(__dirname, '..', 'build', 'icon.ico');
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1024,
     minHeight: 700,
-    title: 'منظومة فحص وتسجيل المجندين - وحدة الأمن والتحريات',
+    fullscreen: true,
+    autoHideMenuBar: true,
+    icon: iconPath,
+    title: 'منظومة فحص وتسجيل المجندين - وحدة الأمن والتحريات - SECURITY EYE',
     backgroundColor: '#090d13',
     show: false,
     webPreferences: {
@@ -47,6 +51,16 @@ async function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+    }
+  });
+
+  mainWindow.setMenuBarVisibility(false);
+
+  // Toggle fullscreen with F11
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F11' && input.type === 'keyDown') {
+      mainWindow.setFullScreen(!mainWindow.isFullScreen());
+      event.preventDefault();
     }
   });
 

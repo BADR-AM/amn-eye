@@ -147,7 +147,7 @@ export default function LoginPage({ onLogin }) {
           <span>•</span>
           <span className="text-gray-300 font-semibold">Created by SHERIF A.ELRAHMAN</span>
           <span>•</span>
-          <span className="text-gray-400">إصدار 2026</span>
+          <span className="text-gray-400">VER 01.0</span>
         </p>
       </footer>
 

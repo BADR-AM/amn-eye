@@ -13,6 +13,7 @@
     "start": "node server/server.js",
     "electron:start": "electron .",
     "pack": "vite build && electron-builder --dir",
+    "dist": "vite build && electron-builder --win nsis",
     "test": "vitest run",
     "test:watch": "vitest",
     "hashpass": "node scripts/hashpass.js",
@@ -55,14 +56,34 @@
   },
   "build": {
     "appId": "com.security.recruitsys",
-    "productName": "منظومة فحص المجندين",
-    "executableName": "RecruitsSecuritySystem",
+    "productName": "منظومة فحص وتسجيل المجندين - SECURITY EYE",
+    "executableName": "SecurityEye",
     "asar": false,
     "directories": {
       "output": "dist-electron"
     },
     "win": {
-      "target": "dir"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "منظومة فحص وتسجيل المجندين - SECURITY EYE",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "artifactName": "SecurityEye_VER_01.0_SETUP.exe"
     },
     "files": [
       "dist/**/*",

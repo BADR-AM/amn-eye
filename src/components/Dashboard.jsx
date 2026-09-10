@@ -96,7 +96,7 @@ export default function Dashboard({
     });
   }, []);
 
-  // Keyboard navigation hook
+  // POS Keyboard navigation hook
   useKeyboardShortcuts({
     itemsCount: recruits.length,
     selectedIndex: focusedIndex,
@@ -120,8 +120,27 @@ export default function Dashboard({
         setShowExportModal(true);
       }
     },
+    onOpenTicket: (idx) => {
+      if (recruits[idx]) setTicketRecruit(recruits[idx]);
+    },
+    onOpenDocuments: (idx) => {
+      if (recruits[idx]) setDocumentsRecruit(recruits[idx]);
+    },
+    onOpenPsychological: (idx) => {
+      if (recruits[idx]) setPsychologicalRecruit(recruits[idx]);
+    },
+    onToggleSelect: (idx) => {
+      if (recruits[idx]) toggleSelect(recruits[idx].id);
+    },
+    onNewRecruit: () => {
+      if (onOpenKiosk) onOpenKiosk();
+    },
+    onRefreshData: () => {
+      fetchRecruits();
+      if (onRefresh) onRefresh();
+    },
     searchInputRef,
-    enabled: !showExportModal && !showCompanyColorsModal && !activityRecruit && !documentsRecruit
+    enabled: !showExportModal && !showCompanyColorsModal && !activityRecruit && !documentsRecruit && !ticketRecruit && !psychologicalRecruit
   });
 
   const handleClosePanel = () => {
@@ -489,6 +508,7 @@ export default function Dashboard({
                   return (
                     <div
                       key={r.id}
+                      id={`recruit-card-${idx}`}
                       onClick={() => {
                         setFocusedIndex(idx);
                         userClosedPanel.current = false;
@@ -496,7 +516,7 @@ export default function Dashboard({
                       }}
                       className={`relative bg-[#1f1f1f] border transition-all cursor-pointer select-none overflow-hidden ${
                         isFocused 
-                          ? 'border-[#0f62fe] ring-2 ring-[#0f62fe]/50 shadow-xl scale-[1.01]' 
+                          ? 'border-[#0f62fe] ring-2 ring-[#0f62fe]/60 shadow-xl shadow-blue-900/20 scale-[1.01]' 
                           : 'border-[#393939] hover:border-[#525252]'
                       } ${isChecked ? 'bg-[#262116]' : ''}`}
                     >
@@ -505,6 +525,13 @@ export default function Dashboard({
                         className="h-2 w-full transition-colors" 
                         style={{ backgroundColor: companyStyle.color }}
                       ></div>
+
+                      {/* POS Focus Badge */}
+                      {isFocused && (
+                        <div className="absolute top-2.5 left-2 bg-blue-600/90 text-white text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shadow z-10 flex items-center gap-1">
+                          <span>Enter تفاصيل</span>
+                        </div>
+                      )}
 
                       <div className="p-4">
                         
@@ -972,6 +999,27 @@ export default function Dashboard({
               </div>
             </div>
           )}
+
+          {/* POS Keyboard Shortcuts Bar */}
+          <div className="mt-3 p-2.5 bg-[#161616] border border-[#2d2d2d] flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-400 select-none">
+            <div className="flex items-center gap-2 font-bold text-gray-300">
+              <span className="px-1.5 py-0.5 rounded bg-blue-600/30 text-blue-300 font-mono text-[10px] border border-blue-500/40">POS NAVIGATION</span>
+              <span>تنقل سريع بالكيبورد والأسهم:</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+              <span className="flex items-center gap-1 bg-[#222] px-2 py-0.5 rounded border border-[#333]"><kbd className="text-amber-400 font-bold">↑ ↓ ← →</kbd> تنقل</span>
+              <span className="flex items-center gap-1 bg-[#222] px-2 py-0.5 rounded border border-[#333]"><kbd className="text-white font-bold">Enter</kbd> تفاصيل</span>
+              <span className="flex items-center gap-1 bg-[#222] px-2 py-0.5 rounded border border-[#333]"><kbd className="text-blue-400 font-bold">Space</kbd> تحديد</span>
+              <span className="flex items-center gap-1 bg-[#222] px-2 py-0.5 rounded border border-[#333]"><kbd className="text-rose-400 font-bold">T</kbd> تيكت</span>
+              <span className="flex items-center gap-1 bg-[#222] px-2 py-0.5 rounded border border-[#333]"><kbd className="text-emerald-400 font-bold">M</kbd> طبي</span>
+              <span className="flex items-center gap-1 bg-[#222] px-2 py-0.5 rounded border border-[#333]"><kbd className="text-purple-400 font-bold">D</kbd> وثائق</span>
+              <span className="flex items-center gap-1 bg-[#222] px-2 py-0.5 rounded border border-[#333]"><kbd className="text-teal-400 font-bold">Y</kbd> نفسي</span>
+              <span className="flex items-center gap-1 bg-[#222] px-2 py-0.5 rounded border border-[#333]"><kbd className="text-sky-400 font-bold">P</kbd> كارت</span>
+              <span className="flex items-center gap-1 bg-[#222] px-2 py-0.5 rounded border border-[#333]"><kbd className="text-green-400 font-bold">F2</kbd> إضافة</span>
+              <span className="flex items-center gap-1 bg-[#222] px-2 py-0.5 rounded border border-[#333]"><kbd className="text-amber-300 font-bold">F5</kbd> تحديث</span>
+              <span className="flex items-center gap-1 bg-[#222] px-2 py-0.5 rounded border border-[#333]"><kbd className="text-gray-300 font-bold">F11</kbd> شاشة كاملة</span>
+            </div>
+          </div>
 
         </div>
 

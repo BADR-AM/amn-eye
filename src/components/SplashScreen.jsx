@@ -66,7 +66,7 @@ export default function SplashScreen({ onFinish }) {
 
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-500/40 text-blue-300 text-xs font-mono font-bold tracking-widest uppercase">
           <Eye className="w-3.5 h-3.5" />
-          <span>SECURITY EYE 2026</span>
+          <span>SECURITY EYE • VER 01.0</span>
         </div>
       </div>
 
@@ -146,7 +146,7 @@ export default function SplashScreen({ onFinish }) {
         <span className="mx-2">•</span>
         <span className="text-gray-300 font-semibold">Created by SHERIF A.ELRAHMAN</span>
         <span className="mx-2">•</span>
-        <span>إصدار 2026</span>
+        <span>VER 01.0</span>
       </div>
 
     </div>
