@@ -25,6 +25,8 @@ export default function TicketModal({
   recruit, 
   onTicketChanged 
 }) {
+  if (!isOpen || !recruit) return null;
+
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('list'); // 'list' | 'new'

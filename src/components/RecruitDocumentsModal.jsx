@@ -6,6 +6,8 @@ import {
 import { authHeaders } from '../utils/auth';
 
 export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecruits }) {
+  if (!recruit) return null;
+
   const [documents, setDocuments] = useState([]);
   const [quickPaths, setQuickPaths] = useState({});
   const [loading, setLoading] = useState(true);

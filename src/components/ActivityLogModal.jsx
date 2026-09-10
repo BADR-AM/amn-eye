@@ -7,6 +7,8 @@ import centralSecurityLogo from '../assets/central_security_logo.png';
 import { getCompanyStyle } from '../utils/companyColors';
 
 export default function ActivityLogModal({ recruit, onClose, onRefreshRecruits, companyColors = [] }) {
+  if (!recruit) return null;
+
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);

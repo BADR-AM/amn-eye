@@ -997,41 +997,50 @@ export default function Dashboard({
       </div>
 
       {/* Security / Suspicion Ticket Modal */}
-      <TicketModal
-        isOpen={!!ticketRecruit}
-        recruit={ticketRecruit}
-        onClose={() => setTicketRecruit(null)}
-        onTicketChanged={() => {
-          fetchRecruits();
-          onRefresh();
-        }}
-      />
+      {/* Security / Suspicion Ticket Modal */}
+      {ticketRecruit && (
+        <TicketModal
+          isOpen={!!ticketRecruit}
+          recruit={ticketRecruit}
+          onClose={() => setTicketRecruit(null)}
+          onTicketChanged={() => {
+            fetchRecruits();
+            onRefresh();
+          }}
+        />
+      )}
 
       {/* Psychological & Nervous Periodic Follow-up Modal */}
-      <PsychologicalFollowupModal
-        isOpen={!!psychologicalRecruit}
-        recruit={psychologicalRecruit}
-        onClose={() => setPsychologicalRecruit(null)}
-        onUpdated={() => {
-          fetchRecruits();
-          onRefresh();
-        }}
-      />
+      {psychologicalRecruit && (
+        <PsychologicalFollowupModal
+          isOpen={!!psychologicalRecruit}
+          recruit={psychologicalRecruit}
+          onClose={() => setPsychologicalRecruit(null)}
+          onUpdated={() => {
+            fetchRecruits();
+            onRefresh();
+          }}
+        />
+      )}
 
       {/* Scanned Identification & Military Documents Modal */}
-      <RecruitDocumentsModal
-        recruit={documentsRecruit}
-        onClose={() => setDocumentsRecruit(null)}
-        onRefreshRecruits={() => fetchRecruits()}
-      />
+      {documentsRecruit && (
+        <RecruitDocumentsModal
+          recruit={documentsRecruit}
+          onClose={() => setDocumentsRecruit(null)}
+          onRefreshRecruits={() => fetchRecruits()}
+        />
+      )}
 
       {/* Medical & Movement Tracking Modal */}
-      <ActivityLogModal
-        recruit={activityRecruit}
-        onClose={() => setActivityRecruit(null)}
-        onRefreshRecruits={() => fetchRecruits()}
-        companyColors={companyColors}
-      />
+      {activityRecruit && (
+        <ActivityLogModal
+          recruit={activityRecruit}
+          onClose={() => setActivityRecruit(null)}
+          onRefreshRecruits={() => fetchRecruits()}
+          companyColors={companyColors}
+        />
+      )}
 
       {/* Export & Locker Cards Modal */}
       <ExportModal
