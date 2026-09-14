@@ -12,6 +12,7 @@ import {
   X
 } from 'lucide-react';
 import { authHeaders } from '../utils/auth';
+import LiquidOrb from './LiquidOrb';
 
 // ErrorBoundary to catch ReactMarkdown parsing errors
 class ErrorBoundary extends Component {
@@ -166,17 +167,31 @@ export default function ChatPanel({ isOpen, onClose, activeBatch }) {
     <div className="fixed inset-y-0 left-0 z-50 w-full max-w-md bg-darkslate-900/98 dark:bg-zinc-950/98 border-r border-slate-800 shadow-2xl backdrop-blur-xl flex flex-col transition-all duration-300">
       
       {/* Header */}
-      <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-darkslate-850 dark:bg-zinc-900">
+      <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-darkslate-850 dark:bg-zinc-900 shadow-md">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-white shadow-lg shadow-emerald-950/50">
-            <Bot className="w-5 h-5" />
+          <div className="relative">
+            <LiquidOrb size={38} state={isLoading ? 'thinking' : 'idle'} />
+            {isLoading && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+              </span>
+            )}
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-              مساعد التحريات الذكي (AI)
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <span className="bg-gradient-to-r from-white via-indigo-100 to-purple-200 bg-clip-text text-transparent font-black">
+                وكيل التحريات الذكي
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all ${
+                isLoading 
+                  ? 'bg-purple-900/50 text-purple-300 border-purple-500/40 animate-pulse' 
+                  : 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30'
+              }`}>
+                {isLoading ? 'جاري التفكير...' : 'جاهز'}
+              </span>
             </h3>
-            <p className="text-[11px] text-slate-400">استعلام وتحليل قاعدة بيانات المجندين لحظياً</p>
+            <p className="text-[11px] text-slate-400">تحليل واستعلام قاعدة بيانات المجندين لحظياً</p>
           </div>
         </div>
 
@@ -202,8 +217,8 @@ export default function ChatPanel({ isOpen, onClose, activeBatch }) {
                 </>
               ) : (
                 <>
-                  <Bot className="w-3 h-3 text-emerald-400" />
-                  <span className="text-emerald-400">المساعد الذكي</span>
+                  <LiquidOrb size={18} state={isLoading && idx === messages.length - 1 ? 'thinking' : 'idle'} />
+                  <span className="text-indigo-300 font-bold">وكيل التحريات الذكي</span>
                 </>
               )}
             </div>
@@ -247,9 +262,13 @@ export default function ChatPanel({ isOpen, onClose, activeBatch }) {
                   </div>
                 </ErrorBoundary>
               ) : (
-                <div className="flex items-center gap-2 text-slate-400 py-1">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                  <span>جاري استخراج البيانات...</span>
+                <div className="py-1">
+                  <LiquidOrb
+                    size={28}
+                    state="thinking"
+                    showPill={true}
+                    pillText="جاري الاستعلام وتحليل البيانات..."
+                  />
                 </div>
               )}
             </div>

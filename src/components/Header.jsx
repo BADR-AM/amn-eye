@@ -16,6 +16,7 @@ import {
   KeyRound
 } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
+import LiquidOrb from './LiquidOrb';
 
 export default function Header({ 
   activeBatch, 
@@ -122,12 +123,14 @@ export default function Header({
           {/* AI Assistant Chat Trigger */}
           <button
             onClick={onOpenAiChat}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold bg-gradient-to-r from-emerald-600/90 to-teal-700/90 hover:from-emerald-500 hover:to-teal-600 text-white shadow-md shadow-emerald-950/40 border border-emerald-500/30 transition-all"
-            title="فتح مساعد التحريات الذكي (AI Chat)"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-extrabold bg-gradient-to-r from-slate-900 via-purple-950/40 to-slate-900 hover:from-slate-850 hover:to-purple-900/60 text-white shadow-lg shadow-purple-950/40 border border-purple-500/40 transition-all hover:scale-[1.02] active:scale-[0.98]"
+            title="فتح مساعد التحريات الذكي (وكيل الذكاء الاصطناعي)"
           >
-            <Bot className="w-4 h-4" />
-            <span className="hidden sm:inline">المساعد الذكي</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <LiquidOrb size={22} state="idle" />
+            <span className="hidden sm:inline bg-gradient-to-r from-white via-indigo-100 to-purple-200 bg-clip-text text-transparent font-black">
+              المساعد الذكي (AI)
+            </span>
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse shadow-sm shadow-purple-400"></span>
           </button>
 
           {/* Backup & External Drive Management */}
