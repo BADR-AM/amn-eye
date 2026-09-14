@@ -496,9 +496,9 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     let suggestions = [];
 
     // Query 1: Qualification inquiries
-    if (q.includes('مؤهل') || q.includes('شهادة') || q.includes('عالي') || q.includes('متوسط') || q.includes('جامع') || q.includes('محو أمية')) {
+    if (q.includes('مؤهل') || q.includes('شهادة') || q.includes('عالي') || q.includes('متوسط') || q.includes('جامع') || q.includes('دبلوم') || q.includes('كلية')) {
       sendEvent('THOUGHT', 'تنفيذ استعلام إحصائي لحصر وتوزيع المؤهلات الدراسية عبر كافة الدفوع...');
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 200));
 
       const qualStats = await query(`
         SELECT qualification, COUNT(*) as count 
@@ -518,12 +518,278 @@ app.post('/api/chat', requireAuth, async (req, res) => {
         responseText += `| **${item.qualification}** | ${item.count} | ${pct}% |\n`;
       }
 
-      suggestions = ['حصر أصحاب الحرف والمهن', 'توزيع المجندين حسب المحافظات', 'مقارنة أعداد الدفوع التجنيدية'];
+      suggestions = ['حصر أصحاب الحرف والمهن', 'توزيع المجندين حسب المحافظات', 'حصر الحالات غير المتزنة نفسياً'];
     }
-    // Query 2: Batch inquiries
+    // Query 2: Tickets & Suspicion / Security Alerts
+    else if (q.includes('تيكت') || q.includes('اشتباه') || q.includes('شبهة') || q.includes('جنائ') || q.includes('سياس') || q.includes('بلاغ') || q.includes('سوابق') || q.includes('قضية') || q.includes('قضايا') || q.includes('مخدرات')) {
+      sendEvent('THOUGHT', 'فحص جدول التيكتات والإنذارات الأمنية (recruit_tickets) وحصر اشتباهات الدفع الحالي...');
+      await new Promise(r => setTimeout(r, 200));
+
+      const ticketCounts = await query(`
+        SELECT ticket_type, status, COUNT(*) as count
+        FROM recruit_tickets
+        GROUP BY ticket_type, status
+      `);
+
+      const activeTickets = await query(`
+        SELECT t.id, t.ticket_type, t.title, t.severity, t.status, r.name as recruit_name, r.national_id, r.company
+        FROM recruit_tickets t
+        JOIN recruits r ON t.recruit_id = r.id
+        ORDER BY t.id DESC
+        LIMIT 10
+      `);
+
+      const typeLabels = {
+        criminal_suspicion: 'اشتباه جنائي',
+        political_suspicion: 'اشتباه سياسي',
+        medical_condition: 'حالة مرضية',
+        psychological_condition: 'حالة نفسية',
+        security_alert: 'إنذار أمني'
+      };
+
+      const severityLabels = {
+        critical: '🔴 حرج',
+        high: '🟠 مرتفع',
+        medium: '🟡 متوسط',
+        low: '🟢 منخفض'
+      };
+
+      responseText = `### 🚨 تقرير تيكتات الاشتباه الأمني والجنائي والسياسي\n\n`;
+      if (activeTickets.length === 0) {
+        responseText += `✅ **لا توجد تيكتات اشتباه مسجلة حالياً** في قاعدة البيانات، جميع المجندين خالي طرف أمنياً حتى الآن.\n`;
+      } else {
+        responseText += `تم رصد **${activeTickets.length} تيكت مسجل** بالمنظومة، وإليك أحدث الحالات المسجلة:\n\n`;
+        responseText += `| اسم المجند | نوع الاشتباه | عنوان التيكت | درجة الخطورة | الحالة |\n`;
+        responseText += `| :--- | :--- | :--- | :---: | :---: |\n`;
+        for (const t of activeTickets) {
+          const typeName = typeLabels[t.ticket_type] || t.ticket_type;
+          const sevName = severityLabels[t.severity] || t.severity;
+          const statusName = t.status === 'open' ? '⏳ مفتوح ومتابع' : '✅ مغلق ومنتهي';
+          responseText += `| **${t.recruit_name}** | ${typeName} | ${t.title} | ${sevName} | ${statusName} |\n`;
+        }
+      }
+
+      suggestions = ['حصر الحالات النفسية والعصبية', 'بيان التحركات ومستشفيات الشرطة', 'حصر أصحاب السفر للخارج'];
+    }
+    // Query 3: Psychological & Nervous Cases (الحالات النفسية والعصبية وغير المتزنين)
+    else if (q.includes('نفس') || q.includes('عصب') || q.includes('غير متزن') || q.includes('اهتزاز') || q.includes('صرع') || q.includes('انتحار') || q.includes('اكتئاب')) {
+      sendEvent('THOUGHT', 'استعلام جدول المجندين المفحوصين كـ (حالات غير متزنة نفسياً ومتابعة دورية)...');
+      await new Promise(r => setTimeout(r, 200));
+
+      const psychCases = await query(`
+        SELECT id, name, national_id, company, psychological_notes, last_psychological_followup
+        FROM recruits
+        WHERE is_psychological_case = 1
+        ORDER BY id DESC
+      `);
+
+      responseText = `### 🧠 تقرير الحالات النفسية والعصبية (الغير متزنين نفسياً)\n\n`;
+      if (psychCases.length === 0) {
+        responseText += `✅ **لا توجد حالات غير متزنة نفسياً مقيدة حالياً** في كشوفات المركز.\n`;
+      } else {
+        responseText += `إجمالي عدد الحالات النفسية والعصبية المرصودة للمتابعة الدورية هو **${psychCases.length} مجند**:\n\n`;
+        responseText += `| اسم المجند | السرية | الرقم القومي | الملاحظات النفسية المسجلة | آخر متابعة |\n`;
+        responseText += `| :--- | :---: | :---: | :--- | :---: |\n`;
+        for (const p of psychCases) {
+          responseText += `| **${p.name}** | ${p.company || 'ـ'} | \`${p.national_id || 'ـ'}\` | ${p.psychological_notes || 'تحت الملاحظة الدورية'} | ${p.last_psychological_followup || 'لم تسجل بعد'} |\n`;
+        }
+        responseText += `\n> [!WARNING]\n> يرجى التنسيق المستمر مع عيادة المركز ووحدة الأمن لعدم تسليح هذه الحالات ومتابعتهم دورياً.\n`;
+      }
+
+      suggestions = ['فحص تيكتات الاشتباه الجنائي', 'بيان تحركات مستشفى طنطا', 'المناظرة الطبية للمجندين'];
+    }
+    // Query 4: Medical Movements & Hospital Referrals
+    else if (q.includes('مستشف') || q.includes('طنطا') || q.includes('مدينة نصر') || q.includes('عياد') || q.includes('تحرك') || q.includes('إحال') || q.includes('محجوز') || q.includes('حجز') || q.includes('راحة طبية')) {
+      sendEvent('THOUGHT', 'استعلام سجل تحركات وإحالات مستشفيات الشرطة (recruit_activities)...');
+      await new Promise(r => setTimeout(r, 200));
+
+      const activities = await query(`
+        SELECT a.activity_type, a.destination, a.departure_date, a.return_date, a.diagnosis, a.medical_decision, r.name as recruit_name, r.company
+        FROM recruit_activities a
+        JOIN recruits r ON a.recruit_id = r.id
+        ORDER BY a.id DESC
+        LIMIT 10
+      `);
+
+      responseText = `### 🏥 تقرير التحركات والإحالات الطبية لمستشفيات الشرطة\n\n`;
+      if (activities.length === 0) {
+        responseText += `✅ لا توجد تحركات طبية أو إحالات مسجلة حالياً في السجل الرقمي.\n`;
+      } else {
+        responseText += `تم حصر **${activities.length} حركة مسجلة** وإليك أحدث الإحالات والقرارات الطبية:\n\n`;
+        responseText += `| اسم المجند | السرية | الجهة / المستشفى | التشخيص الطبي | القرار الطبي |\n`;
+        responseText += `| :--- | :---: | :--- | :--- | :--- |\n`;
+        for (const a of activities) {
+          responseText += `| **${a.recruit_name}** | ${a.company || 'ـ'} | ${a.destination || 'مستشفى الشرطة'} | ${a.diagnosis || 'فحص دوري'} | **${a.medical_decision || 'قيد العرض'}** |\n`;
+        }
+      }
+
+      suggestions = ['فحص الحالات النفسية والعصبية', 'المناظرة الأمنية واللياقة الطبية', 'حصر أصحاب الحرف'];
+    }
+    // Query 5: Foreign Travel
+    else if (q.includes('سفر') || q.includes('سافر') || q.includes('خارج') || q.includes('بره') || q.includes('جواز') || q.includes('ليبيا') || q.includes('إيطاليا') || q.includes('خليج') || q.includes('هجرة')) {
+      sendEvent('THOUGHT', 'البحث في قيود السفر خارج البلاد (travel_abroad) وحصر المجندين والدول...');
+      await new Promise(r => setTimeout(r, 200));
+
+      const travelers = await query(`
+        SELECT name, national_id, travel_abroad, current_job, address, company
+        FROM recruits
+        WHERE travel_abroad IS NOT NULL 
+          AND travel_abroad != '' 
+          AND travel_abroad NOT LIKE '%لم يس%' 
+          AND travel_abroad NOT LIKE '%لا%' 
+          AND travel_abroad NOT LIKE '%بدون%'
+        LIMIT 15
+      `);
+
+      responseText = `### ✈️ حصر المجندين الذين سبق لهم السفر خارج جمهورية مصر العربية\n\n`;
+      if (travelers.length === 0) {
+        responseText += `لم يتم رصد مجندين سبق لهم السفر للخارج حتى الآن من واقع الاستمارات المدخلة.\n`;
+      } else {
+        responseText += `تم حصر **${travelers.length} مجند** سبق لهم السفر للخارج:\n\n`;
+        responseText += `| اسم المجند | السرية | الدول وتفاصيل السفر | المهنة الحالية | محل الإقامة |\n`;
+        responseText += `| :--- | :---: | :--- | :--- | :--- |\n`;
+        for (const t of travelers) {
+          responseText += `| **${t.name}** | ${t.company || 'ـ'} | **${t.travel_abroad}** | ${t.current_job || 'ـ'} | ${t.address || 'ـ'} |\n`;
+        }
+      }
+
+      suggestions = ['فحص تيكتات الاشتباه الأمني', 'توزيع المجندين حسب المحافظات', 'أصحاب المهن والحرف'];
+    }
+    // Query 6: Marital Status & Marriage
+    else if (q.includes('متزوج') || q.includes('زواج') || q.includes('زوجة') || q.includes('أعزب') || q.includes('عائل') || q.includes('أولاد') || q.includes('أسرة') || q.includes('أطفال')) {
+      sendEvent('THOUGHT', 'استخراج إحصائيات الحالة الاجتماعية من حقل الزوجة (wife)...');
+      await new Promise(r => setTimeout(r, 200));
+
+      const allRecruits = await query(`SELECT name, wife, national_id, company FROM recruits`);
+      const married = allRecruits.filter(r => r.wife && r.wife.trim() && !r.wife.includes('أعزب') && !r.wife.includes('لا يوجد') && !r.wife.includes('بدون'));
+      const single = allRecruits.length - married.length;
+
+      responseText = `### 💍 تقرير الحالة الاجتماعية للمجندين المستجدين\n\n`;
+      responseText += `* **إجمالي المجندين المسجلين:** ${allRecruits.length} مجند\n`;
+      responseText += `* **المتزوجون:** **${married.length} مجند** (${allRecruits.length > 0 ? ((married.length / allRecruits.length) * 100).toFixed(1) : 0}%)\n`;
+      responseText += `* **العزاب:** **${single} مجند** (${allRecruits.length > 0 ? ((single / allRecruits.length) * 100).toFixed(1) : 0}%)\n\n`;
+
+      if (married.length > 0) {
+        responseText += `#### بيان بأسماء عينة من المجندين المتزوجين وبيانات الزوجة:\n`;
+        responseText += `| اسم المجند | السرية | بيانات الزوجة المسجلة |\n`;
+        responseText += `| :--- | :---: | :--- |\n`;
+        for (const m of married.slice(0, 8)) {
+          responseText += `| **${m.name}** | ${m.company || 'ـ'} | ${m.wife} |\n`;
+        }
+      }
+
+      suggestions = ['توزيع المؤهلات الدراسية', 'توزيع مجندي السرايا', 'حصر الحالات النفسية'];
+    }
+    // Query 7: Religion & Sectarian Distribution
+    else if (q.includes('ديان') || q.includes('دين') || q.includes('مسلم') || q.includes('مسيح') || q.includes('أقباط') || q.includes('إسلام')) {
+      sendEvent('THOUGHT', 'حصر وتوزيع الديانة للمجندين (religion) وحساب النسب المئوية الدقيقة...');
+      await new Promise(r => setTimeout(r, 200));
+
+      const relStats = await query(`
+        SELECT religion, COUNT(*) as count 
+        FROM recruits 
+        GROUP BY religion 
+        ORDER BY count DESC
+      `);
+
+      const total = relStats.reduce((sum, item) => sum + item.count, 0);
+
+      responseText = `### 🕊️ تقرير التوزيع الديني لمجندي المنظومة\n\n`;
+      responseText += `إجمالي المجندين الذين تم تسجيل ديانتهم: **${total} مجند**:\n\n`;
+      responseText += `| الديانة | عدد المجندين | النسبة المئوية |\n`;
+      responseText += `| :--- | :---: | :---: |\n`;
+      for (const r of relStats) {
+        const pct = total > 0 ? ((r.count / total) * 100).toFixed(1) : '0';
+        responseText += `| **${r.religion}** | ${r.count} | ${pct}% |\n`;
+      }
+
+      suggestions = ['توزيع المجندين على السرايا', 'توزيع المؤهلات الدراسية', 'التوزيع الجغرافي والمحافظات'];
+    }
+    // Query 8: Companies Distribution (توزيع السرايا)
+    else if (q.includes('سري') || q.includes('سرايا') || q.includes('أولى') || q.includes('ثانية') || q.includes('ثالثة') || q.includes('رابعة') || q.includes('خامسة') || q.includes('سادسة')) {
+      sendEvent('THOUGHT', 'حساب توزيع القوة الفعلية للمجندين على السرايا التدريبية (company)...');
+      await new Promise(r => setTimeout(r, 200));
+
+      const compStats = await query(`
+        SELECT company, COUNT(*) as count 
+        FROM recruits 
+        WHERE company IS NOT NULL AND company != ''
+        GROUP BY company 
+        ORDER BY count DESC
+      `);
+
+      const unassigned = await get(`SELECT COUNT(*) as count FROM recruits WHERE company IS NULL OR company = ''`);
+
+      responseText = `### 🚩 تقرير توزيع القوة البشرية على السرايا بمركز التدريب\n\n`;
+      responseText += `| السرية التدريبية | قوة المجندين المقيدين |\n`;
+      responseText += `| :--- | :---: |\n`;
+      for (const c of compStats) {
+        responseText += `| **${c.company}** | ${c.count} مجند |\n`;
+      }
+      if (unassigned.count > 0) {
+        responseText += `| **لم يتم التسكين في سرية بعد** | ${unassigned.count} مجند |\n`;
+      }
+
+      suggestions = ['حصر أصحاب الحرف والمهن', 'توزيع المؤهلات العلمية', 'حصر الحالات غير المتزنة'];
+    }
+    // Query 9: Literacy & Reading/Writing
+    else if (q.includes('قراء') || q.includes('كتاب') || q.includes('يقرأ') || q.includes('يكتب') || q.includes('أمية') || q.includes('أمي') || q.includes('تعليم')) {
+      sendEvent('THOUGHT', 'استعلام قيود الإلمام بالقراءة والكتابة (literacy)...');
+      await new Promise(r => setTimeout(r, 200));
+
+      const litStats = await query(`
+        SELECT literacy, COUNT(*) as count 
+        FROM recruits 
+        GROUP BY literacy 
+        ORDER BY count DESC
+      `);
+
+      responseText = `### 📖 تقرير مستوى الإلمام بالقراءة والكتابة ومحو الأمية\n\n`;
+      responseText += `| مستوى القراءة والكتابة | عدد المجندين |\n`;
+      responseText += `| :--- | :---: |\n`;
+      for (const l of litStats) {
+        responseText += `| **${l.literacy || 'غير محدد'}** | ${l.count} مجند |\n`;
+      }
+
+      suggestions = ['توزيع المؤهلات الدراسية', 'أصحاب المهن والحرف', 'توزيع السرايا'];
+    }
+    // Query 10: Age & Birth Dates
+    else if (q.includes('سن') || q.includes('عمر') || q.includes('أعمار') || q.includes('أكبر') || q.includes('أصغر') || q.includes('مواليد')) {
+      sendEvent('THOUGHT', 'تحليل تواريخ الميلاد (birth_date) واستخراج الفئات العمرية...');
+      await new Promise(r => setTimeout(r, 200));
+
+      const oldest = await query(`
+        SELECT name, birth_date, qualification, company FROM recruits 
+        WHERE birth_date IS NOT NULL AND birth_date != '' 
+        ORDER BY birth_date ASC LIMIT 3
+      `);
+
+      const youngest = await query(`
+        SELECT name, birth_date, qualification, company FROM recruits 
+        WHERE birth_date IS NOT NULL AND birth_date != '' 
+        ORDER BY birth_date DESC LIMIT 3
+      `);
+
+      responseText = `### 🎂 تقرير الفئات العمرية وتواريخ الميلاد للمجندين\n\n`;
+      if (oldest.length > 0) {
+        responseText += `#### 🔹 أكبر المجندين سناً بالمركز:\n`;
+        for (const o of oldest) {
+          responseText += `* **${o.name}** — مواليد: \`${o.birth_date}\` (${o.company || 'ـ'})\n`;
+        }
+      }
+      if (youngest.length > 0) {
+        responseText += `\n#### 🔹 أصغر المجندين سناً بالمركز:\n`;
+        for (const y of youngest) {
+          responseText += `* **${y.name}** — مواليد: \`${y.birth_date}\` (${y.company || 'ـ'})\n`;
+        }
+      }
+
+      suggestions = ['توزيع المؤهلات الدراسية', 'تقرير الحالة الاجتماعية', 'توزيع السرايا'];
+    }
+    // Query 11: Batch inquiries
     else if (q.includes('دفع') || q.includes('يناير') || q.includes('أبريل') || q.includes('يوليو') || q.includes('أكتوبر') || q.includes('دفعة')) {
       sendEvent('THOUGHT', 'استعلام جدول الدفوع التجنيدية batches وحساب المجندين المسجلين في كل دفع...');
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 200));
 
       const batchStats = await query(`
         SELECT b.name, b.month, b.year, b.active, COUNT(r.id) as count
@@ -542,13 +808,13 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 
       suggestions = ['حصر المؤهلات بالدفع الحالي', 'من هم المجندين اللائقين طبياً؟', 'استخراج أسماء الحرفيين'];
     }
-    // Query 3: Professions / Trades
+    // Query 12: Professions / Trades
     else if (q.includes('مهن') || q.includes('حرف') || q.includes('كهربائي') || q.includes('سائق') || q.includes('نجار') || q.includes('سباك') || q.includes('حداد') || q.includes('ميكانيكي') || q.includes('صنعة') || q.includes('شغل')) {
       sendEvent('THOUGHT', 'البحث في حقلي (current_job) و (other_jobs) لاستخراج أصحاب الحرف والمهن الفنية...');
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 200));
 
       const trades = await query(`
-        SELECT name, national_id, current_job, other_jobs, address
+        SELECT name, national_id, current_job, other_jobs, address, company
         FROM recruits
         WHERE other_jobs NOT LIKE '%لا يوجد%' OR current_job NOT LIKE '%بدون%'
         LIMIT 10
@@ -559,25 +825,25 @@ app.post('/api/chat', requireAuth, async (req, res) => {
         responseText += `لم يتم رصد مجندين بحرف خاصة مسجلين حتى الآن، يمكنك مراجعة حقول الاستمارة.\n`;
       } else {
         responseText += `تم حصر **${trades.length} مجند** يمتلكون حرفاً ومهناً فنية يمكن الاستفادة منهم في مهام المركز:\n\n`;
-        responseText += `| اسم المجند | المهنة الحالية | مهن وحرف أخرى | محل الإقامة |\n`;
-        responseText += `| :--- | :--- | :--- | :--- |\n`;
+        responseText += `| اسم المجند | السرية | المهنة الحالية | مهن وحرف أخرى | محل الإقامة |\n`;
+        responseText += `| :--- | :---: | :--- | :--- | :--- |\n`;
         for (const t of trades) {
-          responseText += `| **${t.name}** | ${t.current_job || 'ـ'} | ${t.other_jobs || 'ـ'} | ${t.address || 'ـ'} |\n`;
+          responseText += `| **${t.name}** | ${t.company || 'ـ'} | ${t.current_job || 'ـ'} | ${t.other_jobs || 'ـ'} | ${t.address || 'ـ'} |\n`;
         }
       }
 
       suggestions = ['كم عدد الحاصلين على مؤهل عالي؟', 'حصر مجندي محافظة الغربية', 'مقارنة الدفوع التجنيدية'];
     }
-    // Query 4: Governorates / Geographic Distribution
-    else if (q.includes('محافظ') || q.includes('غربية') || q.includes('منوفية') || q.includes('طنطا') || q.includes('كفر الشيخ') || q.includes('دقهلية') || q.includes('عنوان') || q.includes('سكن')) {
-      sendEvent('THOUGHT', 'تحليل عناوين السكن والرقم القومي للمجندين لحساب التوزيع الجغرافي...');
-      await new Promise(r => setTimeout(r, 250));
+    // Query 13: Governorates / Geographic Distribution
+    else if (q.includes('محافظ') || q.includes('غربية') || q.includes('منوفية') || q.includes('طنطا') || q.includes('كفر الشيخ') || q.includes('دقهلية') || q.includes('عنوان') || q.includes('سكن') || q.includes('بحيرة') || q.includes('شرقية') || q.includes('قاهرة') || q.includes('إسكندرية')) {
+      sendEvent('THOUGHT', 'تحليل عناوين السكن والرقم القومي للمجندين لحساب التوزيع الجغرافي للمحافظات...');
+      await new Promise(r => setTimeout(r, 200));
 
       const allRecruits = await query(`SELECT name, address, national_id FROM recruits`);
       const govMap = {};
       for (const r of allRecruits) {
         let matched = 'أخرى';
-        ['الغربية', 'المنوفية', 'كفر الشيخ', 'الدقهلية', 'البحيرة', 'القاهرة', 'الجيزة', 'الإسكندرية'].forEach(g => {
+        ['الغربية', 'المنوفية', 'كفر الشيخ', 'الدقهلية', 'البحيرة', 'القاهرة', 'الجيزة', 'الإسكندرية', 'الشرقية', 'القليوبية'].forEach(g => {
           if (r.address && r.address.includes(g)) matched = g;
         });
         govMap[matched] = (govMap[matched] || 0) + 1;
@@ -592,10 +858,10 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 
       suggestions = ['توزيع المؤهلات الدراسية', 'فحص الملاحظات الطبية', 'حصر الحرفيين بالمنطقة'];
     }
-    // Query 5: Medical and Inspection
+    // Query 14: Medical and Inspection
     else if (q.includes('طب') || q.includes('مرض') || q.includes('لائق') || q.includes('عملية') || q.includes('مناظرة') || q.includes('وشم') || q.includes('علام') || q.includes('صحي')) {
       sendEvent('THOUGHT', 'فحص سجلات المناظرة الأمنية (inspection) والحالة المرضية (medical_status)...');
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 200));
 
       const totalRec = await get(`SELECT COUNT(*) as count FROM recruits`);
       const healthyRec = await get(`SELECT COUNT(*) as count FROM recruits WHERE medical_status LIKE '%لائق%' OR medical_status LIKE '%سليم%'`);
@@ -608,12 +874,11 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 
       suggestions = ['استخراج قائمة المؤهلات العليا', 'حصر الدفوع التجنيدية', 'من هم أصحاب الحرف والمهن؟'];
     }
-    // Query 6: Specific Recruit Search by name or National ID
+    // Query 15: Specific Recruit Search by name or National ID
     else if (q.includes('ابحث') || q.includes('مجند') || q.includes('اسم') || q.includes('بطاقة') || q.includes('رقم قومي')) {
       sendEvent('THOUGHT', 'إجراء بحث فوري ومطابقة الاسم أو الرقم القومي في قاعدة البيانات...');
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 200));
 
-      // Extract the actual search term from the message
       const searchTerm = message.trim()
         .replace(/ابحث عن|ابحث|مجند|اسم|بطاقة|رقم قومي|المجند/g, '')
         .trim();
@@ -621,7 +886,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
       let results;
       if (searchTerm && searchTerm.length > 0) {
         results = await query(`
-          SELECT r.name, r.national_id, r.qualification, r.current_job, r.address, b.name as batch_name
+          SELECT r.name, r.national_id, r.qualification, r.current_job, r.address, r.company, b.name as batch_name
           FROM recruits r
           JOIN batches b ON r.batch_id = b.id
           WHERE r.name LIKE ? OR r.national_id LIKE ?
@@ -630,7 +895,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
         `, [`%${searchTerm}%`, `%${searchTerm}%`]);
       } else {
         results = await query(`
-          SELECT r.name, r.national_id, r.qualification, r.current_job, r.address, b.name as batch_name
+          SELECT r.name, r.national_id, r.qualification, r.current_job, r.address, r.company, b.name as batch_name
           FROM recruits r
           JOIN batches b ON r.batch_id = b.id
           ORDER BY r.id DESC
@@ -644,7 +909,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
       } else {
         responseText += `إليك أحدث السجلات المسجلة بالمنظومة:\n\n`;
         for (const r of results) {
-          responseText += `* **${r.name}** — الرقم القومي: \`${r.national_id}\` — ${r.batch_name} (${r.qualification})\n`;
+          responseText += `* **${r.name}** — السرية: \`${r.company || 'ـ'}\` — الرقم القومي: \`${r.national_id}\` — ${r.batch_name} (${r.qualification})\n`;
         }
       }
 
@@ -653,22 +918,31 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     // Default Overview
     else {
       sendEvent('THOUGHT', 'إعداد ملخص عام وشامل لكافة مؤشرات منظومة المجندين...');
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 200));
 
       const stats = await get(`SELECT COUNT(*) as count FROM recruits`);
       const activeBatch = await get(`SELECT name FROM batches WHERE active = 1 LIMIT 1`);
+      const ticketsCount = await get(`SELECT COUNT(*) as count FROM recruit_tickets WHERE status = 'open'`);
+      const psychCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE is_psychological_case = 1`);
 
       responseText = `أهلاً بك! أنا **المساعد الذكي لمنظومة فحص وتسجيل المجندين** لوحدة الأمن والتحريات.\n\n`;
-      responseText += `* **إجمالي المجندين المسجلين حالياً:** **${stats.count} مجند**.\n`;
-      responseText += `* **الدفع التجنيدي النشط:** **${activeBatch ? activeBatch.name : 'غير محدد'}**.\n\n`;
-      responseText += `يمكنك سؤالي باللغة العربية عن أي استفسار يتعلق بـ:\n`;
-      responseText += `1. **إحصائيات المؤهلات الدراسية** (نسبة المؤهل العالي، المتوسط، إلخ).\n`;
-      responseText += `2. **حصر أصحاب الحرف والمهن** (كهربائيين، سائقين، سباكين للاستفادة منهم).\n`;
-      responseText += `3. **الانتشار الجغرافي** وتوزيع المحافظات والمراكز.\n`;
-      responseText += `4. **مقارنة أعداد الدفوع التجنيدية** الأربعة.\n`;
-      responseText += `5. **مؤشرات المناظرة واللياقة الطبية**.\n`;
+      responseText += `* **إجمالي المجندين المقيدين:** **${stats.count} مجند**.\n`;
+      responseText += `* **الدفع التجنيدي النشط:** **${activeBatch ? activeBatch.name : 'غير محدد'}**.\n`;
+      responseText += `* **تيكتات الاشتباه المفتوحة:** **${ticketsCount.count} تيكت**.\n`;
+      responseText += `* **الحالات النفسية قيد المتابعة:** **${psychCount.count} مجند**.\n\n`;
+      responseText += `يمكنك سؤالي بأي صيغة عربية عن:\n`;
+      responseText += `1. **تيكتات الاشتباه الأمني والجنائي والسياسي**.\n`;
+      responseText += `2. **الحالات النفسية والعصبية وغير المتزنين**.\n`;
+      responseText += `3. **التحركات ومستشفيات الشرطة بطنطا ومدينة نصر**.\n`;
+      responseText += `4. **إحصائيات السفر خارج جمهورية مصر العربية**.\n`;
+      responseText += `5. **الحالة الاجتماعية (المتزوجين والعزاب)**.\n`;
+      responseText += `6. **توزيع الديانة (المسلمين والمسيحيين)**.\n`;
+      responseText += `7. **توزيع السرايا التدريبية الستة**.\n`;
+      responseText += `8. **حصر أصحاب الحرف والمهن الفنية**.\n`;
+      responseText += `9. **توزيع المؤهلات العلمية ومحو الأمية**.\n`;
+      responseText += `10. **الأعمار والسن والمحافظات والبحث الفوري**.\n`;
 
-      suggestions = ['توزيع المؤهلات العلمية', 'حصر أصحاب الحرف والمهن', 'مقارنة أعداد الدفوع التجنيدية', 'التوزيع الجغرافي للمجندين'];
+      suggestions = ['تيكتات الاشتباه الأمني', 'الحالات غير المتزنة نفسياً', 'بيان تحركات مستشفيات الشرطة', 'حصر المجندين المتزوجين', 'أصحاب المهن والحرف'];
     }
 
     // Stream the final response chunk by chunk for smooth animation
