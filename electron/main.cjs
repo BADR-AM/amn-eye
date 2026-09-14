@@ -18,17 +18,39 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
   }
 });
 
+// Setup userData directory for persistent writable application data (recruits.db, uploads, backups, logs)
+const userDataPath = app.getPath('userData');
+process.env.APP_DATA_DIR = userDataPath;
+
+const fs = require('fs');
+try {
+  const logDir = path.join(userDataPath, 'logs');
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+  const logStream = fs.createWriteStream(path.join(logDir, 'system.log'), { flags: 'a' });
+  const origLog = console.log;
+  const origErr = console.error;
+  console.log = (...args) => {
+    origLog(...args);
+    try { logStream.write(`[INFO  ${new Date().toISOString()}] ${args.join(' ')}\n`); } catch(e){}
+  };
+  console.error = (...args) => {
+    origErr(...args);
+    try { logStream.write(`[ERROR ${new Date().toISOString()}] ${args.join(' ')}\n`); } catch(e){}
+  };
+} catch (e) {}
+
 // Start embedded Express backend server inside Electron process
 async function startServer() {
   try {
     const serverScriptPath = path.join(__dirname, '..', 'server', 'server.js');
     const serverUrl = pathToFileURL(serverScriptPath).href;
     console.log('🔄 جاري تشغيل خادم Express المدمج من:', serverUrl);
+    console.log('📂 مسار بيانات ومستندات المنظومة:', userDataPath);
     await import(serverUrl);
     console.log('✅ تم تشغيل خادم المنظومة وقاعدة البيانات بنجاح داخل Electron');
     return true;
   } catch (err) {
-    console.error('❌ خطأ في تشغيل خادم المنظومة:', err);
+    console.error('❌ خطأ في تشغيل خادم المنظومة:', err.stack || err);
     return false;
   }
 }

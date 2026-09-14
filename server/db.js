@@ -6,18 +6,34 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Database path in local project directory
-const dataDir = path.join(__dirname, '..', 'data');
+// Database path: support APP_DATA_DIR for packaged desktop app, with fallback to project root
+const baseDir = process.env.APP_DATA_DIR || path.join(__dirname, '..');
+const dataDir = path.join(baseDir, 'data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const dbPath = path.join(dataDir, 'recruits.db');
+export const dbPath = path.join(dataDir, 'recruits.db');
+
+// If running in packaged app (APP_DATA_DIR set) and the database file doesn't exist yet,
+// check if an existing template database exists in the installation directory and copy it over
+if (process.env.APP_DATA_DIR && !fs.existsSync(dbPath)) {
+  const bundledDbPath = path.join(__dirname, '..', 'data', 'recruits.db');
+  if (fs.existsSync(bundledDbPath)) {
+    try {
+      fs.copyFileSync(bundledDbPath, dbPath);
+      console.log('✅ تم نسخ قاعدة البيانات الأولية المرفقة إلى مسار البيانات:', dbPath);
+    } catch (copyErr) {
+      console.warn('⚠️ تعذر نسخ قاعدة البيانات المرفقة:', copyErr.message);
+    }
+  }
+}
+
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('❌ خطأ في فتح قاعدة البيانات:', err.message);
   } else {
-    console.log('✅ تم الاتصال بقاعدة بيانات SQLite المحلية بنجاح:', dbPath);
+    console.log('✅ تم الاتصال بقاعدة بيانات SQLite بنجاح:', dbPath);
   }
 });
 

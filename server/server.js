@@ -17,8 +17,9 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Setup directories for uploads
-const uploadsDir = path.join(__dirname, '..', 'uploads');
+// Setup directories for uploads: support APP_DATA_DIR for packaged app, with fallback to project root
+const baseDir = process.env.APP_DATA_DIR || path.join(__dirname, '..');
+const uploadsDir = path.join(baseDir, 'uploads');
 const photosDir = path.join(uploadsDir, 'photos');
 const videosDir = path.join(uploadsDir, 'videos');
 const docsDir = path.join(uploadsDir, 'documents');

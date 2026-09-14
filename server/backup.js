@@ -7,12 +7,12 @@ import { run, get, query } from './db.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Directories
-const rootDir = path.join(__dirname, '..');
-const dataDir = path.join(rootDir, 'data');
+// Directories: support APP_DATA_DIR for packaged desktop app, with fallback to project root
+const baseDir = process.env.APP_DATA_DIR || path.join(__dirname, '..');
+const dataDir = path.join(baseDir, 'data');
 const dbPath = path.join(dataDir, 'recruits.db');
-const uploadsDir = path.join(rootDir, 'uploads');
-const defaultBackupsDir = path.join(rootDir, 'backups');
+const uploadsDir = path.join(baseDir, 'uploads');
+const defaultBackupsDir = path.join(baseDir, 'backups');
 
 if (!fs.existsSync(defaultBackupsDir)) {
   fs.mkdirSync(defaultBackupsDir, { recursive: true });
