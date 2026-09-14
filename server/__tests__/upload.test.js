@@ -2,13 +2,16 @@ import { describe, it, expect } from 'vitest';
 
 describe('Upload Validation', () => {
   const ALLOWED_PHOTO_MIME = ['image/jpeg', 'image/png', 'image/webp'];
-  const ALLOWED_VIDEO_MIME = ['video/webm', 'video/mp4'];
+  const ALLOWED_VIDEO_MIME = ['video/webm', 'video/mp4', 'video/quicktime', 'video/x-m4v', 'video/3gpp', 'video/mov'];
   const ALLOWED_BASE64_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
   describe('Multer fileFilter logic', () => {
     const fileFilter = (fieldname, mimetype) => {
-      const isPhoto = fieldname === 'photo' && ALLOWED_PHOTO_MIME.includes(mimetype);
-      const isVideo = fieldname === 'video' && ALLOWED_VIDEO_MIME.includes(mimetype);
+      const cleanMime = (mimetype || '').split(';')[0].trim().toLowerCase();
+      const isPhoto = fieldname === 'photo' && ALLOWED_PHOTO_MIME.includes(cleanMime);
+      const isVideo = fieldname === 'video' && (
+        ALLOWED_VIDEO_MIME.includes(cleanMime) || cleanMime.startsWith('video/')
+      );
       return isPhoto || isVideo;
     };
 
@@ -44,8 +47,16 @@ describe('Upload Validation', () => {
       expect(fileFilter('video', 'video/mp4')).toBe(true);
     });
 
+    it('should accept Apple iOS QuickTime video (MOV)', () => {
+      expect(fileFilter('video', 'video/quicktime')).toBe(true);
+    });
+
+    it('should accept iOS Safari video with codecs parameter', () => {
+      expect(fileFilter('video', 'video/mp4; codecs=avc1.42E01E,mp4a.40.2')).toBe(true);
+    });
+
     it('should reject AVI video', () => {
-      expect(fileFilter('video', 'video/avi')).toBe(false);
+      expect(fileFilter('video', 'audio/mp3')).toBe(false);
     });
 
     it('should reject photo MIME on video field', () => {

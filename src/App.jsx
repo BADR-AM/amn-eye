@@ -14,7 +14,17 @@ import ChatPanel from './components/ChatPanel';
 import LoginPage from './components/LoginPage';
 import SplashScreen from './components/SplashScreen';
 import Toast from './components/Toast';
+import MobileApp from './components/MobileApp';
 import { isLoggedIn as checkLoggedIn, setToken, clearToken, authHeaders, getUser, setUser } from './utils/auth';
+
+// Helper to determine if user is on a mobile device or prefers mobile view
+const detectMobile = () => {
+  if (typeof window === 'undefined') return false;
+  const saved = localStorage.getItem('security_eye_view_mode');
+  if (saved === 'mobile') return true;
+  if (saved === 'desktop') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+};
 
 export default function App() {
   // Splash Screen initial load
@@ -23,6 +33,9 @@ export default function App() {
   // Auth
   const [loggedIn, setLoggedIn] = useState(checkLoggedIn());
   const [currentUser, setCurrentUser] = useState(getUser());
+
+  // Mobile mode detection state
+  const [isMobileMode, setIsMobileMode] = useState(detectMobile);
 
   // Current view: 'dashboard' | 'kiosk' | 'media'
   const [view, setView] = useState('dashboard');
@@ -188,6 +201,18 @@ export default function App() {
     }
   };
 
+  // Listen for window resize if not explicitly locked by user
+  useEffect(() => {
+    const handleResize = () => {
+      const saved = localStorage.getItem('security_eye_view_mode');
+      if (!saved) {
+        setIsMobileMode(detectMobile());
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Initial Application Launch / Splash Screen
   if (showSplash) {
     return <SplashScreen onFinish={() => setShowSplash(false)} />;
@@ -196,6 +221,67 @@ export default function App() {
   // Not logged in — show login page
   if (!loggedIn) {
     return <LoginPage onLogin={handleLogin} />;
+  }
+
+  // Dedicated Mobile-Optimized Application
+  if (isMobileMode) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
+        {toast && (
+          <Toast
+            key={toast.key}
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
+        <MobileApp
+          currentUser={currentUser}
+          activeBatch={activeBatch}
+          batches={batches}
+          stats={stats}
+          networkInfo={networkInfo}
+          onRefresh={loadInitialData}
+          onLogout={handleLogout}
+          onSwitchToDesktop={() => {
+            localStorage.setItem('security_eye_view_mode', 'desktop');
+            setIsMobileMode(false);
+          }}
+          onOpenNetwork={() => setShowNetworkModal(true)}
+          onOpenBatches={() => setShowBatchesModal(true)}
+          onOpenChangePassword={() => setShowChangePasswordModal(true)}
+          showToast={showToast}
+        />
+
+        {/* Batches Management Modal (if invoked from mobile) */}
+        {showBatchesModal && (
+          <BatchesModal
+            batches={batches}
+            activeBatch={activeBatch}
+            onSetActiveBatch={(b) => setActiveBatch(b)}
+            onClose={() => setShowBatchesModal(false)}
+            onRefresh={loadInitialData}
+          />
+        )}
+
+        {/* Wi-Fi & Local Network Sync Modal (if invoked from mobile) */}
+        {showNetworkModal && (
+          <NetworkModal
+            networkInfo={networkInfo}
+            onClose={() => setShowNetworkModal(false)}
+          />
+        )}
+
+        {/* User Change Password Modal (if invoked from mobile) */}
+        {showChangePasswordModal && (
+          <ChangePasswordModal
+            isOpen={showChangePasswordModal}
+            onClose={() => setShowChangePasswordModal(false)}
+            onSuccess={(msg) => showToast(msg, 'success')}
+          />
+        )}
+      </div>
+    );
   }
 
   return (
@@ -223,11 +309,14 @@ export default function App() {
           onOpenNetwork={() => setShowNetworkModal(true)}
           onOpenBackup={() => setShowBackupModal(true)}
           onOpenAiChat={() => setIsChatOpen(true)}
+          onSwitchToMobile={() => {
+            localStorage.setItem('security_eye_view_mode', 'mobile');
+            setIsMobileMode(true);
+          }}
           theme={theme}
           onToggleTheme={handleToggleTheme}
           networkInfo={networkInfo}
           onRefresh={loadInitialData}
-          onLogout={handleLogout}
         />
       )}
 

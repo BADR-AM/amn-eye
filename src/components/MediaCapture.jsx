@@ -13,7 +13,8 @@ import {
   ShieldCheck,
   AlertTriangle,
   Loader2,
-  Smartphone
+  Smartphone,
+  SwitchCamera
 } from 'lucide-react';
 
 export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel }) {
@@ -41,14 +42,16 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
   const mobilePhotoInputRef = useRef(null);
   const mobileVideoInputRef = useRef(null);
   const [hasAudio, setHasAudio] = useState(true);
+  const [facingMode, setFacingMode] = useState('environment'); // default to environment for capturing recruit
 
   // Status & error
   const [cameraError, setCameraError] = useState(null);
   const [saveError, setSaveError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Initialize camera stream with smart audio/video fallback
-  const startCamera = async () => {
+  // Initialize camera stream with smart audio/video fallback & camera switching
+  const startCamera = async (targetFacing = null) => {
+    const activeFacing = targetFacing || facingMode;
     setCameraError(null);
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError('المتصفح عبر الشبكة المحلية (HTTP) لا يدعم البث المباشر للويب كام. استخدم زر "فتح كاميرا الهاتف مباشرة" الموضح بالأسفل.');
@@ -63,15 +66,14 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
       try {
         // Try requesting both video and audio
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: activeFacing },
           audio: true
         });
         setHasAudio(true);
       } catch (audioErr) {
         console.warn('Audio+Video request failed, falling back to video only:', audioErr);
-        // Fallback to video only if no microphone is found or permission was denied
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: activeFacing },
           audio: false
         });
         setHasAudio(false);
@@ -85,6 +87,32 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
       console.error('Camera access error:', err);
       setCameraError('تعذر فتح الويب كام المباشرة. يمكنك استخدام زر "فتح كاميرا الهاتف مباشرة" أو رفع ملف من الجهاز.');
     }
+  };
+
+  const toggleFacingMode = () => {
+    const nextMode = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(nextMode);
+    startCamera(nextMode);
+  };
+
+  // Get supported video MIME type across Chrome, Firefox, Android, and iOS Safari
+  const getSupportedVideoMime = () => {
+    if (typeof MediaRecorder === 'undefined') return '';
+    const candidates = [
+      'video/mp4;codecs=avc1,mp4a.40.2',
+      'video/mp4;codecs=avc1',
+      'video/mp4',
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      'video/quicktime'
+    ];
+    for (const t of candidates) {
+      if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(t)) {
+        return t;
+      }
+    }
+    return '';
   };
 
   useEffect(() => {
@@ -127,10 +155,11 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
     canvas.width = video.videoWidth || 1280;
     canvas.height = video.videoHeight || 720;
     const ctx = canvas.getContext('2d');
-    ctx.translate(canvas.width, 0);
-    ctx.scale(-1, 1);
+    if (facingMode === 'user') {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     const base64Image = canvas.toDataURL('image/jpeg', 0.92);
     setCapturedPhoto(base64Image);
@@ -149,14 +178,13 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
     if (!streamRef.current) return;
 
     recordedChunksRef.current = [];
-    let mimeType = 'video/webm;codecs=vp8,opus';
-    if (!MediaRecorder.isTypeSupported(mimeType)) {
-      mimeType = 'video/webm';
-    }
+    const supportedMime = getSupportedVideoMime();
+    const options = supportedMime ? { mimeType: supportedMime } : {};
 
     try {
-      const recorder = new MediaRecorder(streamRef.current, { mimeType });
+      const recorder = new MediaRecorder(streamRef.current, options);
       mediaRecorderRef.current = recorder;
+      const actualMime = recorder.mimeType || supportedMime || 'video/mp4';
 
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
@@ -165,7 +193,7 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
       };
 
       recorder.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        const blob = new Blob(recordedChunksRef.current, { type: actualMime });
         setCapturedVideoBlob(blob);
         const url = URL.createObjectURL(blob);
         setCapturedVideoUrl(url);
@@ -237,7 +265,12 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
 
       // Append Video Blob
       if (capturedVideoBlob) {
-        submitData.append('video', capturedVideoBlob, `video_${formData.national_id || Date.now()}.webm`);
+        const mime = (capturedVideoBlob.type || '').toLowerCase();
+        let ext = 'mp4';
+        if (mime.includes('webm')) ext = 'webm';
+        else if (mime.includes('quicktime')) ext = 'mov';
+        else if (mime.includes('mp4')) ext = 'mp4';
+        submitData.append('video', capturedVideoBlob, `video_${formData.national_id || Date.now()}.${ext}`);
       }
 
       const response = await fetch('/api/recruits', {
@@ -357,8 +390,19 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
                     autoPlay
                     playsInline
                     muted
-                    className="w-full h-full object-cover scale-x-[-1]" // Mirror effect for natural webcam experience
+                    className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
                   />
+
+                  {/* Camera Flip Button (Front / Back) */}
+                  <button
+                    type="button"
+                    onClick={toggleFacingMode}
+                    className="absolute top-3 left-3 bg-darkslate-950/80 hover:bg-slate-800 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 backdrop-blur-md shadow-lg transition-all active:scale-95 z-10"
+                    title="تبديل الكاميرا (أمامية / خلفية)"
+                  >
+                    <SwitchCamera className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{facingMode === 'environment' ? 'كاميرا خلفية' : 'كاميرا أمامية'}</span>
+                  </button>
 
                   {/* Face Guide Oval Overlay */}
                   <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
@@ -475,8 +519,21 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
                     autoPlay
                     playsInline
                     muted
-                    className="w-full h-full object-cover scale-x-[-1]"
+                    className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
                   />
+
+                  {/* Camera Flip Button (Front / Back) */}
+                  {!isRecording && (
+                    <button
+                      type="button"
+                      onClick={toggleFacingMode}
+                      className="absolute top-3 left-3 bg-darkslate-950/80 hover:bg-slate-800 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 backdrop-blur-md shadow-lg transition-all active:scale-95 z-10"
+                      title="تبديل الكاميرا (أمامية / خلفية)"
+                    >
+                      <SwitchCamera className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>{facingMode === 'environment' ? 'كاميرا خلفية' : 'كاميرا أمامية'}</span>
+                    </button>
+                  )}
 
                   {/* Recording Status & 30s Countdown Display */}
                   {isRecording && (

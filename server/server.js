@@ -49,7 +49,7 @@ app.use('/uploads', (req, res, next) => {
 
 // Multer config — type allowlist + random filenames
 const ALLOWED_PHOTO_MIME = ['image/jpeg', 'image/png', 'image/webp'];
-const ALLOWED_VIDEO_MIME = ['video/webm', 'video/mp4'];
+const ALLOWED_VIDEO_MIME = ['video/webm', 'video/mp4', 'video/quicktime', 'video/x-m4v', 'video/3gpp', 'video/mov'];
 const ALLOWED_DOC_MIME = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 
 const storage = multer.diskStorage({
@@ -65,19 +65,33 @@ const storage = multer.diskStorage({
     }
   },
   filename: (req, file, cb) => {
-    const origExt = path.extname(file.originalname).toLowerCase() || (file.fieldname === 'photo' ? '.jpg' : file.fieldname === 'video' ? '.webm' : '.jpg');
+    let origExt = path.extname(file.originalname).toLowerCase();
+    const cleanMime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
+    if (!origExt) {
+      if (file.fieldname === 'photo') origExt = '.jpg';
+      else if (file.fieldname === 'video') {
+        origExt = cleanMime.includes('mp4') ? '.mp4' : (cleanMime.includes('quicktime') ? '.mov' : '.webm');
+      } else {
+        origExt = '.dat';
+      }
+    }
     cb(null, `${file.fieldname}_${Date.now()}_${crypto.randomUUID()}${origExt}`);
   },
 });
 
 const fileFilter = (req, file, cb) => {
-  const isPhoto = file.fieldname === 'photo' && ALLOWED_PHOTO_MIME.includes(file.mimetype);
-  const isVideo = file.fieldname === 'video' && ALLOWED_VIDEO_MIME.includes(file.mimetype);
-  const isDoc = (file.fieldname === 'document' || file.fieldname === 'doc_file') && ALLOWED_DOC_MIME.includes(file.mimetype);
+  const cleanMime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
+  const isPhoto = file.fieldname === 'photo' && ALLOWED_PHOTO_MIME.includes(cleanMime);
+  const isVideo = file.fieldname === 'video' && (
+    ALLOWED_VIDEO_MIME.includes(cleanMime) ||
+    cleanMime.startsWith('video/') ||
+    (cleanMime === 'application/octet-stream' && /\.(mp4|mov|webm|m4v)$/i.test(file.originalname))
+  );
+  const isDoc = (file.fieldname === 'document' || file.fieldname === 'doc_file') && ALLOWED_DOC_MIME.includes(cleanMime);
   if (isPhoto || isVideo || isDoc) {
     cb(null, true);
   } else {
-    cb(new Error('نوع الملف غير مسموح - يُسمح بالصور JPG/PNG/WebP وملفات PDF للمستندات والوثائق'), false);
+    cb(new Error(`نوع الملف غير مسموح (${file.mimetype}) - يُسمح بالصور JPG/PNG/WebP وفيديوهات MP4/WebM/MOV وملفات PDF`), false);
   }
 };
 

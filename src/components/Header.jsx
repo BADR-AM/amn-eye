@@ -13,7 +13,8 @@ import {
   LogOut,
   HardDrive,
   Users,
-  KeyRound
+  KeyRound,
+  Smartphone
 } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
 import LiquidOrb from './LiquidOrb';
@@ -28,6 +29,7 @@ export default function Header({
   onOpenNetwork, 
   onOpenBackup,
   onOpenAiChat,
+  onSwitchToMobile,
   theme,
   onToggleTheme,
   networkInfo,
@@ -152,6 +154,18 @@ export default function Header({
             <Wifi className="w-4 h-4 text-emerald-400" />
             <span className="hidden md:inline">ربط الأجهزة</span>
           </button>
+
+          {/* Mobile View Toggle */}
+          {onSwitchToMobile && (
+            <button
+              onClick={onSwitchToMobile}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 transition-all shadow-sm"
+              title="التبديل لواجهة الهاتف المحمول (Mobile Friendly)"
+            >
+              <Smartphone className="w-4 h-4 text-cyan-400" />
+              <span className="hidden lg:inline">نسخة الموبايل</span>
+            </button>
+          )}
 
           {/* Batches Management */}
           <button
