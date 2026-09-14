@@ -283,6 +283,33 @@ export const initDb = async () => {
     }
     console.log('✅ تم إنشاء الدفوع التجنيدية الأساسية لعام 2026 تلقائياً');
   }
+
+  // 7. Users and Permissions table (جدول إدارة المستخدمين والصلاحيات)
+  await run(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+      password_hash TEXT NOT NULL,
+      full_name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'officer', -- admin, officer, operator
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
+
+  // Seed default admin if no users exist
+  const existingUsers = await query(`SELECT COUNT(*) as count FROM users`);
+  if (existingUsers[0].count === 0) {
+    // Hash for password '123456'
+    const defaultHash = '$2b$10$bNpheeFBkTWNE1sDaCkmcuLCYEYzuHbmA/BVAvsHawdBrLTlhOgcG';
+    await run(
+      `INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)`,
+      ['admin', defaultHash, 'مدير المنظومة', 'admin']
+    );
+    console.log('✅ تم إنشاء حساب مدير المنظومة الافتراضي (admin / 123456) بنجاح');
+  }
 };
 
 export default db;

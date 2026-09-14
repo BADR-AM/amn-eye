@@ -7,7 +7,7 @@ process.env.ADMIN_PASSWORD_HASH = '$2b$10$test';
 process.env.JWT_SECRET = 'test-secret-key-for-testing-only';
 process.env.PORT = '0';
 
-const { generateToken, verifyToken, comparePassword, requireAuth, handleLogin } = await import('../auth.js');
+const { generateToken, verifyToken, comparePassword, hashPassword, requireAuth, requireRole, handleLogin } = await import('../auth.js');
 
 describe('Auth Module', () => {
   describe('generateToken / verifyToken', () => {
@@ -100,11 +100,11 @@ describe('Auth Module', () => {
       expect(res.statusCode).toBe(401);
     });
 
-    it('should return token for correct password', async () => {
+    it('should return token for correct password and return user object', async () => {
       const hash = await bcrypt.hash('correctpassword', 10);
       process.env.ADMIN_PASSWORD_HASH = hash;
 
-      const req = { body: { password: 'correctpassword' } };
+      const req = { body: { username: 'admin', password: 'correctpassword' } };
       const res = createRes();
       await handleLogin(req, res);
 
@@ -112,6 +112,38 @@ describe('Auth Module', () => {
       expect(res.statusCode).not.toBe(400);
       expect(res.body.token).toBeDefined();
       expect(res.body.role).toBe('admin');
+      expect(res.body.user).toBeDefined();
+      expect(res.body.user.username).toBe('admin');
+    });
+  });
+
+  describe('requireRole middleware', () => {
+    it('should allow user with matching role', () => {
+      const req = { user: { role: 'admin' } };
+      const res = createRes();
+      let nextCalled = false;
+      requireRole('admin')(req, res, () => { nextCalled = true; });
+
+      expect(nextCalled).toBe(true);
+    });
+
+    it('should reject user with insufficient role', () => {
+      const req = { user: { role: 'officer' } };
+      const res = createRes();
+      let nextCalled = false;
+      requireRole('admin')(req, res, () => { nextCalled = true; });
+
+      expect(res.statusCode).toBe(403);
+      expect(nextCalled).toBe(false);
+    });
+  });
+
+  describe('hashPassword', () => {
+    it('should correctly hash password', async () => {
+      const hash = await hashPassword('secret123');
+      expect(hash).toBeTruthy();
+      const match = await bcrypt.compare('secret123', hash);
+      expect(match).toBe(true);
     });
   });
 });

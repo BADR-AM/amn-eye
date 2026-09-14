@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Lock, LogIn, Loader2, Shield, Eye } from 'lucide-react';
+import { Lock, User, LogIn, Loader2, Shield, Eye } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
 import splashBanner from '../assets/splash_banner.jpg';
 
 export default function LoginPage({ onLogin }) {
+  const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,18 +23,21 @@ export default function LoginPage({ onLogin }) {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: password.trim() }),
+        body: JSON.stringify({ 
+          username: username.trim() || 'admin', 
+          password: password.trim() 
+        }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || 'كلمة المرور غير صحيحة');
+        setError(data.error || 'اسم المستخدم أو كلمة المرور غير صحيحة');
         setLoading(false);
         return;
       }
 
-      onLogin(data.token);
+      onLogin(data.token, data.user);
     } catch (err) {
       setError('تعذر الاتصال بالخادم');
       setLoading(false);
@@ -96,6 +100,20 @@ export default function LoginPage({ onLogin }) {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-300 mb-1.5 text-right">
+                <User className="w-3.5 h-3.5 inline ml-1 text-emerald-400" />
+                اسم المستخدم / الحساب
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => { setUsername(e.target.value); setError(''); }}
+                placeholder="اسم المستخدم (مثل admin)..."
+                className="w-full bg-[#0d1117] border border-[#30363d] focus:border-[#58a6ff] rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-sans"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-bold text-gray-300 mb-1.5 text-right">
                 <Lock className="w-3.5 h-3.5 inline ml-1 text-blue-400" />

@@ -11,12 +11,17 @@ import {
   Moon,
   Bot,
   LogOut,
-  HardDrive
+  HardDrive,
+  Users,
+  KeyRound
 } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
 
 export default function Header({ 
   activeBatch, 
+  currentUser,
+  onOpenUsers,
+  onOpenChangePassword,
   onOpenKiosk, 
   onOpenBatches, 
   onOpenNetwork, 
@@ -163,6 +168,43 @@ export default function Header({
             <PlusCircle className="w-4 h-4" />
             <span>تسجيل جديد (F2)</span>
           </button>
+
+          {/* Users & Permissions Management (Admin only) */}
+          {(!currentUser || currentUser.role === 'admin') && (
+            <button
+              onClick={onOpenUsers}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 transition-all shadow-sm"
+              title="إدارة حسابات المستخدمين والصلاحيات"
+            >
+              <Users className="w-4 h-4 text-blue-400" />
+              <span className="hidden xl:inline">المستخدمين</span>
+            </button>
+          )}
+
+          {/* User Profile Badge & Quick Password Change */}
+          <div className="flex items-center gap-2 bg-darkslate-850 dark:bg-zinc-900 px-3 py-1.5 rounded-xl border border-slate-700/60 dark:border-zinc-800">
+            <div className="text-right">
+              <div className="text-xs font-bold text-white leading-tight flex items-center gap-1.5">
+                <span>{currentUser?.full_name || 'مدير المنظومة'}</span>
+                {currentUser?.role === 'admin' || !currentUser ? (
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">مدير</span>
+                ) : currentUser?.role === 'operator' ? (
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">كشك</span>
+                ) : (
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 font-bold border border-blue-500/30">ضابط</span>
+                )}
+              </div>
+              <div className="text-[10px] text-slate-400 font-mono">@{currentUser?.username || 'admin'}</div>
+            </div>
+
+            <button
+              onClick={onOpenChangePassword}
+              className="p-1 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
+              title="تغيير كلمة المرور الخاصة بحسابك"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+            </button>
+          </div>
 
           {/* Light / Dark Mode Toggle */}
           <button

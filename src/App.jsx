@@ -8,11 +8,13 @@ import OfficialReport from './components/OfficialReport';
 import BatchesModal from './components/BatchesModal';
 import NetworkModal from './components/NetworkModal';
 import BackupManagerModal from './components/BackupManagerModal';
+import UsersModal from './components/UsersModal';
+import ChangePasswordModal from './components/ChangePasswordModal';
 import ChatPanel from './components/ChatPanel';
 import LoginPage from './components/LoginPage';
 import SplashScreen from './components/SplashScreen';
 import Toast from './components/Toast';
-import { isLoggedIn as checkLoggedIn, setToken, clearToken, authHeaders } from './utils/auth';
+import { isLoggedIn as checkLoggedIn, setToken, clearToken, authHeaders, getUser, setUser } from './utils/auth';
 
 export default function App() {
   // Splash Screen initial load
@@ -20,6 +22,7 @@ export default function App() {
 
   // Auth
   const [loggedIn, setLoggedIn] = useState(checkLoggedIn());
+  const [currentUser, setCurrentUser] = useState(getUser());
 
   // Current view: 'dashboard' | 'kiosk' | 'media'
   const [view, setView] = useState('dashboard');
@@ -36,6 +39,8 @@ export default function App() {
   const [showBatchesModal, setShowBatchesModal] = useState(false);
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [showBackupModal, setShowBackupModal] = useState(false);
+  const [showUsersModal, setShowUsersModal] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
   // Backend state
@@ -54,13 +59,18 @@ export default function App() {
   }, []);
 
   // Auth handlers
-  const handleLogin = (token) => {
+  const handleLogin = (token, user) => {
     setToken(token);
+    if (user) {
+      setUser(user);
+      setCurrentUser(user);
+    }
     setLoggedIn(true);
   };
 
   const handleLogout = () => {
     clearToken();
+    setCurrentUser(null);
     setLoggedIn(false);
     setView('dashboard');
   };
@@ -102,6 +112,20 @@ export default function App() {
       } else if (statsRes.status === 401) {
         handleLogout();
         return;
+      }
+
+      // 2.1 Fetch current user profile (protected)
+      try {
+        const userRes = await fetch('/api/auth/me', { headers });
+        if (userRes.ok) {
+          const uData = await userRes.json();
+          if (uData && uData.user) {
+            setUser(uData.user);
+            setCurrentUser(uData.user);
+          }
+        }
+      } catch (e) {
+        // Fallback to local storage user
       }
 
       // 3. Fetch network info for Wi-Fi sharing (public)
@@ -191,6 +215,9 @@ export default function App() {
       {view === 'dashboard' && (
         <Header
           activeBatch={activeBatch}
+          currentUser={currentUser}
+          onOpenUsers={() => setShowUsersModal(true)}
+          onOpenChangePassword={() => setShowChangePasswordModal(true)}
           onOpenKiosk={() => setView('kiosk')}
           onOpenBatches={() => setShowBatchesModal(true)}
           onOpenNetwork={() => setShowNetworkModal(true)}
@@ -301,6 +328,25 @@ export default function App() {
         <BackupManagerModal
           isOpen={showBackupModal}
           onClose={() => setShowBackupModal(false)}
+        />
+      )}
+
+      {/* Users & Permissions Management Modal (Admin Only) */}
+      {showUsersModal && (
+        <UsersModal
+          isOpen={showUsersModal}
+          onClose={() => setShowUsersModal(false)}
+          currentUser={currentUser}
+          showToast={showToast}
+        />
+      )}
+
+      {/* User Personal Change Password Modal */}
+      {showChangePasswordModal && (
+        <ChangePasswordModal
+          isOpen={showChangePasswordModal}
+          onClose={() => setShowChangePasswordModal(false)}
+          onSuccess={(msg) => showToast(msg, 'success')}
         />
       )}
 

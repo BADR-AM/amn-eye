@@ -8,7 +8,7 @@ import multer from 'multer';
 import { fileURLToPath } from 'url';
 import { initDb, query, get, run } from './db.js';
 import { getLocalIpAddresses } from './network.js';
-import { requireAuth, handleLogin } from './auth.js';
+import { requireAuth, requireRole, handleLogin, hashPassword, comparePassword } from './auth.js';
 import { createBackup, listBackups, deleteBackup, getAvailableDrives, startAutoBackupSchedule } from './backup.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -107,6 +107,208 @@ if (!process.env.JWT_SECRET || !process.env.ADMIN_PASSWORD_HASH) {
 
 // 0. Auth — Login (public)
 app.post('/api/auth/login', handleLogin);
+
+// 0.1 Current Authenticated User Info
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  try {
+    let userRow = null;
+    if (req.user && req.user.id) {
+      userRow = await get('SELECT id, username, full_name, role, created_at FROM users WHERE id = ?', [req.user.id]);
+    }
+    if (!userRow && req.user && req.user.username) {
+      userRow = await get('SELECT id, username, full_name, role, created_at FROM users WHERE username = ? COLLATE NOCASE', [req.user.username]);
+    }
+    if (userRow) {
+      return res.json({ user: userRow });
+    }
+    res.json({ user: req.user });
+  } catch (err) {
+    res.status(500).json({ error: 'خطأ في جلب بيانات المستخدم' });
+  }
+});
+
+// 0.2 Change Password for Currently Logged-in User
+app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ error: 'كلمة المرور الحالية وكلمة المرور الجديدة مطلوبتان' });
+    }
+    if (newPassword.length < 4) {
+      return res.status(400).json({ error: 'كلمة المرور الجديدة يجب ألا تقل عن 4 أحرف أو أرقام' });
+    }
+
+    const userId = req.user.id;
+    let userRow = null;
+    if (userId) {
+      userRow = await get('SELECT * FROM users WHERE id = ?', [userId]);
+    }
+    if (!userRow && req.user.username) {
+      userRow = await get('SELECT * FROM users WHERE username = ? COLLATE NOCASE', [req.user.username]);
+    }
+
+    if (!userRow) {
+      const defaultHash = '$2b$10$bNpheeFBkTWNE1sDaCkmcuLCYEYzuHbmA/BVAvsHawdBrLTlhOgcG';
+      const validOld = await comparePassword(oldPassword, defaultHash);
+      if (!validOld) {
+        return res.status(400).json({ error: 'كلمة المرور الحالية غير صحيحة' });
+      }
+      const newHash = await hashPassword(newPassword);
+      await run(
+        'INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)',
+        ['admin', newHash, 'مدير المنظومة', 'admin']
+      );
+      return res.json({ message: 'تم تحديث كلمة المرور بنجاح' });
+    }
+
+    const validOld = await comparePassword(oldPassword, userRow.password_hash);
+    if (!validOld) {
+      return res.status(400).json({ error: 'كلمة المرور الحالية غير صحيحة' });
+    }
+
+    const newHash = await hashPassword(newPassword);
+    await run('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [newHash, userRow.id]);
+
+    res.json({ message: 'تم تحديث كلمة المرور بنجاح' });
+  } catch (err) {
+    console.error('Change password error:', err);
+    res.status(500).json({ error: 'خطأ أثناء تغيير كلمة المرور' });
+  }
+});
+
+// 0.3 Users Management (Admin Only)
+app.get('/api/users', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const users = await query('SELECT id, username, full_name, role, created_at, updated_at FROM users ORDER BY id ASC');
+    res.json(users);
+  } catch (err) {
+    console.error('Get users error:', err);
+    res.status(500).json({ error: 'خطأ في جلب قائمة المستخدمين' });
+  }
+});
+
+app.post('/api/users', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { username, password, full_name, role } = req.body;
+    if (!username || !username.trim()) {
+      return res.status(400).json({ error: 'اسم المستخدم مطلوب' });
+    }
+    if (!password || password.trim().length < 4) {
+      return res.status(400).json({ error: 'كلمة المرور مطلوبة ويجب ألا تقل عن 4 رموز' });
+    }
+    if (!full_name || !full_name.trim()) {
+      return res.status(400).json({ error: 'الاسم الكامل مطلوب' });
+    }
+
+    const cleanUsername = username.trim();
+    const existing = await get('SELECT id FROM users WHERE username = ? COLLATE NOCASE', [cleanUsername]);
+    if (existing) {
+      return res.status(400).json({ error: 'اسم المستخدم مسجل بالفعل، يرجى اختيار اسم آخر' });
+    }
+
+    const allowedRoles = ['admin', 'officer', 'operator'];
+    const assignedRole = allowedRoles.includes(role) ? role : 'officer';
+    const pwdHash = await hashPassword(password.trim());
+
+    const result = await run(
+      'INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)',
+      [cleanUsername, pwdHash, full_name.trim(), assignedRole]
+    );
+
+    res.status(201).json({
+      message: 'تم إنشاء الحساب بنجاح',
+      user: {
+        id: result.lastID,
+        username: cleanUsername,
+        full_name: full_name.trim(),
+        role: assignedRole
+      }
+    });
+  } catch (err) {
+    console.error('Create user error:', err);
+    res.status(500).json({ error: 'خطأ في إنشاء الحساب' });
+  }
+});
+
+app.put('/api/users/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    const { full_name, role, password } = req.body;
+
+    const user = await get('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ error: 'المستخدم غير موجود' });
+    }
+
+    const allowedRoles = ['admin', 'officer', 'operator'];
+    let newRole = user.role;
+    if (role && allowedRoles.includes(role)) {
+      if (user.role === 'admin' && role !== 'admin') {
+        const adminCount = await get('SELECT COUNT(*) as count FROM users WHERE role = "admin"');
+        if (adminCount.count <= 1) {
+          return res.status(400).json({ error: 'لا يمكن خفض صلاحية مدير المنظومة الوحيد' });
+        }
+      }
+      newRole = role;
+    }
+
+    const newFullName = full_name ? full_name.trim() : user.full_name;
+
+    if (password && password.trim().length >= 4) {
+      const newHash = await hashPassword(password.trim());
+      await run(
+        'UPDATE users SET full_name = ?, role = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [newFullName, newRole, newHash, userId]
+      );
+    } else {
+      await run(
+        'UPDATE users SET full_name = ?, role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [newFullName, newRole, userId]
+      );
+    }
+
+    res.json({
+      message: 'تم تحديث بيانات الحساب بنجاح',
+      user: {
+        id: userId,
+        username: user.username,
+        full_name: newFullName,
+        role: newRole
+      }
+    });
+  } catch (err) {
+    console.error('Update user error:', err);
+    res.status(500).json({ error: 'خطأ في تحديث الحساب' });
+  }
+});
+
+app.delete('/api/users/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+
+    if (req.user && req.user.id === userId) {
+      return res.status(400).json({ error: 'لا يمكن حذف الحساب الحالي المسجل به الدخول' });
+    }
+
+    const user = await get('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ error: 'المستخدم غير موجود' });
+    }
+
+    if (user.role === 'admin') {
+      const adminCount = await get('SELECT COUNT(*) as count FROM users WHERE role = "admin"');
+      if (adminCount.count <= 1) {
+        return res.status(400).json({ error: 'لا يمكن حذف آخر حساب مدير للنظام' });
+      }
+    }
+
+    await run('DELETE FROM users WHERE id = ?', [userId]);
+    res.json({ message: 'تم حذف الحساب بنجاح' });
+  } catch (err) {
+    console.error('Delete user error:', err);
+    res.status(500).json({ error: 'خطأ في حذف الحساب' });
+  }
+});
 
 // 1. Network Information (public — kiosk needs LAN info)
 app.get('/api/network-info', (req, res) => {
