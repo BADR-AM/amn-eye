@@ -29,6 +29,7 @@ export default function App() {
 
   // Active recruit for dossier / print modals
   const [selectedRecruit, setSelectedRecruit] = useState(null);
+  const [editModeForSelected, setEditModeForSelected] = useState(false);
   const [printRecruit, setPrintRecruit] = useState(null);
 
   // Dialog & Panel states
@@ -211,7 +212,10 @@ export default function App() {
             batches={batches}
             activeBatch={activeBatch}
             onOpenKiosk={() => setView('kiosk')}
-            onSelectRecruit={(r) => setSelectedRecruit(r)}
+            onSelectRecruit={(r, edit = false) => {
+              setSelectedRecruit(r);
+              setEditModeForSelected(edit);
+            }}
             onPrintRecruit={(r) => setPrintRecruit(r)}
             onDeleteRecruit={handleDeleteRecruit}
             onOpenAiChat={() => setIsChatOpen(true)}
@@ -247,12 +251,21 @@ export default function App() {
       {selectedRecruit && (
         <RecruitModal
           recruit={selectedRecruit}
-          onClose={() => setSelectedRecruit(null)}
+          initialEditMode={editModeForSelected}
+          onClose={() => {
+            setSelectedRecruit(null);
+            setEditModeForSelected(false);
+          }}
           onPrint={(r) => {
             setSelectedRecruit(null);
             setPrintRecruit(r);
           }}
           onDelete={handleDeleteRecruit}
+          onUpdate={(updated) => {
+            setSelectedRecruit(updated);
+            loadInitialData();
+            showToast('تم حفظ تعديلات ملف المجند والوسائط بنجاح');
+          }}
         />
       )}
 

@@ -184,12 +184,21 @@ export default function Dashboard({
     }
   };
 
+  const [debouncedSearch, setDebouncedSearch] = useState(searchTerm);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   // Fetch recruits with active filters
   const fetchRecruits = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        search: searchTerm,
+        search: debouncedSearch,
         batch_id: selectedBatchId,
         qualification: selectedQualification,
         company: selectedCompanyFilter,
@@ -218,11 +227,8 @@ export default function Dashboard({
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchRecruits();
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchTerm, selectedBatchId, selectedQualification, selectedCompanyFilter, selectedDateFilter, selectedCategoryFilter, page]);
+    fetchRecruits();
+  }, [debouncedSearch, selectedBatchId, selectedQualification, selectedCompanyFilter, selectedDateFilter, selectedCategoryFilter, page]);
 
   return (
     <div className="max-w-[1700px] w-full mx-auto px-4 sm:px-6 py-6 space-y-5 text-gray-100 font-sans">
@@ -1030,6 +1036,7 @@ export default function Dashboard({
               recruit={sidePanelRecruit}
               onClose={handleClosePanel}
               onOpenFullDossier={onSelectRecruit}
+              onOpenEdit={(r) => onSelectRecruit(r, true)}
               onPrint={onPrintRecruit}
               onOpenLockerCard={(r) => {
                 setSelectedIds([r.id]);

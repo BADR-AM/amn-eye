@@ -12,7 +12,8 @@ import {
   ArrowLeft,
   ShieldCheck,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Smartphone
 } from 'lucide-react';
 
 export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel }) {
@@ -36,29 +37,53 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
   const [countdown, setCountdown] = useState(30);
   const timerIntervalRef = useRef(null);
 
+  // Hidden native mobile camera input refs
+  const mobilePhotoInputRef = useRef(null);
+  const mobileVideoInputRef = useRef(null);
+  const [hasAudio, setHasAudio] = useState(true);
+
   // Status & error
   const [cameraError, setCameraError] = useState(null);
   const [saveError, setSaveError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Initialize camera stream
+  // Initialize camera stream with smart audio/video fallback
   const startCamera = async () => {
     setCameraError(null);
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setCameraError('المتصفح عبر الشبكة المحلية (HTTP) لا يدعم البث المباشر للويب كام. استخدم زر "فتح كاميرا الهاتف مباشرة" الموضح بالأسفل.');
+      return;
+    }
     try {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop());
       }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-        audio: true
-      });
+
+      let stream = null;
+      try {
+        // Try requesting both video and audio
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          audio: true
+        });
+        setHasAudio(true);
+      } catch (audioErr) {
+        console.warn('Audio+Video request failed, falling back to video only:', audioErr);
+        // Fallback to video only if no microphone is found or permission was denied
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          audio: false
+        });
+        setHasAudio(false);
+      }
+
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
     } catch (err) {
       console.error('Camera access error:', err);
-      setCameraError('لم نتمكن من الوصول للويب كام أو الميكروفون. يرجى التأكد من توصيل الكاميرا.');
+      setCameraError('تعذر فتح الويب كام المباشرة. يمكنك استخدام زر "فتح كاميرا الهاتف مباشرة" أو رفع ملف من الجهاز.');
     }
   };
 
@@ -74,6 +99,18 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
       }
     };
   }, []);
+
+  // Spacebar to trigger photo capture
+  useEffect(() => {
+    const handleSpacebar = (e) => {
+      if (e.code === 'Space' && stage === 'photo' && !capturedPhoto && streamRef.current) {
+        e.preventDefault();
+        capturePhoto();
+      }
+    };
+    window.addEventListener('keydown', handleSpacebar);
+    return () => window.removeEventListener('keydown', handleSpacebar);
+  }, [stage, capturedPhoto]);
 
   // Ensure video element plays stream when switching back to camera
   useEffect(() => {
@@ -230,20 +267,22 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
 
   // File fallback upload for photo/video if no camera is available
   const handlePhotoFileUpload = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = () => setCapturedPhoto(reader.result);
       reader.readAsDataURL(file);
     }
+    if (e.target) e.target.value = '';
   };
 
   const handleVideoFileUpload = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (file) {
       setCapturedVideoBlob(file);
       setCapturedVideoUrl(URL.createObjectURL(file));
     }
+    if (e.target) e.target.value = '';
   };
 
   return (
@@ -356,20 +395,43 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
 
             {/* Photo Action Buttons */}
             <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+              {/* Native Mobile / Camera Inputs */}
+              <input 
+                ref={mobilePhotoInputRef} 
+                type="file" 
+                accept="image/*" 
+                capture="user" 
+                onChange={handlePhotoFileUpload} 
+                className="hidden" 
+              />
+
               {!capturedPhoto ? (
                 <>
+                  {streamRef.current && (
+                    <button
+                      type="button"
+                      onClick={capturePhoto}
+                      className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-sm shadow-xl shadow-emerald-950/60 transform hover:scale-105 active:scale-95 transition-all"
+                    >
+                      <Camera className="w-5 h-5" />
+                      <span>التقاط من الويب كام (Space)</span>
+                    </button>
+                  )}
+
+                  {/* Direct Mobile Phone Native Camera Trigger */}
                   <button
                     type="button"
-                    onClick={capturePhoto}
-                    className="flex items-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-base shadow-xl shadow-emerald-950/60 transform hover:scale-105 active:scale-95 transition-all"
+                    onClick={() => mobilePhotoInputRef.current?.click()}
+                    className="flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm shadow-xl shadow-blue-950/50 transform hover:scale-105 active:scale-95 transition-all border border-blue-400/40"
+                    title="يفتح كاميرا الهاتف مباشرة بدون الحاجة لـ HTTPS"
                   >
-                    <Camera className="w-6 h-6" />
-                    <span>التقاط الصورة الشخصية (Space)</span>
+                    <Smartphone className="w-5 h-5 text-cyan-200" />
+                    <span>فتح كاميرا الهاتف (التقاط فوري)</span>
                   </button>
 
                   <label className="flex items-center gap-2 px-4 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 cursor-pointer transition-colors">
                     <Upload className="w-4 h-4" />
-                    <span>رفع صورة من الجهاز</span>
+                    <span>اختيار صورة من الجهاز</span>
                     <input type="file" accept="image/*" onChange={handlePhotoFileUpload} className="hidden" />
                   </label>
                 </>
@@ -466,22 +528,45 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
 
             {/* Video Action Buttons */}
             <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+              {/* Native Mobile Video Input */}
+              <input 
+                ref={mobileVideoInputRef} 
+                type="file" 
+                accept="video/*" 
+                capture="user" 
+                onChange={handleVideoFileUpload} 
+                className="hidden" 
+              />
+
               {!capturedVideoUrl ? (
                 <>
                   {!isRecording ? (
                     <>
+                      {streamRef.current && (
+                        <button
+                          type="button"
+                          onClick={startVideoRecording}
+                          className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white font-extrabold text-sm shadow-xl shadow-rose-950/60 transform hover:scale-105 active:scale-95 transition-all"
+                        >
+                          <CircleDot className="w-5 h-5 text-white" />
+                          <span>تسجيل من الويب كام (30 ث)</span>
+                        </button>
+                      )}
+
+                      {/* Direct Mobile Phone Native Video Camera Trigger */}
                       <button
                         type="button"
-                        onClick={startVideoRecording}
-                        className="flex items-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white font-extrabold text-base shadow-xl shadow-rose-950/60 transform hover:scale-105 active:scale-95 transition-all"
+                        onClick={() => mobileVideoInputRef.current?.click()}
+                        className="flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-sm shadow-xl shadow-purple-950/50 transform hover:scale-105 active:scale-95 transition-all border border-purple-400/40"
+                        title="يفتح كاميرا الهاتف لتسجيل الفيديو مباشرة بدون الحاجة لـ HTTPS"
                       >
-                        <CircleDot className="w-5 h-5 text-white" />
-                        <span>بدء تسجيل الفيديو (30 ثانية)</span>
+                        <Smartphone className="w-5 h-5 text-purple-200" />
+                        <span>فتح كاميرا الهاتف لتسجيل فيديو</span>
                       </button>
 
                       <label className="flex items-center gap-2 px-4 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 cursor-pointer transition-colors">
                         <Upload className="w-4 h-4" />
-                        <span>رفع فيديو من الجهاز</span>
+                        <span>اختيار فيديو من الجهاز</span>
                         <input type="file" accept="video/*" onChange={handleVideoFileUpload} className="hidden" />
                       </label>
                     </>

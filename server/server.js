@@ -831,6 +831,14 @@ app.put('/api/recruits/:id', requireAuth, upload.fields([{ name: 'photo', maxCou
     let photoPath = existing.photo_path;
     let videoPath = existing.video_path;
 
+    if (data.remove_photo === 'true' || data.remove_photo === true) {
+      photoPath = '';
+    }
+
+    if (data.remove_video === 'true' || data.remove_video === true) {
+      videoPath = '';
+    }
+
     if (req.files) {
       if (req.files.photo && req.files.photo[0]) {
         photoPath = `/uploads/photos/${req.files.photo[0].filename}`;

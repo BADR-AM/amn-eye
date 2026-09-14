@@ -86,14 +86,24 @@ async function createWindow() {
     }
   });
 
-  // Grant webcam/microphone permissions only for local origins
-  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    const url = webContents.getURL();
-    const allowedOrigins = ['http://localhost:5173', `http://localhost:${PORT}`];
-    const isLocal = allowedOrigins.some(o => url.startsWith(o));
-    const allowedPerms = ['media', 'mediaKeySystem', 'camera', 'microphone'];
-    callback(isLocal && allowedPerms.includes(permission));
-  });
+// Hardware acceleration and performance optimization switches
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+
+// Grant webcam/microphone permissions for local origins and LAN
+session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+  const url = webContents.getURL();
+  const isLocal = url.startsWith('http://localhost') || 
+                  url.startsWith('http://127.0.0.1') || 
+                  url.startsWith('file://') ||
+                  url.startsWith('http://192.168.') ||
+                  url.startsWith('http://10.') ||
+                  url.startsWith('http://172.');
+  const allowedPerms = ['media', 'mediaKeySystem', 'camera', 'microphone'];
+  callback(isLocal && allowedPerms.includes(permission));
+});
 
   const url = isDev ? 'http://localhost:5173' : `http://localhost:${PORT}`;
 

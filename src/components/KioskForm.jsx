@@ -338,29 +338,96 @@ export default function KioskForm({ activeBatch, onComplete, onCancel, initialDa
     }
   };
 
-  // Global key listener for Enter and Shift+Enter
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      // If it's a textarea, allow Shift+Enter for new line, normal Enter for Next
-      if (e.target.tagName !== 'TEXTAREA' || e.ctrlKey || !e.shiftKey) {
+  // Global key listener for Enter, Numbers, and Shortcuts
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      // Escape closes/cancels kiosk
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel();
+        return;
+      }
+
+      // Enter key progression
+      if (e.key === 'Enter') {
+        const isTextarea = e.target && e.target.tagName === 'TEXTAREA';
+        if (isTextarea && e.shiftKey) {
+          return; // Shift+Enter allows new lines in textarea
+        }
         e.preventDefault();
         handleNext();
+        return;
       }
-    } else if (e.key === 'ArrowUp' && e.altKey) {
-      e.preventDefault();
-      handlePrev();
-    } else if (e.key === 'Escape') {
-      onCancel();
-    }
-  };
+
+      // Alt + ArrowUp / Alt + ArrowRight: Previous question
+      if ((e.key === 'ArrowUp' || e.key === 'ArrowRight') && e.altKey) {
+        e.preventDefault();
+        handlePrev();
+        return;
+      }
+
+      // Numeric shortcuts for choices (supports English 1-9, Arabic numerals ١-٩, and Numpad)
+      if (currentQ.options && currentQ.options.length > 0) {
+        const arabicToEng = { '١': 1, '٢': 2, '٣': 3, '٤': 4, '٥': 5, '٦': 6, '٧': 7, '٨': 8, '٩': 9 };
+        let num = null;
+
+        if (['1', '2', '3', '4', '5', '6', '7', '8', '9'].includes(e.key)) {
+          num = parseInt(e.key, 10);
+        } else if (arabicToEng[e.key] !== undefined) {
+          num = arabicToEng[e.key];
+        } else if (e.code && e.code.startsWith('Numpad')) {
+          const digit = e.code.replace('Numpad', '');
+          if (['1', '2', '3', '4', '5', '6', '7', '8', '9'].includes(digit)) {
+            num = parseInt(digit, 10);
+          }
+        }
+
+        if (num !== null && num >= 1 && num <= currentQ.options.length) {
+          const isInputFocused = document.activeElement === inputRef.current;
+          // In choice questions, or when input is empty or altKey is held
+          if (currentQ.type === 'choice' || !isInputFocused || !inputRef.current?.value?.trim() || e.altKey) {
+            e.preventDefault();
+            const opt = currentQ.options[num - 1];
+            handleChange(opt);
+            // Brief visual feedback then advance
+            setTimeout(() => {
+              if (currentStep < questions.length - 1) {
+                setCurrentStep(prev => prev + 1);
+              } else {
+                onComplete({ ...formData, [currentQ.id]: opt });
+              }
+            }, 180);
+            return;
+          }
+        }
+
+        // Arrow navigation for choice-only questions
+        if (currentQ.type === 'choice') {
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            const curIdx = currentQ.options.indexOf(formData[currentQ.id]);
+            const nextIdx = (curIdx + 1) % currentQ.options.length;
+            handleChange(currentQ.options[nextIdx]);
+          } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const curIdx = currentQ.options.indexOf(formData[currentQ.id]);
+            const prevIdx = (curIdx - 1 + currentQ.options.length) % currentQ.options.length;
+            handleChange(currentQ.options[prevIdx]);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [currentStep, formData, currentQ]);
 
   const progressPercent = Math.round(((currentStep + 1) / questions.length) * 100);
   const IconComp = currentQ.icon || User;
 
   return (
     <div 
-      className="fixed inset-0 z-50 bg-darkslate-950/95 backdrop-blur-md flex flex-col justify-between p-6 sm:p-10 select-none overflow-y-auto"
-      onKeyDown={handleKeyDown}
+      className="fixed inset-0 z-50 bg-darkslate-950/98 flex flex-col justify-between p-6 sm:p-10 select-none overflow-y-auto"
     >
       {/* Top Header & Progress */}
       <div className="max-w-4xl w-full mx-auto">
@@ -443,16 +510,21 @@ export default function KioskForm({ activeBatch, onComplete, onCancel, initialDa
                       // Auto advance on single choice click
                       setTimeout(handleNext, 150);
                     }}
-                    className={`flex items-center justify-between p-3.5 rounded-xl border text-sm font-bold transition-all ${
+                    className={`flex items-center justify-between p-4 rounded-xl border text-sm font-bold transition-all ${
                       isSelected
-                        ? 'bg-emerald-600/30 border-emerald-500 text-emerald-300 shadow-lg shadow-emerald-950/50 scale-[1.02]'
+                        ? 'bg-emerald-600/30 border-emerald-500 text-emerald-300 shadow-lg shadow-emerald-950/50 scale-[1.02] ring-2 ring-emerald-500/40'
                         : 'bg-darkslate-850 hover:bg-slate-800 border-slate-700/80 text-slate-200 hover:border-slate-600'
                     }`}
                   >
-                    <span className="truncate">{opt}</span>
-                    <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
-                      {idx + 1}
-                    </span>
+                    <span className="truncate text-base">{opt}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-xs px-2.5 py-1 rounded-lg bg-slate-800/90 text-emerald-400 font-mono font-black border border-slate-700 shadow-sm">
+                        {idx + 1}
+                      </span>
+                      <span className="text-[11px] text-slate-400 hidden sm:inline">
+                        (اضغط {idx + 1})
+                      </span>
+                    </div>
                   </button>
                 );
               })}

@@ -7,7 +7,8 @@ import {
   IdCard,
   FileText,
   Scan,
-  ShieldAlert
+  ShieldAlert,
+  Edit3
 } from 'lucide-react';
 
 export default function SideInvestigationPanel({ 
@@ -18,7 +19,8 @@ export default function SideInvestigationPanel({
   onOpenLockerCard,
   onOpenDocuments,
   onOpenTickets,
-  onOpenPsychological
+  onOpenPsychological,
+  onOpenEdit
 }) {
   if (!recruit) return null;
 
@@ -204,6 +206,14 @@ export default function SideInvestigationPanel({
         >
           <Printer className="w-4 h-4" />
           <span>طباعة الاستمارة الرسمية A4</span>
+        </button>
+
+        <button
+          onClick={() => onOpenEdit ? onOpenEdit(recruit) : onOpenFullDossier(recruit)}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 font-bold text-xs border border-amber-500/40 shadow-sm transition-all"
+        >
+          <Edit3 className="w-4 h-4 text-amber-400" />
+          <span>تعديل شامل للبيانات والوسائط</span>
         </button>
 
         <button
