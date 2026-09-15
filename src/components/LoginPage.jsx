@@ -75,9 +75,12 @@ export default function LoginPage({ onLogin }) {
             </div>
 
             {/* System Name Badge */}
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/15 border border-blue-500/40 text-blue-300 text-xs font-mono font-bold tracking-widest uppercase mb-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/15 border border-blue-500/40 text-blue-300 text-xs font-mono font-bold tracking-widest uppercase mb-2">
               <Eye className="w-3.5 h-3.5" />
               <span>SECURITY EYE</span>
+              <span className="px-1.5 py-0.2 text-[10px] rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                VER 02.0
+              </span>
             </div>
 
             <h1 className="text-xl font-black text-white tracking-wide">

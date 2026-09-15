@@ -469,6 +469,9 @@ export default function App() {
       {/* System Footer Branding */}
       <footer className="w-full text-center py-2.5 bg-darkslate-950/90 dark:bg-zinc-950/90 border-t border-slate-850 dark:border-zinc-850 no-print text-[11px] text-slate-400 font-mono flex items-center justify-center gap-2 flex-wrap">
         <span className="font-bold text-white">SECURITY EYE</span>
+        <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+          VER 02.0
+        </span>
         <span>•</span>
         <span className="text-amber-400 font-bold">مركز تدريب المجندين</span>
         <span>•</span>

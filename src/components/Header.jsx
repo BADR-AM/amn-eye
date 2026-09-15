@@ -70,8 +70,8 @@ export default function Header({
               </span>
               <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
                 منظومة فحص وتسجيل المجندين
-                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  VER 01.0
+                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">
+                  VER 02.0
                 </span>
               </h1>
             </div>

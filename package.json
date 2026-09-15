@@ -1,6 +1,6 @@
 {
   "name": "recruit-investigation-system",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "نظام تسجيل وفحص المجندين المستجدين - وحدة الأمن والتحريات",
   "main": "electron/main.cjs",
   "type": "module",
@@ -83,7 +83,7 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
-      "artifactName": "SecurityEye_VER_01.0_SETUP.exe"
+      "artifactName": "SecurityEye_VER_02.0_SETUP.exe"
     },
     "files": [
       "dist/**/*",

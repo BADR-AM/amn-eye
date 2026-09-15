@@ -430,8 +430,8 @@ export default function MobileApp({
                 <span className="text-[9px] font-mono font-black uppercase px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
                   MOBILE OPS
                 </span>
-                <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 rounded border border-emerald-500/30">
-                  VER 01.0
+                <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 rounded border border-emerald-500/30 font-mono">
+                  VER 02.0
                 </span>
               </div>
               <h1 className="text-sm font-black text-white leading-tight mt-0.5">
