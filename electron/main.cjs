@@ -6,6 +6,14 @@ let mainWindow = null;
 const PORT = process.env.PORT || 5000;
 const isDev = process.env.ELECTRON_DEV === 'true';
 
+// Hardware acceleration, WebGPU and performance switches (must be set before app is ready)
+app.commandLine.appendSwitch('enable-unsafe-webgpu');
+app.commandLine.appendSwitch('enable-features', 'Vulkan,UseSkiaRenderer');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -86,13 +94,7 @@ async function createWindow() {
     }
   });
 
-// Hardware acceleration and performance optimization switches
-app.commandLine.appendSwitch('enable-gpu-rasterization');
-app.commandLine.appendSwitch('enable-zero-copy');
-app.commandLine.appendSwitch('disable-background-timer-throttling');
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
-
-// Grant webcam/microphone permissions for local origins and LAN
+  // Grant webcam/microphone permissions for local origins and LAN
 session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
   const url = webContents.getURL();
   const isLocal = url.startsWith('http://localhost') || 

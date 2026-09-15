@@ -249,6 +249,8 @@ export default function App() {
           }}
           onOpenNetwork={() => setShowNetworkModal(true)}
           onOpenBatches={() => setShowBatchesModal(true)}
+          onOpenBackup={() => setShowBackupModal(true)}
+          onOpenUsers={() => setShowUsersModal(true)}
           onOpenChangePassword={() => setShowChangePasswordModal(true)}
           showToast={showToast}
         />
@@ -269,6 +271,24 @@ export default function App() {
           <NetworkModal
             networkInfo={networkInfo}
             onClose={() => setShowNetworkModal(false)}
+          />
+        )}
+
+        {/* Backup & External Drive Management Modal (if invoked from mobile) */}
+        {showBackupModal && (
+          <BackupManagerModal
+            isOpen={showBackupModal}
+            onClose={() => setShowBackupModal(false)}
+          />
+        )}
+
+        {/* Users & Permissions Management Modal (Admin Only - if invoked from mobile) */}
+        {showUsersModal && (
+          <UsersModal
+            isOpen={showUsersModal}
+            onClose={() => setShowUsersModal(false)}
+            currentUser={currentUser}
+            showToast={showToast}
           />
         )}
 

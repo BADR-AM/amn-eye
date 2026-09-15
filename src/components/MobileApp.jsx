@@ -18,6 +18,7 @@ import {
   CheckCircle2, 
   X, 
   ChevronLeft, 
+  ChevronRight,
   RotateCcw, 
   Edit3, 
   Trash2, 
@@ -30,11 +31,36 @@ import {
   Share2,
   Sparkles,
   Send,
-  Loader2
+  Loader2,
+  BarChart3,
+  Download,
+  IdCard,
+  FileText,
+  FileCheck,
+  Palette,
+  Check,
+  Activity,
+  Layers,
+  LayoutGrid,
+  List,
+  Stethoscope,
+  Scan,
+  HardDrive,
+  Printer,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
 import LiquidOrb from './LiquidOrb';
 import MediaCapture from './MediaCapture';
+import ExportModal from './ExportModal';
+import CompanyColorsModal from './CompanyColorsModal';
+import ActivityLogModal from './ActivityLogModal';
+import RecruitDocumentsModal from './RecruitDocumentsModal';
+import TicketModal from './TicketModal';
+import PsychologicalFollowupModal from './PsychologicalFollowupModal';
+import OfficialReport from './OfficialReport';
+import { fetchCompanyColors, DEFAULT_COMPANY_COLORS, getCompanyStyle } from '../utils/companyColors';
 import { authHeaders } from '../utils/auth';
 
 export default function MobileApp({
@@ -48,36 +74,108 @@ export default function MobileApp({
   onSwitchToDesktop,
   onOpenNetwork,
   onOpenBatches,
+  onOpenBackup,
+  onOpenUsers,
   onOpenChangePassword,
   showToast
 }) {
-  const [activeTab, setActiveTab] = useState('home'); // 'home' | 'new' | 'directory' | 'ai' | 'tools'
+  // Active Navigation Tab
+  // 'home' | 'new' | 'directory' | 'analytics' | 'ai' | 'tools'
+  const [activeTab, setActiveTab] = useState('home');
+
+  // Recruits & Directory state
   const [recruits, setRecruits] = useState([]);
   const [loadingRecruits, setLoadingRecruits] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'table'
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+
+  // Advanced Filters
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+  const [filterBatch, setFilterBatch] = useState('all');
+  const [filterCompany, setFilterCompany] = useState('all');
+  const [filterQualification, setFilterQualification] = useState('all');
+  const [filterSecurity, setFilterSecurity] = useState('all');
+  const [filterMedical, setFilterMedical] = useState('all');
+  const [filterVideo, setFilterVideo] = useState('all'); // 'all' | 'with_video' | 'no_video'
+  const [filterPhoto, setFilterPhoto] = useState('all'); // 'all' | 'with_photo' | 'no_photo'
+
+  // Multi-selection for bulk actions
+  const [selectedIds, setSelectedIds] = useState([]);
+
+  // Active recruit for bottom dossier sheet
   const [selectedRecruit, setSelectedRecruit] = useState(null);
   const [isEditingRecruit, setIsEditingRecruit] = useState(false);
   const [editFormData, setEditFormData] = useState({});
 
-  // Media capture workflow state in mobile
+  // Modals state for recruit actions
+  const [ticketRecruit, setTicketRecruit] = useState(null);
+  const [documentsRecruit, setDocumentsRecruit] = useState(null);
+  const [psychologicalRecruit, setPsychologicalRecruit] = useState(null);
+  const [printRecruit, setPrintRecruit] = useState(null);
+  const [activityRecruit, setActivityRecruit] = useState(null);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [showCompanyColorsModal, setShowCompanyColorsModal] = useState(false);
+
+  // Company badge colors
+  const [companyColors, setCompanyColors] = useState(DEFAULT_COMPANY_COLORS);
+
+  useEffect(() => {
+    fetchCompanyColors().then(data => {
+      if (data && Array.isArray(data)) setCompanyColors(data);
+    });
+  }, []);
+
+  // Media capture workflow for New Recruit
   const [isMediaCapturing, setIsMediaCapturing] = useState(false);
   const [pendingFormData, setPendingFormData] = useState(null);
 
-  // New recruit mobile form state
+  // 20 Inspection Fields definition
+  const inspectionFields = [
+    { key: 'criminal_record', label: 'أرباب سوابق / سوابق جنائية', icon: Shield },
+    { key: 'political_suspect', label: 'شبهة أو توجه سياسي', icon: AlertTriangle },
+    { key: 'registered_relatives', label: 'أقارب مسجلين أو قضايا جنائية', icon: Users },
+    { key: 'travel_abroad', label: 'سفر سابق خارج البلاد', icon: Globe },
+    { key: 'unbalanced_behavior', label: 'سلوك غير متزن أو عدواني', icon: Brain },
+    { key: 'addiction_history', label: 'شبهة إدمان أو تعاطي', icon: Heart },
+    { key: 'extremist_ideology', label: 'أفكار متطرفة أو فكر ديني متشدد', icon: Shield },
+    { key: 'escaped_service', label: 'هروب سابق من الخدمة أو معسكرات', icon: AlertTriangle },
+    { key: 'social_media_influence', label: 'نشاط معادٍ على السوشيال ميديا', icon: Globe },
+    { key: 'chronic_illness', label: 'أمراض مزمنة أو إصابات مؤثرة', icon: Heart },
+    { key: 'tattoos', label: 'وشم أو علامات مميزة بالجسم', icon: Shield },
+    { key: 'psychological_issues', label: 'أمراض نفسية أو عصبية سابقة', icon: Brain },
+    { key: 'suicide_attempt', label: 'محاولات انتحار أو إيذاء النفس', icon: AlertTriangle },
+    { key: 'illiterate', label: 'أمي / لا يجيد القراءة والكتابة', icon: Briefcase },
+    { key: 'military_issues', label: 'مشاكل عسكرية سابقة', icon: Shield },
+    { key: 'police_issues', label: 'قضايا بقسم الشرطة أو المركز', icon: Shield },
+    { key: 'quarrels_history', label: 'تعدد المشاجرات والنزاعات بالقرية', icon: AlertTriangle },
+    { key: 'family_instability', label: 'تفكك أسري أو مشاكل أسرية حادة', icon: Users },
+    { key: 'suspicious_gatherings', label: 'مشاركة في تجمهرات أو أعمال شغب', icon: AlertTriangle },
+    { key: 'unknown_lineage', label: 'مجهول النسب أو إهمال بالرعاية', icon: Users }
+  ];
+
+  // Initial New Recruit Form Data
   const initialNewForm = {
     name: '',
+    military_number: '',
     national_id: '',
     birth_date: '',
+    governorate: 'الغربية',
     address: '',
+    phone: '',
     current_job: '',
     other_jobs: '',
     qualification: 'متوسط',
     religion: 'مسلم',
-    wife: 'أعزب',
+    marital_status: 'أعزب',
     travel_abroad: 'لا',
+    travel_details: '',
     literacy: 'يجيد القراءة والكتابة',
     medical_status: 'لائق',
+    is_psychological_case: 0,
+    psychological_notes: '',
     inspection: 'سليم',
     family_social_status: 'مستقرة',
     family_security_status: 'سليم أمنياً',
@@ -87,40 +185,61 @@ export default function MobileApp({
     mother_job: '',
     siblings_check: 'سليم',
     police_number: '',
-    company: 'السرية الأولى',
+    company: 'السرية الأولى ( ١ )',
     notes: ''
   };
+
+  // Populate inspection defaults
+  inspectionFields.forEach(f => {
+    initialNewForm[f.key] = 'سليم';
+  });
+
   const [newForm, setNewForm] = useState(initialNewForm);
 
-  // AI Chat state for mobile
+  // AI Chat state
   const [aiMessages, setAiMessages] = useState([
     { 
       role: 'model', 
-      content: 'أهلاً بك يا فندم في **المساعد الأمني الذكي** على الهاتف المحمول.\n\nيمكنك سؤالي عن أي إحصائية أو استعلام فوري عن المجندين مثل:\n* **حالات الاشتباه الأمني والجنائي**\n* **الحالات غير المتزنة نفسياً**\n* **بيان أصحاب المهن والحرف**\n* **المسافرين خارج مصر**',
-      suggestions: ['تيكتات الاشتباه', 'الحالات غير المتزنة', 'حصر الحرف والمهن', 'المسافرين للخارج']
+      content: 'أهلاً بك يا فندم في **المساعد الأمني الذكي** بالهاتف المحمول.\n\nيمكنك سؤالي عن أي استفسار أو إحصائية لحظية عن المجندين مثل:\n* **بيان السرايا وقوتها التجنيدية**\n* **حالات الاشتباه الأمني والجنائي**\n* **المجندين ذوي المتابعة النفسية والعصبية**\n* **حصر المؤهلات وأصحاب الحرف والمهن**\n* **المسافرين خارج البلاد**',
+      suggestions: ['تيكتات الاشتباه', 'الحالات غير المتزنة', 'حصر الحرف والمهن', 'إحصائية السرايا']
     }
   ]);
   const [aiInput, setAiInput] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const aiScrollRef = useRef(null);
 
-  // Fetch recruits for mobile list
+  // Fetch Recruits with full filters
   const fetchMobileRecruits = async () => {
     setLoadingRecruits(true);
     try {
       const params = new URLSearchParams({
         search: searchTerm,
-        batch_id: activeBatch?.id ? activeBatch.id.toString() : '',
-        category: selectedCategory !== 'all' ? selectedCategory : '',
-        limit: '50'
+        page: page.toString(),
+        limit: '20'
       });
+
+      if (filterBatch !== 'all') {
+        params.append('batch_id', filterBatch);
+      } else if (activeBatch?.id) {
+        params.append('batch_id', activeBatch.id.toString());
+      }
+
+      if (filterCompany !== 'all') params.append('company', filterCompany);
+      if (filterQualification !== 'all') params.append('qualification', filterQualification);
+      if (filterSecurity !== 'all') params.append('category', filterSecurity);
+      if (filterMedical !== 'all') params.append('medical_status', filterMedical);
+      if (filterVideo !== 'all') params.append('video_status', filterVideo);
+      if (filterPhoto !== 'all') params.append('photo_status', filterPhoto);
+
       const res = await fetch(`/api/recruits?${params.toString()}`, { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         setRecruits(data.recruits || []);
+        setTotalPages(data.totalPages || 1);
+        setTotalCount(data.total || (data.recruits || []).length);
       }
     } catch (err) {
-      console.error('Error fetching mobile recruits:', err);
+      console.warn('Error fetching mobile recruits:', err);
     } finally {
       setLoadingRecruits(false);
     }
@@ -128,784 +247,1406 @@ export default function MobileApp({
 
   useEffect(() => {
     fetchMobileRecruits();
-  }, [searchTerm, selectedCategory, activeBatch]);
+  }, [searchTerm, page, filterBatch, filterCompany, filterQualification, filterSecurity, filterMedical, filterVideo, filterPhoto, activeBatch]);
 
+  // AI chat auto-scroll
   useEffect(() => {
-    if (activeTab === 'ai') {
-      aiScrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (activeTab === 'ai' && aiScrollRef.current) {
+      aiScrollRef.current.scrollTop = aiScrollRef.current.scrollHeight;
     }
-  }, [aiMessages, isAiLoading, activeTab]);
+  }, [aiMessages, activeTab]);
 
-  // AI Send Handler
-  const handleAiSend = async (overrideText = null) => {
-    const text = overrideText || aiInput;
-    if (!text.trim() || isAiLoading) return;
-    if (!overrideText) setAiInput('');
+  // Handle AI question submit
+  const handleSendAiMessage = async (textToSend = null) => {
+    const query = textToSend || aiInput.trim();
+    if (!query || isAiLoading) return;
+
+    const userMsg = { role: 'user', content: query };
+    setAiMessages(prev => [...prev, userMsg]);
+    if (!textToSend) setAiInput('');
     setIsAiLoading(true);
 
-    const newMsgs = [...aiMessages, { role: 'user', content: text.trim() }];
-    const nextIdx = newMsgs.length;
-    setAiMessages([...newMsgs, { role: 'model', content: '', suggestions: [] }]);
-
     try {
-      const response = await fetch('/api/chat', {
+      const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ message: text.trim(), history: newMsgs.slice(0, -1) })
+        headers: authHeaders(),
+        body: JSON.stringify({ 
+          message: query, 
+          batch_id: activeBatch ? activeBatch.id : null 
+        })
       });
 
-      if (!response.body) throw new Error('لا يوجد تدفق للردود');
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let contentAcc = '';
-      let suggestionsList = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const raw = line.slice(6).trim();
-            if (raw === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(raw);
-              if (parsed.type === 'FINAL_RESPONSE') {
-                contentAcc += parsed.content;
-              } else if (parsed.type === 'SUGGESTION') {
-                suggestionsList.push(parsed.content);
-              }
-              setAiMessages(prev => {
-                const updated = [...prev];
-                updated[nextIdx] = {
-                  role: 'model',
-                  content: contentAcc,
-                  suggestions: suggestionsList
-                };
-                return updated;
-              });
-            } catch (e) {
-              // ignore
-            }
+      if (res.ok) {
+        const data = await res.json();
+        setAiMessages(prev => [
+          ...prev, 
+          { 
+            role: 'model', 
+            content: data.reply || 'تم استلام وتحليل استفسارك بنجاح.',
+            dataSummary: data.dataSummary || null,
+            suggestions: data.suggestions || ['إحصائية الدفع الحالي', 'بيان الحالات غير اللائقة', 'توزيع المؤهلات']
           }
-        }
+        ]);
+      } else {
+        throw new Error('خطأ في استجابة المساعد الذكي');
       }
     } catch (err) {
-      setAiMessages(prev => {
-        const updated = [...prev];
-        updated[nextIdx] = {
-          role: 'model',
-          content: 'عذراً، حدث خطأ أثناء الاتصال بالمساعد: ' + err.message,
-          suggestions: ['إعادة المحاولة']
-        };
-        return updated;
-      });
+      setAiMessages(prev => [
+        ...prev, 
+        { 
+          role: 'model', 
+          content: '⚠️ تعذر الاتصال بالمساعد الذكي حالياً: ' + err.message 
+        }
+      ]);
     } finally {
       setIsAiLoading(false);
     }
   };
 
-  // Start media capture step for new recruit
+  // Start Media Capture station
   const handleProceedToMedia = (e) => {
     e.preventDefault();
-    if (!newForm.name.trim()) {
-      showToast?.('يرجى إدخال اسم المجند الرباعي', 'error');
+    if (!newForm.name || !newForm.name.trim()) {
+      showToast('يرجى كتابة اسم المجند ثلاثي على الأقل', 'error');
       return;
     }
-    const finalForm = {
+    setPendingFormData({
       ...newForm,
-      batch_id: activeBatch?.id || 1,
-      attendance_date: new Date().toISOString().split('T')[0]
-    };
-    setPendingFormData(finalForm);
+      batch_id: activeBatch?.id
+    });
     setIsMediaCapturing(true);
   };
 
-  // Save changes to recruit
+  // Media Capture Save Success
+  const handleMediaSaved = (savedRecruit) => {
+    setIsMediaCapturing(false);
+    setPendingFormData(null);
+    setNewForm(initialNewForm);
+    setActiveTab('directory');
+    fetchMobileRecruits();
+    onRefresh();
+    showToast('تم تسجيل وحفظ ملف المجند والصورة والفيديو بنجاح');
+  };
+
+  // Delete recruit
+  const handleDeleteRecruit = async (recruitId) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذا المجند نهائياً وسجلاته من المنظومة؟')) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/recruits/${recruitId}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+      });
+      if (!res.ok) throw new Error('فشل الحذف');
+      if (selectedRecruit?.id === recruitId) setSelectedRecruit(null);
+      fetchMobileRecruits();
+      onRefresh();
+      showToast('تم حذف ملف المجند بنجاح');
+    } catch (err) {
+      showToast('خطأ أثناء الحذف: ' + err.message, 'error');
+    }
+  };
+
+  // Save edits to recruit dossier
   const handleSaveEdit = async () => {
     if (!selectedRecruit) return;
     try {
       const res = await fetch(`/api/recruits/${selectedRecruit.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        headers: authHeaders(),
         body: JSON.stringify(editFormData)
       });
-      if (res.ok) {
-        const updated = await res.json();
-        setSelectedRecruit(updated);
-        setIsEditingRecruit(false);
-        fetchMobileRecruits();
-        showToast?.('تم حفظ التعديلات بنجاح', 'success');
-      } else {
-        showToast?.('فشل حفظ التعديلات', 'error');
-      }
+      if (!res.ok) throw new Error('فشل حفظ التعديلات');
+      const updated = await res.json();
+      setSelectedRecruit(updated.recruit || { ...selectedRecruit, ...editFormData });
+      setIsEditingRecruit(false);
+      fetchMobileRecruits();
+      onRefresh();
+      showToast('تم حفظ تعديلات ملف المجند بنجاح');
     } catch (err) {
-      showToast?.('خطأ: ' + err.message, 'error');
+      showToast('خطأ في حفظ التعديلات: ' + err.message, 'error');
     }
   };
 
-  // Delete recruit
-  const handleDelete = async (id) => {
-    if (!window.confirm('هل أنت متأكد من حذف ملف هذا المجند نهائياً؟')) return;
-    try {
-      const res = await fetch(`/api/recruits/${id}`, {
-        method: 'DELETE',
-        headers: authHeaders()
-      });
-      if (res.ok) {
-        setSelectedRecruit(null);
-        fetchMobileRecruits();
-        showToast?.('تم حذف الملف بنجاح', 'success');
-      }
-    } catch (err) {
-      showToast?.('فشل الحذف: ' + err.message, 'error');
-    }
+  // Count active filters
+  const getActiveFilterCount = () => {
+    let count = 0;
+    if (filterBatch !== 'all') count++;
+    if (filterCompany !== 'all') count++;
+    if (filterQualification !== 'all') count++;
+    if (filterSecurity !== 'all') count++;
+    if (filterMedical !== 'all') count++;
+    if (filterVideo !== 'all') count++;
+    if (filterPhoto !== 'all') count++;
+    return count;
   };
 
-  // If in media capture mode, render full mobile-adapted media screen
-  if (isMediaCapturing && pendingFormData) {
-    return (
-      <div className="min-h-screen bg-darkslate-950 text-white flex flex-col">
-        <div className="px-4 py-3 bg-darkslate-900 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <Camera className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-white">التقاط صورة وفيديو المجند</h2>
-              <p className="text-[11px] text-slate-400">{pendingFormData.name}</p>
-            </div>
-          </div>
-          <button
-            onClick={() => setIsMediaCapturing(false)}
-            className="p-2 rounded-xl bg-slate-800 text-slate-300"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <div className="flex-1 p-2">
-          <MediaCapture
-            formData={pendingFormData}
-            onSaveSuccess={(saved) => {
-              setIsMediaCapturing(false);
-              setPendingFormData(null);
-              setNewForm(initialNewForm);
-              setActiveTab('directory');
-              fetchMobileRecruits();
-              showToast?.('تم تسجيل وحفظ بيانات وصورة وفيديو المجند بنجاح!', 'success');
-            }}
-            onBack={() => setIsMediaCapturing(false)}
-            onCancel={() => {
-              setIsMediaCapturing(false);
-              setPendingFormData(null);
-            }}
-          />
-        </div>
-      </div>
+  const resetFilters = () => {
+    setFilterBatch('all');
+    setFilterCompany('all');
+    setFilterQualification('all');
+    setFilterSecurity('all');
+    setFilterMedical('all');
+    setFilterVideo('all');
+    setFilterPhoto('all');
+    setPage(1);
+    setIsFilterSheetOpen(false);
+  };
+
+  // Bulk selection toggle
+  const toggleSelectRecruit = (id) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
-  }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === recruits.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(recruits.map(r => r.id));
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-darkslate-950 text-slate-100 flex flex-col font-sans pb-20 select-none">
+    <div className="flex flex-col min-h-screen bg-slate-950 text-slate-100 font-sans pb-20 select-none">
       
-      {/* ------------------------------------------------------------- */}
-      {/* TOP MOBILE APP BAR */}
-      {/* ------------------------------------------------------------- */}
-      <header className="sticky top-0 z-30 bg-darkslate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex items-center justify-between shadow-lg">
-        <div className="flex items-center gap-2.5">
-          <img 
-            src={centralSecurityLogo} 
-            alt="شعار الأمن المركزي" 
-            className="w-9 h-9 object-contain drop-shadow-md"
-          />
-          <div>
-            <div className="flex items-center gap-1.5">
-              <h1 className="text-sm font-black text-white tracking-wide">عين الأمن</h1>
-              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/30">
-                موبايل
-              </span>
+      {/* ── TOP MOBILE APP BAR ── */}
+      <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-3 shadow-lg">
+        <div className="flex items-center justify-between gap-2">
+          
+          {/* Logo & Military Unit Badge */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-xl bg-slate-800/80 p-1 flex items-center justify-center border border-slate-700/60 shrink-0">
+              <img 
+                src={centralSecurityLogo} 
+                alt="شعار الأمن المركزي" 
+                className="w-full h-full object-contain drop-shadow"
+              />
             </div>
-            <div className="text-[11px] text-slate-400 flex items-center gap-1">
-              <span className="text-emerald-400 font-bold">{activeBatch?.name || 'دفعة عامة'}</span>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] font-mono font-black uppercase px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                  MOBILE OPS
+                </span>
+                <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 rounded border border-emerald-500/30">
+                  VER 01.0
+                </span>
+              </div>
+              <h1 className="text-sm font-black text-white leading-tight mt-0.5">
+                منظومة فحص وتسجيل المجندين
+              </h1>
             </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          {/* Quick AI Trigger */}
-          <button
-            onClick={() => setActiveTab('ai')}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-950/40 border border-purple-500/40 text-purple-300 text-xs font-bold active:scale-95 transition-transform"
-            title="المساعد الذكي"
-          >
-            <LiquidOrb size={20} state={isAiLoading ? 'thinking' : 'idle'} />
-            <span className="hidden xs:inline">AI</span>
-          </button>
+          {/* Quick Info & Desktop Switcher */}
+          <div className="flex items-center gap-1.5">
+            {/* Batch Pill */}
+            <button
+              onClick={onOpenBatches}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold"
+              title="انقر لتغيير الدفع التجنيدي"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="truncate max-w-[80px]">
+                {activeBatch ? activeBatch.name : 'الدفع'}
+              </span>
+            </button>
 
-          {/* Switch to Desktop view */}
-          <button
-            onClick={onSwitchToDesktop}
-            className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold flex items-center gap-1 active:scale-95 transition-all"
-            title="التحويل إلى وضع شاشة الكمبيوتر (Desktop View)"
-          >
-            <Monitor className="w-4 h-4 text-blue-400" />
-            <span className="text-[11px] hidden sm:inline">الكمبيوتر</span>
-          </button>
+            {/* Desktop View Switcher */}
+            <button
+              onClick={onSwitchToDesktop}
+              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+              title="التبديل إلى شاشة الكمبيوتر (Desktop View)"
+            >
+              <Monitor className="w-4 h-4 text-cyan-400" />
+            </button>
+          </div>
+
         </div>
       </header>
 
-      {/* ------------------------------------------------------------- */}
-      {/* TAB CONTENT */}
-      {/* ------------------------------------------------------------- */}
+      {/* ── MAIN CONTENT SWITCHER ── */}
       <main className="flex-1 p-3.5 max-w-lg mx-auto w-full">
 
-        {/* ========================================================= */}
-        {/* TAB 1: HOME DASHBOARD */}
-        {/* ========================================================= */}
+        {/* ══════════════════════════════════════════════════
+            TAB 1: HOME (الرئيسية)
+           ══════════════════════════════════════════════════ */}
         {activeTab === 'home' && (
           <div className="space-y-4">
-            {/* Quick Stats Grid */}
+            
+            {/* Officer Welcome Card */}
+            <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 p-4 rounded-2xl border border-slate-800 shadow-lg relative overflow-hidden">
+              <div className="flex items-center justify-between relative z-10">
+                <div>
+                  <div className="text-xs text-slate-400 font-medium">مرحباً بك،</div>
+                  <div className="text-base font-extrabold text-white">
+                    {currentUser?.full_name || 'ضابط التحريات والأمن'}
+                  </div>
+                  <div className="text-[11px] text-amber-400/90 font-semibold mt-0.5">
+                    وحدة أمن ومعسكر تدريب وسط الدلتا
+                  </div>
+                </div>
+
+                {/* Interactive Siri Orb Icon */}
+                <div 
+                  onClick={() => setActiveTab('ai')}
+                  className="cursor-pointer group flex flex-col items-center gap-1"
+                  title="فتح المساعد الذكي"
+                >
+                  <LiquidOrb size={44} state="idle" />
+                  <span className="text-[10px] font-bold text-purple-300">مساعد AI</span>
+                </div>
+              </div>
+
+              {/* Decorative background glow */}
+              <div className="absolute -left-10 -bottom-10 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl pointer-events-none"></div>
+            </div>
+
+            {/* Live KPI Cards (4 metrics) */}
             <div className="grid grid-cols-2 gap-2.5">
-              <div className="bg-gradient-to-br from-slate-900 to-darkslate-850 border border-slate-800 rounded-2xl p-3 shadow-md">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-slate-400">إجمالي القوة</span>
-                  <Users className="w-4 h-4 text-blue-400" />
+              
+              {/* Total Recruits */}
+              <div 
+                onClick={() => setActiveTab('directory')}
+                className="bg-slate-900 p-3 rounded-xl border border-slate-800 shadow cursor-pointer hover:border-slate-700 transition-all"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] text-slate-400 font-bold">إجمالي المجندين</span>
+                  <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                    <Users className="w-4 h-4" />
+                  </div>
                 </div>
                 <div className="text-2xl font-black text-white font-mono">
-                  {stats?.totalRecruits ?? recruits.length}
+                  {stats?.total_recruits || stats?.total || recruits.length || 0}
                 </div>
-                <div className="text-[10px] text-slate-500 mt-0.5">مجند مسجل بالدفعة</div>
+                <div className="text-[10px] text-emerald-400 font-semibold mt-1">
+                  الدفع المعتمد حالياً
+                </div>
               </div>
 
-              <div className="bg-gradient-to-br from-rose-950/40 to-slate-900 border border-rose-500/30 rounded-2xl p-3 shadow-md">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-rose-300">تيكتات الاشتباه</span>
-                  <AlertTriangle className="w-4 h-4 text-rose-400" />
+              {/* Medically Fit */}
+              <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 shadow">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] text-slate-400 font-bold">لائق طبياً</span>
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                    <Stethoscope className="w-4 h-4" />
+                  </div>
                 </div>
-                <div className="text-2xl font-black text-rose-300 font-mono">
-                  {stats?.suspiciousCount ?? recruits.filter(r => r.inspection && r.inspection !== 'سليم').length}
+                <div className="text-2xl font-black text-emerald-400 font-mono">
+                  {stats?.fit_recruits ?? recruits.filter(r => (r.medical_status || '').includes('لائق')).length}
                 </div>
-                <div className="text-[10px] text-rose-400/80 mt-0.5">حالات تتطلب تحريات</div>
+                <div className="text-[10px] text-slate-400 font-semibold mt-1">
+                  جاهز للتدريب الميداني
+                </div>
               </div>
 
-              <div className="bg-gradient-to-br from-purple-950/40 to-slate-900 border border-purple-500/30 rounded-2xl p-3 shadow-md">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-purple-300">غير متزن نفسياً</span>
-                  <Brain className="w-4 h-4 text-purple-400" />
+              {/* Security Investigation Alerts */}
+              <div 
+                onClick={() => {
+                  setFilterSecurity('criminal_record');
+                  setActiveTab('directory');
+                }}
+                className="bg-slate-900 p-3 rounded-xl border border-rose-900/40 bg-rose-950/10 shadow cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] text-rose-300 font-bold">ملاحظات أمنية</span>
+                  <div className="w-7 h-7 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center">
+                    <Shield className="w-4 h-4" />
+                  </div>
                 </div>
-                <div className="text-2xl font-black text-purple-300 font-mono">
-                  {recruits.filter(r => r.medical_status === 'غير لائق طبياً' || (r.notes && r.notes.includes('نفسي'))).length}
+                <div className="text-2xl font-black text-rose-400 font-mono">
+                  {stats?.positive_investigations ?? recruits.filter(r => r.inspection && r.inspection !== 'سليم').length}
                 </div>
-                <div className="text-[10px] text-purple-400/80 mt-0.5">متابعة نفسية وعصبية</div>
+                <div className="text-[10px] text-rose-300/80 font-semibold mt-1">
+                  تحريات وملاحظات أمنية
+                </div>
               </div>
 
-              <div className="bg-gradient-to-br from-amber-950/40 to-slate-900 border border-amber-500/30 rounded-2xl p-3 shadow-md">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-amber-300">أصحاب الحرف</span>
-                  <Briefcase className="w-4 h-4 text-amber-400" />
+              {/* Videos Captured */}
+              <div 
+                onClick={() => {
+                  setFilterVideo('with_video');
+                  setActiveTab('directory');
+                }}
+                className="bg-slate-900 p-3 rounded-xl border border-purple-900/40 bg-purple-950/10 shadow cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] text-purple-300 font-bold">فيديوهات مسجلة</span>
+                  <div className="w-7 h-7 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center">
+                    <Video className="w-4 h-4" />
+                  </div>
                 </div>
-                <div className="text-2xl font-black text-amber-300 font-mono">
-                  {recruits.filter(r => r.current_job && !['طالب', 'بدون عمل', 'لا يعمل', 'عامل'].includes(r.current_job)).length}
+                <div className="text-2xl font-black text-purple-400 font-mono">
+                  {stats?.with_video ?? recruits.filter(r => r.video_path).length}
                 </div>
-                <div className="text-[10px] text-amber-400/80 mt-0.5">مهن وورش ومعدات</div>
+                <div className="text-[10px] text-purple-300/80 font-semibold mt-1">
+                  توثيق مقاطع الاستجواب
+                </div>
+              </div>
+
+            </div>
+
+            {/* Quick Action Buttons Grid */}
+            <div className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 shadow space-y-2.5">
+              <div className="text-xs font-bold text-slate-300">إجراءات سريعة ميدانية</div>
+              
+              <div className="grid grid-cols-4 gap-2 text-center">
+                
+                {/* 1. New Registration */}
+                <button
+                  onClick={() => setActiveTab('new')}
+                  className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/30 text-emerald-300 transition-colors"
+                >
+                  <UserPlus className="w-5 h-5 text-emerald-400" />
+                  <span className="text-[11px] font-bold">تسجيل جديد</span>
+                </button>
+
+                {/* 2. Analytics */}
+                <button
+                  onClick={() => setActiveTab('analytics')}
+                  className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/30 text-blue-300 transition-colors"
+                >
+                  <BarChart3 className="w-5 h-5 text-blue-400" />
+                  <span className="text-[11px] font-bold">التحليلات</span>
+                </button>
+
+                {/* 3. Export Suite */}
+                <button
+                  onClick={() => setShowExportModal(true)}
+                  className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-amber-600/15 hover:bg-amber-600/25 border border-amber-500/30 text-amber-300 transition-colors"
+                >
+                  <Download className="w-5 h-5 text-amber-400" />
+                  <span className="text-[11px] font-bold">تصدير إكسيل</span>
+                </button>
+
+                {/* 4. Company Colors */}
+                <button
+                  onClick={() => setShowCompanyColorsModal(true)}
+                  className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-purple-600/15 hover:bg-purple-600/25 border border-purple-500/30 text-purple-300 transition-colors"
+                >
+                  <Palette className="w-5 h-5 text-purple-400" />
+                  <span className="text-[11px] font-bold">ألوان السرايا</span>
+                </button>
+
               </div>
             </div>
 
-            {/* Quick Action Button */}
-            <button
-              onClick={() => setActiveTab('new')}
-              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 active:scale-[0.98] transition-transform"
-            >
-              <UserPlus className="w-5 h-5" />
-              <span>تسجيل مجند جديد بالكاميرا (التقاط فوري)</span>
-            </button>
-
-            {/* Search Box */}
-            <div className="relative">
-              <Search className="w-4 h-4 absolute right-3.5 top-3.5 text-slate-400" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="بحث بالاسم أو الرقم القومي..."
-                className="w-full bg-darkslate-900 border border-slate-800 rounded-2xl pr-10 pl-4 py-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 shadow-inner"
-              />
-            </div>
-
-            {/* Recent Recruits List */}
-            <div>
-              <div className="flex items-center justify-between mb-2 px-1">
-                <h2 className="text-xs font-extrabold text-slate-300 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>آخر المجندين المسجلين</span>
-                </h2>
+            {/* Recent Recruits Touch Feed */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-extrabold text-slate-300 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  أحدث المجندين المسجلين
+                </span>
                 <button
                   onClick={() => setActiveTab('directory')}
-                  className="text-[11px] font-bold text-emerald-400 hover:underline"
+                  className="text-xs text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1"
                 >
-                  عرض الكل ({recruits.length})
+                  <span>عرض الكل ({totalCount})</span>
+                  <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
               </div>
 
               {loadingRecruits ? (
-                <div className="py-8 text-center text-slate-500 text-xs flex flex-col items-center gap-2">
-                  <Loader2 className="w-5 h-5 animate-spin text-emerald-500" />
-                  <span>جاري تحميل البيانات...</span>
+                <div className="py-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
+                  <span>جاري تحميل أحدث السجلات...</span>
                 </div>
               ) : recruits.length === 0 ? (
-                <div className="bg-darkslate-900/80 border border-slate-800 rounded-2xl p-6 text-center text-slate-400 text-xs">
-                  لا يوجد مجندين مسجلين مطابقين للبحث
+                <div className="bg-slate-900/60 p-6 rounded-2xl border border-slate-800 text-center text-slate-400 text-xs">
+                  لا توجد سجلات مسجلة في هذا الدفع حتى الآن.
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {recruits.slice(0, 10).map((r) => (
-                    <div
-                      key={r.id}
-                      onClick={() => {
-                        setSelectedRecruit(r);
-                        setEditFormData(r);
-                        setIsEditingRecruit(false);
-                      }}
-                      className="bg-darkslate-900 border border-slate-800/90 hover:border-emerald-500/50 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-md active:scale-[0.99] transition-all cursor-pointer"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {/* Avatar / Photo */}
-                        <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
-                          {r.photo_path ? (
-                            <img src={r.photo_path} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <Users className="w-5 h-5 text-slate-500" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <h3 className="text-xs font-bold text-white truncate">{r.name}</h3>
-                          <div className="text-[11px] text-slate-400 font-mono mt-0.5">{r.national_id || 'بدون رقم قومي'}</div>
-                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                            <span className="text-[10px] font-semibold px-2 py-0.2 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                              {r.qualification || 'متوسط'}
-                            </span>
-                            {r.inspection && r.inspection !== 'سليم' && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-rose-950 text-rose-300 border border-rose-500/40">
-                                {r.inspection}
-                              </span>
-                            )}
-                            {r.video_path && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-blue-950 text-blue-300 border border-blue-500/40 flex items-center gap-0.5">
-                                <Video className="w-2.5 h-2.5" /> فيديو
-                              </span>
+                  {recruits.slice(0, 6).map((recruit) => {
+                    const compStyle = getCompanyStyle(recruit.company, companyColors);
+                    return (
+                      <div
+                        key={recruit.id}
+                        onClick={() => {
+                          setSelectedRecruit(recruit);
+                          setEditFormData(recruit);
+                          setIsEditingRecruit(false);
+                        }}
+                        className="bg-slate-900 hover:bg-slate-850 p-3 rounded-xl border border-slate-800/80 flex items-center justify-between gap-3 transition-colors cursor-pointer shadow-sm active:scale-[0.99]"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {/* Photo or placeholder */}
+                          <div className="w-11 h-11 rounded-lg bg-slate-800 border border-slate-700/80 overflow-hidden shrink-0 flex items-center justify-center">
+                            {recruit.photo_path ? (
+                              <img 
+                                src={`/uploads/${recruit.photo_path.replace(/\\/g, '/').split('/').pop()}`} 
+                                alt={recruit.name} 
+                                className="w-full h-full object-cover" 
+                              />
+                            ) : (
+                              <Camera className="w-5 h-5 text-slate-500" />
                             )}
                           </div>
+
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-white truncate">
+                              {recruit.name}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1.5">
+                              <span>{recruit.military_number || 'بدون ر.ع'}</span>
+                              <span>•</span>
+                              <span>{recruit.qualification || 'متوسط'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Badges */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {recruit.video_path && (
+                            <span className="p-1 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30" title="تم تسجيل فيديو">
+                              <Video className="w-3.5 h-3.5" />
+                            </span>
+                          )}
+
+                          <span 
+                            className="text-[10px] font-bold px-2 py-0.5 rounded border"
+                            style={{
+                              backgroundColor: compStyle.bg,
+                              borderColor: compStyle.border,
+                              color: compStyle.color
+                            }}
+                          >
+                            {recruit.company ? recruit.company.replace('السرية ', '') : 'سرية'}
+                          </span>
+
+                          <ChevronLeft className="w-4 h-4 text-slate-500" />
                         </div>
                       </div>
-                      <ChevronLeft className="w-4 h-4 text-slate-500 shrink-0" />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
+
           </div>
         )}
 
-        {/* ========================================================= */}
-        {/* TAB 2: NEW RECRUIT REGISTRATION (MOBILE FRIENDLY) */}
-        {/* ========================================================= */}
+        {/* ══════════════════════════════════════════════════
+            TAB 2: NEW RECRUIT REGISTRATION (تسجيل جديد)
+           ══════════════════════════════════════════════════ */}
         {activeTab === 'new' && (
-          <form onSubmit={handleProceedToMedia} className="space-y-4">
-            <div className="bg-darkslate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-3.5">
-              <div className="flex items-center gap-2 border-b border-slate-800 pb-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
-                  1
+          <div>
+            {!isMediaCapturing ? (
+              <form onSubmit={handleProceedToMedia} className="space-y-4">
+                
+                {/* Form Header */}
+                <div className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-extrabold text-white flex items-center gap-2">
+                      <UserPlus className="w-4 h-4 text-emerald-400" />
+                      استمارة كشك تسجيل مجند جديد
+                    </h2>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      الدفع التجنيدي: <span className="text-emerald-400 font-bold">{activeBatch?.name || 'غير محدد'}</span>
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono font-bold bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 text-slate-300">
+                    خطوة 1 من 2
+                  </span>
                 </div>
-                <div>
-                  <h2 className="text-xs font-bold text-white">البيانات الشخصية للمجند</h2>
-                  <p className="text-[10px] text-slate-400">أدخل البيانات الأساسية ثم انتقل للكاميرا</p>
-                </div>
-              </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                  الاسم الرباعي <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newForm.name}
-                  onChange={(e) => setNewForm({ ...newForm, name: e.target.value })}
-                  placeholder="مثال: أحمد محمد علي حسن"
-                  className="w-full bg-darkslate-950 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-emerald-500"
-                />
-              </div>
+                {/* Section 1: Basic Identifiers */}
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-3">
+                  <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                    <FileText className="w-4 h-4" />
+                    البيانات الشخصية والرسمية
+                  </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-300 mb-1">الرقم القومي (14 رقم)</label>
-                  <input
-                    type="text"
-                    maxLength={14}
-                    value={newForm.national_id}
-                    onChange={(e) => setNewForm({ ...newForm, national_id: e.target.value })}
-                    placeholder="298..."
-                    className="w-full bg-darkslate-950 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-300 mb-1">رقم الشرطة</label>
-                  <input
-                    type="text"
-                    value={newForm.police_number}
-                    onChange={(e) => setNewForm({ ...newForm, police_number: e.target.value })}
-                    placeholder="مثال: 104"
-                    className="w-full bg-darkslate-950 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-              </div>
+                  <div>
+                    <label className="text-xs text-slate-300 font-semibold mb-1 block">
+                      الاسم رباعي أو ثلاثي <span className="text-rose-400">*</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      required 
+                      placeholder="اكتب اسم المجند بالكامل..." 
+                      value={newForm.name} 
+                      onChange={e => setNewForm({ ...newForm, name: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:border-emerald-500 outline-none"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-300 mb-1">الديانة</label>
-                  <div className="grid grid-cols-2 gap-1 bg-darkslate-950 p-1 rounded-xl border border-slate-800">
-                    {['مسلم', 'مسيحي'].map(rel => (
-                      <button
-                        type="button"
-                        key={rel}
-                        onClick={() => setNewForm({ ...newForm, religion: rel })}
-                        className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
-                          newForm.religion === rel ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        {rel}
-                      </button>
-                    ))}
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">الرقم العسكري</label>
+                      <input 
+                        type="text" 
+                        placeholder="الرقم العسكري..." 
+                        value={newForm.military_number} 
+                        onChange={e => setNewForm({ ...newForm, military_number: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 font-mono focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">الرقم القومي (14 رقم)</label>
+                      <input 
+                        type="text" 
+                        maxLength={14}
+                        placeholder="الرقم القومي..." 
+                        value={newForm.national_id} 
+                        onChange={e => setNewForm({ ...newForm, national_id: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 font-mono focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">تاريخ الميلاد</label>
+                      <input 
+                        type="date" 
+                        value={newForm.birth_date} 
+                        onChange={e => setNewForm({ ...newForm, birth_date: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">المحافظة</label>
+                      <input 
+                        type="text" 
+                        placeholder="مثال: الغربية / المنوفية" 
+                        value={newForm.governorate} 
+                        onChange={e => setNewForm({ ...newForm, governorate: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] text-slate-300 font-semibold mb-1 block">العنوان ومحل الإقامة التفصيلي</label>
+                    <input 
+                      type="text" 
+                      placeholder="المركز / القرية / الشارع..." 
+                      value={newForm.address} 
+                      onChange={e => setNewForm({ ...newForm, address: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-emerald-500 outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">رقم الهاتف</label>
+                      <input 
+                        type="tel" 
+                        placeholder="01xxxxxxxxx" 
+                        value={newForm.phone} 
+                        onChange={e => setNewForm({ ...newForm, phone: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">المهنة الحالية أو الحرفة</label>
+                      <input 
+                        type="text" 
+                        placeholder="مثال: نجار / سائق / طالب" 
+                        value={newForm.current_job} 
+                        onChange={e => setNewForm({ ...newForm, current_job: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-emerald-500 outline-none"
+                      />
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-300 mb-1">الحالة الاجتماعية</label>
-                  <div className="grid grid-cols-2 gap-1 bg-darkslate-950 p-1 rounded-xl border border-slate-800">
-                    {['أعزب', 'متزوج'].map(status => (
-                      <button
-                        type="button"
-                        key={status}
-                        onClick={() => setNewForm({ ...newForm, wife: status })}
-                        className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
-                          newForm.wife === status ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        {status}
-                      </button>
-                    ))}
+                {/* Section 2: Touch Radio Pills for Qualification, Religion, Company */}
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-3.5">
+                  <div className="text-xs font-bold text-blue-400 flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                    <Briefcase className="w-4 h-4" />
+                    المؤهل الدراسي والتوزيع
                   </div>
-                </div>
-              </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">المؤهل الدراسي</label>
-                <div className="grid grid-cols-4 gap-1 bg-darkslate-950 p-1 rounded-xl border border-slate-800">
-                  {['عليا', 'فوق متوسط', 'متوسط', 'عادة'].map(q => (
-                    <button
-                      type="button"
-                      key={q}
-                      onClick={() => setNewForm({ ...newForm, qualification: q })}
-                      className={`py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-                        newForm.qualification === q ? 'bg-emerald-600 text-white shadow' : 'text-slate-400'
-                      }`}
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">المهنة أو الحرفة قبل التجنيد</label>
-                <input
-                  type="text"
-                  value={newForm.current_job}
-                  onChange={(e) => setNewForm({ ...newForm, current_job: e.target.value })}
-                  placeholder="مثال: نجار، كهربائي، حداد، سائق..."
-                  className="w-full bg-darkslate-950 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">محل الإقامة والعنوان بالتفصيل</label>
-                <input
-                  type="text"
-                  value={newForm.address}
-                  onChange={(e) => setNewForm({ ...newForm, address: e.target.value })}
-                  placeholder="المحافظة، المركز، القرية/الشارع"
-                  className="w-full bg-darkslate-950 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-            </div>
-
-            {/* Security & Medical Info Card */}
-            <div className="bg-darkslate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-3.5">
-              <div className="flex items-center gap-2 border-b border-slate-800 pb-2.5">
-                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
-                  2
-                </div>
-                <div>
-                  <h2 className="text-xs font-bold text-white">الفحص الطبي والاشتباه الأمني</h2>
-                  <p className="text-[10px] text-slate-400">تحديد التيكتات والتقرير الطبي</p>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">الموقف من الاشتباه الأمني</label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {['سليم', 'اشتباه جنائي', 'اشتباه سياسي'].map(insp => (
-                    <button
-                      type="button"
-                      key={insp}
-                      onClick={() => setNewForm({ ...newForm, inspection: insp })}
-                      className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all ${
-                        newForm.inspection === insp 
-                          ? insp === 'سليم' ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-rose-600 text-white border-rose-500'
-                          : 'bg-darkslate-950 text-slate-400 border-slate-800'
-                      }`}
-                    >
-                      {insp}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-300 mb-1">الكشف الطبي</label>
-                  <div className="grid grid-cols-2 gap-1 bg-darkslate-950 p-1 rounded-xl border border-slate-800">
-                    {['لائق', 'غير لائق'].map(med => (
-                      <button
-                        type="button"
-                        key={med}
-                        onClick={() => setNewForm({ ...newForm, medical_status: med === 'لائق' ? 'لائق' : 'غير لائق طبياً' })}
-                        className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
-                          newForm.medical_status.includes(med) ? 'bg-emerald-600 text-white shadow' : 'text-slate-400'
-                        }`}
-                      >
-                        {med}
-                      </button>
-                    ))}
+                  {/* Qualification Pills */}
+                  <div>
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1.5">المؤهل الدراسي</label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {['عليا', 'فوق متوسط', 'متوسط', 'عادة'].map(q => (
+                        <button
+                          type="button"
+                          key={q}
+                          onClick={() => setNewForm({ ...newForm, qualification: q })}
+                          className={`py-2 text-xs font-bold rounded-xl border transition-all ${
+                            newForm.qualification === q 
+                              ? 'bg-blue-600 text-white border-blue-400 shadow-md shadow-blue-900/30' 
+                              : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-300 mb-1">سبق السفر للخارج</label>
-                  <div className="grid grid-cols-2 gap-1 bg-darkslate-950 p-1 rounded-xl border border-slate-800">
-                    {['لا', 'نعم'].map(tr => (
-                      <button
-                        type="button"
-                        key={tr}
-                        onClick={() => setNewForm({ ...newForm, travel_abroad: tr })}
-                        className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
-                          newForm.travel_abroad === tr ? 'bg-blue-600 text-white shadow' : 'text-slate-400'
-                        }`}
-                      >
-                        {tr}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">السرية / التوزيع</label>
-                <select
-                  value={newForm.company}
-                  onChange={(e) => setNewForm({ ...newForm, company: e.target.value })}
-                  className="w-full bg-darkslate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                >
-                  {['السرية الأولى', 'السرية الثانية', 'السرية الثالثة', 'السرية الرابعة', 'سرية القيادة', 'التشغيل والصيانة'].map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">ملاحظات التحريات السرية</label>
-                <textarea
-                  rows={2}
-                  value={newForm.notes}
-                  onChange={(e) => setNewForm({ ...newForm, notes: e.target.value })}
-                  placeholder="أي ملاحظات إضافية خاصة بالمجند..."
-                  className="w-full bg-darkslate-950 border border-slate-700/80 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 resize-none"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-950/60 active:scale-[0.98] transition-all"
-            >
-              <Camera className="w-5 h-5" />
-              <span>متابعة للالتقاط (صورة + فيديو 30ث)</span>
-            </button>
-          </form>
-        )}
-
-        {/* ========================================================= */}
-        {/* TAB 3: RECRUITS DIRECTORY */}
-        {/* ========================================================= */}
-        {activeTab === 'directory' && (
-          <div className="space-y-3">
-            {/* Search & Category Filter Pills */}
-            <div className="space-y-2">
-              <div className="relative">
-                <Search className="w-4 h-4 absolute right-3.5 top-3 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="بحث في السجل..."
-                  className="w-full bg-darkslate-900 border border-slate-800 rounded-xl pr-10 pl-4 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              {/* Filter Pills Horizontal Scroll */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs font-semibold">
-                {[
-                  { id: 'all', label: 'الكل' },
-                  { id: 'suspicious', label: 'المشتبه بهم' },
-                  { id: 'psychological', label: 'غير متزن' },
-                  { id: 'trades', label: 'الحرفيين' },
-                  { id: 'travel', label: 'مسافرين' }
-                ].map(cat => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSelectedCategory(cat.id)}
-                    className={`px-3 py-1.5 rounded-full shrink-0 transition-all ${
-                      selectedCategory === cat.id 
-                        ? 'bg-emerald-600 text-white font-bold shadow' 
-                        : 'bg-darkslate-900 text-slate-400 border border-slate-800'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* List */}
-            {loadingRecruits ? (
-              <div className="py-12 text-center text-slate-500 text-xs flex flex-col items-center gap-2">
-                <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
-                <span>جاري تحميل السجل...</span>
-              </div>
-            ) : recruits.length === 0 ? (
-              <div className="p-8 text-center bg-darkslate-900 rounded-2xl border border-slate-800 text-slate-400 text-xs">
-                لم يتم العثور على أي مجندين
-              </div>
-            ) : (
-              <div className="space-y-2.5">
-                {recruits.map(r => (
-                  <div
-                    key={r.id}
-                    onClick={() => {
-                      setSelectedRecruit(r);
-                      setEditFormData(r);
-                      setIsEditingRecruit(false);
-                    }}
-                    className="bg-darkslate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow active:scale-[0.99] transition-all cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
-                        {r.photo_path ? (
-                          <img src={r.photo_path} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <Users className="w-5 h-5 text-slate-500" />
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-xs font-bold text-white truncate">{r.name}</h3>
-                          {r.police_number && (
-                            <span className="text-[10px] font-mono font-bold text-cyan-300 bg-cyan-950 px-1.5 py-0.2 rounded border border-cyan-500/30">
-                              #{r.police_number}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                          {r.current_job || 'بدون عمل'} • {r.address ? r.address.split(',')[0] : 'العنوان غير مسجل'}
-                        </p>
-                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                            {r.qualification || 'متوسط'}
-                          </span>
-                          {r.inspection && r.inspection !== 'سليم' && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-rose-950 text-rose-300 border border-rose-500/40">
-                              {r.inspection}
-                            </span>
-                          )}
-                          {r.video_path && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-blue-950 text-blue-300 border border-blue-500/40 flex items-center gap-0.5">
-                              <Video className="w-2.5 h-2.5" /> فيديو
-                            </span>
-                          )}
-                        </div>
+                  {/* Religion & Marital Status */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] text-slate-400 font-bold block mb-1.5">الديانة</label>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {['مسلم', 'مسيحي'].map(rel => (
+                          <button
+                            type="button"
+                            key={rel}
+                            onClick={() => setNewForm({ ...newForm, religion: rel })}
+                            className={`py-1.5 text-xs font-bold rounded-xl border ${
+                              newForm.religion === rel 
+                                ? 'bg-amber-600/30 text-amber-300 border-amber-500' 
+                                : 'bg-slate-950 text-slate-400 border-slate-800'
+                            }`}
+                          >
+                            {rel}
+                          </button>
+                        ))}
                       </div>
                     </div>
-                    <ChevronLeft className="w-4 h-4 text-slate-500 shrink-0" />
+
+                    <div>
+                      <label className="text-[11px] text-slate-400 font-bold block mb-1.5">الحالة الاجتماعية</label>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {['أعزب', 'متزوج'].map(m => (
+                          <button
+                            type="button"
+                            key={m}
+                            onClick={() => setNewForm({ ...newForm, marital_status: m })}
+                            className={`py-1.5 text-xs font-bold rounded-xl border ${
+                              newForm.marital_status === m 
+                                ? 'bg-indigo-600/30 text-indigo-300 border-indigo-500' 
+                                : 'bg-slate-950 text-slate-400 border-slate-800'
+                            }`}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                ))}
+
+                  {/* Assigned Company */}
+                  <div>
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1.5">السرية الملحق عليها</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        'السرية الأولى ( ١ )',
+                        'السرية الثانية ( ٢ )',
+                        'السرية الثالثة ( ٣ )',
+                        'السرية الرابعة ( ٤ )',
+                        'السرية الخامسة ( ٥ )',
+                        'السرية السادسة ( ٦ )'
+                      ].map(comp => {
+                        const style = getCompanyStyle(comp, companyColors);
+                        const isSelected = newForm.company === comp;
+                        return (
+                          <button
+                            type="button"
+                            key={comp}
+                            onClick={() => setNewForm({ ...newForm, company: comp })}
+                            className={`py-2 px-1 text-[11px] font-bold rounded-xl border transition-all text-center ${
+                              isSelected 
+                                ? 'border-white/80 shadow-md scale-[1.02]' 
+                                : 'border-slate-800/80 opacity-70'
+                            }`}
+                            style={{
+                              backgroundColor: style.bg,
+                              borderColor: isSelected ? '#ffffff' : style.border,
+                              color: style.color
+                            }}
+                          >
+                            {comp.split('(')[0].trim()}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Medical Fitness */}
+                  <div>
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1.5">اللياقة الطبية</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {['لائق', 'لائق ب', 'غير لائق'].map(med => (
+                        <button
+                          type="button"
+                          key={med}
+                          onClick={() => setNewForm({ ...newForm, medical_status: med })}
+                          className={`py-2 text-xs font-bold rounded-xl border ${
+                            newForm.medical_status === med 
+                              ? med === 'غير لائق' 
+                                ? 'bg-rose-600 text-white border-rose-400' 
+                                : 'bg-emerald-600 text-white border-emerald-400' 
+                              : 'bg-slate-950 text-slate-400 border-slate-800'
+                          }`}
+                        >
+                          {med}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Section 3: 20-Point Security Inspection Checklist */}
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                      <Shield className="w-4 h-4" />
+                      مصفوفة الفحص الأمني (20 حقلاً)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = { ...newForm };
+                        inspectionFields.forEach(f => { updated[f.key] = 'سليم'; });
+                        setNewForm(updated);
+                        showToast('تم ضبط جميع الفحوصات الأمنية إلى (سليم)');
+                      }}
+                      className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20"
+                    >
+                      ضبط الكل: سليم
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {inspectionFields.map(field => {
+                      const isClear = newForm[field.key] === 'سليم';
+                      return (
+                        <div 
+                          key={field.key} 
+                          className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 transition-all ${
+                            isClear 
+                              ? 'bg-slate-950/60 border-slate-800' 
+                              : 'bg-rose-950/30 border-rose-600/60 shadow-sm shadow-rose-900/20'
+                          }`}
+                        >
+                          <span className={`text-xs font-semibold ${isClear ? 'text-slate-300' : 'text-rose-300 font-bold'}`}>
+                            {field.label}
+                          </span>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setNewForm({ ...newForm, [field.key]: 'سليم' })}
+                              className={`px-2 py-1 text-[10px] font-bold rounded-lg border ${
+                                isClear 
+                                  ? 'bg-emerald-600 text-white border-emerald-500' 
+                                  : 'bg-slate-900 text-slate-400 border-slate-800'
+                              }`}
+                            >
+                              سليم
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setNewForm({ ...newForm, [field.key]: 'إيجابي' })}
+                              className={`px-2 py-1 text-[10px] font-bold rounded-lg border ${
+                                !isClear 
+                                  ? 'bg-rose-600 text-white border-rose-500' 
+                                  : 'bg-slate-900 text-slate-400 border-slate-800'
+                              }`}
+                            >
+                              ملاحظة
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Section 4: Remarks */}
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-2">
+                  <label className="text-[11px] text-slate-400 font-bold block">ملاحظات التحريات والتعليمات</label>
+                  <textarea 
+                    rows={2}
+                    placeholder="أي ملاحظات أمنية أو بدنية أو نفسية إضافية..."
+                    value={newForm.notes}
+                    onChange={e => setNewForm({ ...newForm, notes: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:border-emerald-500 outline-none resize-none"
+                  />
+                </div>
+
+                {/* Proceed Button */}
+                <button
+                  type="submit"
+                  className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-sm shadow-lg shadow-emerald-950/50 flex items-center justify-center gap-2 transform active:scale-[0.98] transition-all"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>متابعة: التقاط الصورة وتصوير الفيديو</span>
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+              </form>
+            ) : (
+              /* Step 2: Camera & Video Capture */
+              <div className="space-y-3">
+                <div className="bg-slate-900 p-3 rounded-2xl border border-slate-800 flex items-center justify-between">
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Camera className="w-4 h-4 text-emerald-400" />
+                    <span>محطة التصوير الميداني: {pendingFormData?.name}</span>
+                  </div>
+                  <button
+                    onClick={() => setIsMediaCapturing(false)}
+                    className="text-xs text-slate-400 hover:text-white bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700"
+                  >
+                    تعديل البيانات
+                  </button>
+                </div>
+
+                <MediaCapture
+                  formData={pendingFormData}
+                  onSaveSuccess={handleMediaSaved}
+                  onBack={() => setIsMediaCapturing(false)}
+                  onCancel={() => {
+                    setIsMediaCapturing(false);
+                    setPendingFormData(null);
+                    setActiveTab('home');
+                  }}
+                />
               </div>
             )}
           </div>
         )}
 
-        {/* ========================================================= */}
-        {/* TAB 4: AI AGENT (MOBILE FULL SCREEN) */}
-        {/* ========================================================= */}
-        {activeTab === 'ai' && (
-          <div className="flex flex-col h-[calc(100vh-140px)]">
-            {/* AI Top Header Capsule */}
-            <div className="p-3 bg-darkslate-900 border border-slate-800 rounded-2xl mb-3 flex items-center justify-between shadow-md">
-              <div className="flex items-center gap-2.5">
-                <LiquidOrb size={36} state={isAiLoading ? 'thinking' : 'idle'} />
-                <div>
-                  <h3 className="text-xs font-black text-white flex items-center gap-1.5">
-                    وكيل التحريات الذكي (AI)
-                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${
-                      isAiLoading ? 'bg-purple-950 text-purple-300 border-purple-500/40 animate-pulse' : 'bg-emerald-950 text-emerald-400 border-emerald-500/30'
-                    }`}>
-                      {isAiLoading ? 'جاري التفكير...' : 'جاهز'}
+        {/* ══════════════════════════════════════════════════
+            TAB 3: DIRECTORY (السجل الميداني)
+           ══════════════════════════════════════════════════ */}
+        {activeTab === 'directory' && (
+          <div className="space-y-3">
+            
+            {/* Search Bar & View Mode Toggle & Filter Trigger */}
+            <div className="bg-slate-900 p-2.5 rounded-2xl border border-slate-800 space-y-2 shadow-lg">
+              
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+                  <input
+                    type="text"
+                    placeholder="ابحث بالاسم، الرقم العسكري، القومي، المحافظة..."
+                    value={searchTerm}
+                    onChange={e => {
+                      setSearchTerm(e.target.value);
+                      setPage(1);
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl pr-9 pl-8 py-2 text-xs text-white placeholder-slate-500 focus:border-blue-500 outline-none"
+                  />
+                  {searchTerm && (
+                    <button 
+                      onClick={() => setSearchTerm('')} 
+                      className="absolute left-2.5 top-2.5 text-slate-400 hover:text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Sheet Trigger */}
+                <button
+                  onClick={() => setIsFilterSheetOpen(true)}
+                  className={`p-2.5 rounded-xl border flex items-center gap-1 transition-all ${
+                    getActiveFilterCount() > 0 
+                      ? 'bg-blue-600 text-white border-blue-400 shadow-md shadow-blue-900/40' 
+                      : 'bg-slate-850 hover:bg-slate-800 text-slate-300 border-slate-700'
+                  }`}
+                  title="تصفية وفلاتر متقدمة"
+                >
+                  <Filter className="w-4 h-4" />
+                  {getActiveFilterCount() > 0 && (
+                    <span className="w-4 h-4 rounded-full bg-white text-blue-700 text-[10px] font-black flex items-center justify-center">
+                      {getActiveFilterCount()}
                     </span>
-                  </h3>
-                  <p className="text-[10px] text-slate-400">تحليل وفحص قاعدة بيانات المجندين لحظياً</p>
+                  )}
+                </button>
+
+                {/* Grid vs Table View Toggle */}
+                <div className="flex items-center bg-slate-950 rounded-xl p-0.5 border border-slate-800">
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`p-1.5 rounded-lg ${viewMode === 'grid' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}
+                    title="عرض البطاقات"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('table')}
+                    className={`p-1.5 rounded-lg ${viewMode === 'table' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}
+                    title="عرض الجدول السريع"
+                  >
+                    <List className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Active Filter Chips / Counter */}
+              <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                <span>
+                  النتائج: <strong className="text-white font-mono">{totalCount}</strong> مجند
+                </span>
+                {getActiveFilterCount() > 0 && (
+                  <button
+                    onClick={resetFilters}
+                    className="text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1"
+                  >
+                    <span>إلغاء الفلاتر ({getActiveFilterCount()})</span>
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+            </div>
+
+            {/* Bulk Selection Bar (if any selected) */}
+            {selectedIds.length > 0 && (
+              <div className="bg-gradient-to-r from-blue-950/80 to-slate-900 p-2.5 rounded-xl border border-blue-500/40 flex items-center justify-between gap-2 shadow-lg animate-in fade-in duration-200">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={toggleSelectAll}
+                    className="text-xs font-bold text-blue-300 bg-blue-500/20 px-2 py-1 rounded border border-blue-500/30"
+                  >
+                    {selectedIds.length === recruits.length ? 'إلغاء التحديد' : 'تحديد الكل'}
+                  </button>
+                  <span className="text-xs font-bold text-white">
+                    تم تحديد <strong className="text-blue-400 font-mono">{selectedIds.length}</strong>
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => setShowExportModal(true)}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>تصدير المحددين</span>
+                </button>
+              </div>
+            )}
+
+            {/* Recruits List: Grid Cards vs Compact Table */}
+            {loadingRecruits ? (
+              <div className="py-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+                <span>جاري تحميل السجل الميداني...</span>
+              </div>
+            ) : recruits.length === 0 ? (
+              <div className="bg-slate-900/60 p-8 rounded-2xl border border-slate-800 text-center space-y-2">
+                <p className="text-sm font-bold text-slate-300">لا توجد سجلات تطابق شروط البحث والفلترة.</p>
+                <button
+                  onClick={resetFilters}
+                  className="text-xs text-blue-400 underline font-semibold"
+                >
+                  إعادة ضبط جميع الفلاتر
+                </button>
+              </div>
+            ) : viewMode === 'grid' ? (
+              /* GRID CARDS VIEW */
+              <div className="space-y-2.5">
+                {recruits.map((recruit) => {
+                  const compStyle = getCompanyStyle(recruit.company, companyColors);
+                  const isSelected = selectedIds.includes(recruit.id);
+                  const hasInspectionIssues = recruit.inspection && recruit.inspection !== 'سليم';
+
+                  return (
+                    <div
+                      key={recruit.id}
+                      className={`bg-slate-900 rounded-2xl border p-3.5 transition-all shadow-sm relative ${
+                        isSelected 
+                          ? 'border-blue-500 bg-blue-950/20' 
+                          : hasInspectionIssues 
+                            ? 'border-rose-900/40 hover:border-rose-700/60' 
+                            : 'border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        
+                        {/* Checkbox & Avatar */}
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <input 
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectRecruit(recruit.id)}
+                            className="w-4 h-4 rounded accent-blue-600 shrink-0 cursor-pointer"
+                          />
+
+                          <div 
+                            onClick={() => {
+                              setSelectedRecruit(recruit);
+                              setEditFormData(recruit);
+                              setIsEditingRecruit(false);
+                            }}
+                            className="w-13 h-13 rounded-xl bg-slate-850 border border-slate-700 overflow-hidden shrink-0 flex items-center justify-center cursor-pointer"
+                          >
+                            {recruit.photo_path ? (
+                              <img 
+                                src={`/uploads/${recruit.photo_path.replace(/\\/g, '/').split('/').pop()}`} 
+                                alt={recruit.name} 
+                                className="w-full h-full object-cover" 
+                              />
+                            ) : (
+                              <Camera className="w-6 h-6 text-slate-500" />
+                            )}
+                          </div>
+
+                          {/* Info */}
+                          <div 
+                            onClick={() => {
+                              setSelectedRecruit(recruit);
+                              setEditFormData(recruit);
+                              setIsEditingRecruit(false);
+                            }}
+                            className="min-w-0 cursor-pointer"
+                          >
+                            <div className="text-xs font-black text-white truncate">
+                              {recruit.name}
+                            </div>
+                            <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                              {recruit.military_number || recruit.national_id || 'سجل جديد'}
+                            </div>
+                            <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-1">
+                              <span>{recruit.qualification || 'متوسط'}</span>
+                              <span>•</span>
+                              <span>{recruit.governorate || recruit.address || 'وسط الدلتا'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Badges & Inspect Button */}
+                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                          <span 
+                            className="text-[10px] font-bold px-2 py-0.5 rounded border"
+                            style={{
+                              backgroundColor: compStyle.bg,
+                              borderColor: compStyle.border,
+                              color: compStyle.color
+                            }}
+                          >
+                            {recruit.company ? recruit.company.replace('السرية ', '') : 'السرية'}
+                          </span>
+
+                          <div className="flex items-center gap-1 mt-1">
+                            {recruit.video_path && (
+                              <span className="p-1 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30" title="فيديو استجواب">
+                                <Video className="w-3 h-3" />
+                              </span>
+                            )}
+                            {hasInspectionIssues && (
+                              <span className="p-1 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30" title="تحريات إيجابية">
+                                <Shield className="w-3 h-3" />
+                              </span>
+                            )}
+                            <button
+                              onClick={() => {
+                                setSelectedRecruit(recruit);
+                                setEditFormData(recruit);
+                                setIsEditingRecruit(false);
+                              }}
+                              className="px-2 py-1 rounded bg-slate-800 text-slate-200 text-[10px] font-bold border border-slate-700 hover:bg-slate-700"
+                            >
+                              فحص
+                            </button>
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* COMPACT TABLE VIEW */
+              <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right text-xs">
+                    <thead className="bg-slate-850 text-slate-400 font-bold border-b border-slate-800 text-[11px]">
+                      <tr>
+                        <th className="p-2.5 w-8">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedIds.length === recruits.length && recruits.length > 0} 
+                            onChange={toggleSelectAll}
+                            className="accent-blue-600"
+                          />
+                        </th>
+                        <th className="p-2.5">المجند</th>
+                        <th className="p-2.5">الرقم العسكري</th>
+                        <th className="p-2.5">السرية</th>
+                        <th className="p-2.5">الحالة</th>
+                        <th className="p-2.5 text-center">إجراء</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {recruits.map(recruit => {
+                        const compStyle = getCompanyStyle(recruit.company, companyColors);
+                        const isSelected = selectedIds.includes(recruit.id);
+                        return (
+                          <tr key={recruit.id} className="hover:bg-slate-850/60 transition-colors">
+                            <td className="p-2.5">
+                              <input 
+                                type="checkbox" 
+                                checked={isSelected} 
+                                onChange={() => toggleSelectRecruit(recruit.id)}
+                                className="accent-blue-600"
+                              />
+                            </td>
+                            <td className="p-2.5 font-bold text-white truncate max-w-[130px]">
+                              {recruit.name}
+                            </td>
+                            <td className="p-2.5 font-mono text-[11px] text-slate-300">
+                              {recruit.military_number || '-'}
+                            </td>
+                            <td className="p-2.5">
+                              <span 
+                                className="text-[9px] font-bold px-1.5 py-0.5 rounded border"
+                                style={{
+                                  backgroundColor: compStyle.bg,
+                                  borderColor: compStyle.border,
+                                  color: compStyle.color
+                                }}
+                              >
+                                {recruit.company ? recruit.company.replace('السرية ', '') : '-'}
+                              </span>
+                            </td>
+                            <td className="p-2.5">
+                              {recruit.inspection === 'سليم' ? (
+                                <span className="text-[10px] text-emerald-400 font-bold">سليم</span>
+                              ) : (
+                                <span className="text-[10px] text-rose-400 font-bold">تحريات</span>
+                              )}
+                            </td>
+                            <td className="p-2.5 text-center">
+                              <button
+                                onClick={() => {
+                                  setSelectedRecruit(recruit);
+                                  setEditFormData(recruit);
+                                  setIsEditingRecruit(false);
+                                }}
+                                className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px] font-bold border border-blue-500/30"
+                              >
+                                عرض
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between bg-slate-900 p-2.5 rounded-xl border border-slate-800 text-xs text-slate-300">
+                <button
+                  disabled={page <= 1}
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-bold"
+                >
+                  السابق
+                </button>
+                <span className="font-mono">
+                  صفحة <strong className="text-white">{page}</strong> من <strong className="text-white">{totalPages}</strong>
+                </span>
+                <button
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-bold"
+                >
+                  التالي
+                </button>
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════
+            TAB 4: ANALYTICS & CHARTS (التحليلات والرسوم)
+           ══════════════════════════════════════════════════ */}
+        {activeTab === 'analytics' && (
+          <div className="space-y-3.5">
+            <div className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-extrabold text-white flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-blue-400" />
+                  لوحة الإحصائيات والتحليلات الميدانية
+                </h2>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  الدفع التجنيدي: <span className="text-blue-400 font-bold">{activeBatch?.name || 'الكل'}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setShowExportModal(true)}
+                className="px-2.5 py-1.5 rounded-lg bg-blue-600/20 text-blue-300 border border-blue-500/30 text-xs font-bold flex items-center gap-1"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>تصدير</span>
+              </button>
+            </div>
+
+            {/* Quick Metrics Bar */}
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="bg-slate-900 p-3 rounded-xl border border-slate-800">
+                <div className="text-[10px] text-slate-400 font-bold">المؤهلات العليا</div>
+                <div className="text-lg font-black text-blue-400 font-mono mt-1">
+                  {recruits.filter(r => r.qualification === 'عليا').length}
+                </div>
+              </div>
+              <div className="bg-slate-900 p-3 rounded-xl border border-slate-800">
+                <div className="text-[10px] text-slate-400 font-bold">المؤهل المتوسط</div>
+                <div className="text-lg font-black text-amber-400 font-mono mt-1">
+                  {recruits.filter(r => r.qualification === 'متوسط').length}
+                </div>
+              </div>
+              <div className="bg-slate-900 p-3 rounded-xl border border-slate-800">
+                <div className="text-[10px] text-slate-400 font-bold">العادة / المهني</div>
+                <div className="text-lg font-black text-emerald-400 font-mono mt-1">
+                  {recruits.filter(r => r.qualification === 'عادة').length}
                 </div>
               </div>
             </div>
 
-            {/* Chat Messages */}
-            <div className="flex-1 overflow-y-auto space-y-3 px-1 text-xs">
-              {aiMessages.map((msg, i) => (
-                <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                  <div className="text-[10px] font-bold text-slate-400 mb-1 px-1">
-                    {msg.role === 'user' ? 'أنت' : 'وكيل الذكاء الاصطناعي'}
+            {/* Company Distribution Progress Bars */}
+            <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-3">
+              <div className="text-xs font-extrabold text-white flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                <Layers className="w-4 h-4 text-emerald-400" />
+                توزيع المجندين حسب السرايا
+              </div>
+
+              {[
+                'السرية الأولى ( ١ )',
+                'السرية الثانية ( ٢ )',
+                'السرية الثالثة ( ٣ )',
+                'السرية الرابعة ( ٤ )',
+                'السرية الخامسة ( ٥ )',
+                'السرية السادسة ( ٦ )'
+              ].map(comp => {
+                const count = recruits.filter(r => r.company === comp).length;
+                const percent = recruits.length > 0 ? Math.round((count / recruits.length) * 100) : 0;
+                const style = getCompanyStyle(comp, companyColors);
+
+                return (
+                  <div key={comp} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-300">{comp}</span>
+                      <span className="font-mono text-slate-400">
+                        <strong className="text-white">{count}</strong> مجند ({percent}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                      <div 
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${percent}%`,
+                          backgroundColor: style.color || '#3b82f6'
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div className={`max-w-[92%] rounded-2xl p-3 leading-relaxed shadow ${
-                    msg.role === 'user' ? 'bg-emerald-600 text-white rounded-br-none' : 'bg-darkslate-900 border border-slate-800 text-slate-200 rounded-bl-none'
-                  }`}>
-                    {msg.content ? (
-                      <div className="whitespace-pre-wrap">{msg.content}</div>
-                    ) : (
-                      <div className="py-1">
-                        <LiquidOrb size={26} state="thinking" showPill={true} pillText="جاري استخراج البيانات..." />
+                );
+              })}
+            </div>
+
+            {/* Medical & Security Breakdown Cards */}
+            <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-3">
+              <div className="text-xs font-extrabold text-white flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                <Shield className="w-4 h-4 text-rose-400" />
+                مؤشرات الفحص الطبي والأمني
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-400">لائق طبياً (أ/ب):</span>
+                  <span className="font-bold text-emerald-400 font-mono">
+                    {recruits.filter(r => (r.medical_status || '').includes('لائق')).length}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-400">غير لائق طبياً:</span>
+                  <span className="font-bold text-rose-400 font-mono">
+                    {recruits.filter(r => r.medical_status === 'غير لائق').length}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-400">سليم أمنياً:</span>
+                  <span className="font-bold text-emerald-400 font-mono">
+                    {recruits.filter(r => r.inspection === 'سليم').length}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-400">ملاحظات أمنية:</span>
+                  <span className="font-bold text-rose-400 font-mono">
+                    {recruits.filter(r => r.inspection && r.inspection !== 'سليم').length}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════
+            TAB 5: AI ASSISTANT (المساعد الذكي)
+           ══════════════════════════════════════════════════ */}
+        {activeTab === 'ai' && (
+          <div className="flex flex-col h-[calc(100vh-140px)] bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl">
+            
+            {/* AI Top Header with LiquidOrb */}
+            <div className="bg-gradient-to-r from-slate-900 via-purple-950/30 to-slate-900 p-3 border-b border-purple-500/30 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <LiquidOrb size={32} state={isAiLoading ? 'thinking' : 'idle'} />
+                <div>
+                  <div className="text-xs font-black text-white flex items-center gap-1.5">
+                    <span>مساعد التحريات الذكي</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
+                  </div>
+                  <div className="text-[10px] text-purple-300">
+                    {isAiLoading ? 'جاري التحليل واستخراج البيانات...' : 'جاهز للإجابة والاستعلام اللحظي'}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setAiMessages([aiMessages[0]])}
+                className="text-[11px] text-slate-400 hover:text-white bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700 flex items-center gap-1"
+                title="تفريغ المحادثة"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>جديد</span>
+              </button>
+            </div>
+
+            {/* Chat Messages Feed */}
+            <div ref={aiScrollRef} className="flex-1 p-3.5 overflow-y-auto space-y-3 text-xs">
+              {aiMessages.map((msg, idx) => (
+                <div 
+                  key={idx} 
+                  className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+                >
+                  <div 
+                    className={`max-w-[88%] p-3 rounded-2xl leading-relaxed ${
+                      msg.role === 'user' 
+                        ? 'bg-blue-600 text-white rounded-br-none shadow-md shadow-blue-900/30' 
+                        : 'bg-slate-950 border border-slate-800 text-slate-200 rounded-bl-none shadow-md'
+                    }`}
+                  >
+                    <div className="whitespace-pre-wrap font-sans text-[12px]">{msg.content}</div>
+
+                    {/* Data Summary Pill if returned */}
+                    {msg.dataSummary && (
+                      <div className="mt-2 pt-2 border-t border-slate-800/80 text-[10px] text-purple-300 font-mono">
+                        {msg.dataSummary}
                       </div>
                     )}
                   </div>
 
-                  {msg.suggestions && msg.suggestions.length > 0 && !isAiLoading && (
-                    <div className="flex flex-wrap gap-1 mt-2 max-w-[92%]">
+                  {/* Quick Suggestions Chips */}
+                  {msg.suggestions && msg.suggestions.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
                       {msg.suggestions.map((sug, sIdx) => (
                         <button
                           key={sIdx}
-                          onClick={() => handleAiSend(sug)}
-                          className="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-900 hover:bg-emerald-600/30 text-emerald-300 border border-slate-800"
+                          onClick={() => handleSendAiMessage(sug)}
+                          className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 transition-all active:scale-95"
                         >
                           {sug}
                         </button>
@@ -914,342 +1655,847 @@ export default function MobileApp({
                   )}
                 </div>
               ))}
-              <div ref={aiScrollRef} />
+
+              {isAiLoading && (
+                <div className="flex items-center gap-2 p-3 bg-slate-950 rounded-2xl border border-slate-800 w-fit text-xs text-purple-300">
+                  <LiquidOrb size={18} state="thinking" />
+                  <span>المساعد الذكي يقوم بفحص السجلات واستخراج البيان...</span>
+                </div>
+              )}
             </div>
 
-            {/* Input Box */}
-            <div className="pt-2">
-              <form
-                onSubmit={(e) => {
+            {/* AI Input Form */}
+            <div className="p-2.5 bg-slate-950 border-t border-slate-800">
+              <form 
+                onSubmit={e => {
                   e.preventDefault();
-                  handleAiSend();
+                  handleSendAiMessage();
                 }}
-                className="flex items-center gap-2 bg-darkslate-900 border border-slate-800 rounded-2xl p-1.5 shadow-lg"
+                className="flex items-center gap-2"
               >
-                <input
+                <input 
                   type="text"
+                  placeholder="اسأل المساعد عن أي مجند أو إحصائية..."
                   value={aiInput}
-                  onChange={(e) => setAiInput(e.target.value)}
+                  onChange={e => setAiInput(e.target.value)}
                   disabled={isAiLoading}
-                  placeholder="اسأل عن أي مجند أو إحصائية أمنية..."
-                  className="flex-1 bg-transparent px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none"
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-purple-500 outline-none"
                 />
                 <button
                   type="submit"
                   disabled={!aiInput.trim() || isAiLoading}
-                  className="w-9 h-9 rounded-xl bg-emerald-600 disabled:opacity-40 text-white flex items-center justify-center shrink-0 shadow active:scale-95 transition-all"
+                  className="p-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white shadow"
                 >
-                  {isAiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 -scale-x-100" />}
+                  <Send className="w-4 h-4" />
                 </button>
               </form>
             </div>
+
           </div>
         )}
 
-        {/* ========================================================= */}
-        {/* TAB 5: SETTINGS & TOOLS */}
-        {/* ========================================================= */}
+        {/* ══════════════════════════════════════════════════
+            TAB 6: TOOLS & ADMIN (الأدوات ومركز الإدارة)
+           ══════════════════════════════════════════════════ */}
         {activeTab === 'tools' && (
           <div className="space-y-3.5">
-            <div className="bg-darkslate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-slate-300 font-black text-base border border-slate-700">
-                {currentUser?.username?.charAt(0)?.toUpperCase() || 'A'}
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-xs font-bold text-white">{currentUser?.full_name || currentUser?.username || 'مدير المنظومة'}</h3>
-                <p className="text-[11px] text-slate-400">رتبة / دور: {currentUser?.role === 'admin' ? 'مدير نظام كامل الصلاحيات' : 'مشغل تسجيل'}</p>
-              </div>
+            
+            <div className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800">
+              <h2 className="text-sm font-extrabold text-white flex items-center gap-2">
+                <Settings className="w-4 h-4 text-cyan-400" />
+                مركز الإدارة والعمليات الميدانية
+              </h2>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                كافة أدوات منظومة الفحص والتحريات والنسخ الاحتياطي
+              </p>
             </div>
 
-            <div className="bg-darkslate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-md divide-y divide-slate-800">
-              <button
+            {/* Tools Menu List */}
+            <div className="bg-slate-900 rounded-2xl border border-slate-800 divide-y divide-slate-800/80 overflow-hidden shadow">
+              
+              {/* 1. Batches Management */}
+              <div 
                 onClick={onOpenBatches}
-                className="w-full px-4 py-3.5 flex items-center justify-between text-right text-xs font-bold text-slate-200 hover:bg-slate-850 active:bg-slate-800 transition-colors"
+                className="p-3.5 flex items-center justify-between hover:bg-slate-850 cursor-pointer transition-colors"
               >
-                <span className="flex items-center gap-2.5">
-                  <Calendar className="w-4 h-4 text-blue-400" />
-                  <span>إدارة الدفوع التجنيدية ({activeBatch?.name || 'اختر دفعة'})</span>
-                </span>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
+                    <Calendar className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">إدارة الدفوع التجنيدية</div>
+                    <div className="text-[11px] text-slate-400">
+                      الدفع الحالي: <span className="text-emerald-400 font-semibold">{activeBatch?.name || 'غير محدد'}</span>
+                    </div>
+                  </div>
+                </div>
                 <ChevronLeft className="w-4 h-4 text-slate-500" />
-              </button>
+              </div>
 
-              <button
+              {/* 2. Export Suite (Excel / Cards / PDF) */}
+              <div 
+                onClick={() => setShowExportModal(true)}
+                className="p-3.5 flex items-center justify-between hover:bg-slate-850 cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/20">
+                    <Download className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">تصدير التقارير وبطاقات التعارف</div>
+                    <div className="text-[11px] text-slate-400">تصدير Excel، كروت التعارف، والملفات الشاملة</div>
+                  </div>
+                </div>
+                <ChevronLeft className="w-4 h-4 text-slate-500" />
+              </div>
+
+              {/* 3. Company Colors */}
+              <div 
+                onClick={() => setShowCompanyColorsModal(true)}
+                className="p-3.5 flex items-center justify-between hover:bg-slate-850 cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center border border-purple-500/20">
+                    <Palette className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">تخصيص ألوان ورموز السرايا</div>
+                    <div className="text-[11px] text-slate-400">تنسيق ألوان وشارات كروت السرايا</div>
+                  </div>
+                </div>
+                <ChevronLeft className="w-4 h-4 text-slate-500" />
+              </div>
+
+              {/* 4. External Drive Backup */}
+              <div 
+                onClick={onOpenBackup}
+                className="p-3.5 flex items-center justify-between hover:bg-slate-850 cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/20">
+                    <HardDrive className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">النسخ الاحتياطي والهارد الخارجي</div>
+                    <div className="text-[11px] text-slate-400">سحب نسخة فورية آمنة لقاعدة البيانات والوسائط</div>
+                  </div>
+                </div>
+                <ChevronLeft className="w-4 h-4 text-slate-500" />
+              </div>
+
+              {/* 5. Users & Permissions (Admin only) */}
+              {(!currentUser || currentUser.role === 'admin') && (
+                <div 
+                  onClick={onOpenUsers}
+                  className="p-3.5 flex items-center justify-between hover:bg-slate-850 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center border border-rose-500/20">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white">إدارة المستخدمين والصلاحيات</div>
+                      <div className="text-[11px] text-slate-400">حسابات ضباط الكشك والتحريات وكلمات المرور</div>
+                    </div>
+                  </div>
+                  <ChevronLeft className="w-4 h-4 text-slate-500" />
+                </div>
+              )}
+
+              {/* 6. Activity Log (Audit Trail) */}
+              <div 
+                onClick={() => setActivityRecruit({ id: 'all' })}
+                className="p-3.5 flex items-center justify-between hover:bg-slate-850 cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-teal-500/10 text-teal-400 flex items-center justify-center border border-teal-500/20">
+                    <Activity className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">سجل العمليات والرقابة (Audit Log)</div>
+                    <div className="text-[11px] text-slate-400">سجل حركات النظام والدخول والتعديلات</div>
+                  </div>
+                </div>
+                <ChevronLeft className="w-4 h-4 text-slate-500" />
+              </div>
+
+              {/* 7. Local Wi-Fi Sync */}
+              <div 
                 onClick={onOpenNetwork}
-                className="w-full px-4 py-3.5 flex items-center justify-between text-right text-xs font-bold text-slate-200 hover:bg-slate-850 active:bg-slate-800 transition-colors"
+                className="p-3.5 flex items-center justify-between hover:bg-slate-850 cursor-pointer transition-colors"
               >
-                <span className="flex items-center gap-2.5">
-                  <Wifi className="w-4 h-4 text-emerald-400" />
-                  <span>ربط الأجهزة ومشاركة رمز الـ QR</span>
-                </span>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center border border-indigo-500/20">
+                    <Wifi className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">شبكة الربط الداخلي والـ QR</div>
+                    <div className="text-[11px] text-slate-400">ربط هواتف وأجهزة اللجان بالشبكة المحلية</div>
+                  </div>
+                </div>
                 <ChevronLeft className="w-4 h-4 text-slate-500" />
-              </button>
+              </div>
 
-              <button
+              {/* 8. Change Password */}
+              <div 
                 onClick={onOpenChangePassword}
-                className="w-full px-4 py-3.5 flex items-center justify-between text-right text-xs font-bold text-slate-200 hover:bg-slate-850 active:bg-slate-800 transition-colors"
+                className="p-3.5 flex items-center justify-between hover:bg-slate-850 cursor-pointer transition-colors"
               >
-                <span className="flex items-center gap-2.5">
-                  <KeyRound className="w-4 h-4 text-amber-400" />
-                  <span>تغيير كلمة المرور الخاصة بك</span>
-                </span>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center border border-slate-700">
+                    <KeyRound className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">تغيير كلمة المرور</div>
+                    <div className="text-[11px] text-slate-400">تحديث كلمة السر الخاصة بحسابك</div>
+                  </div>
+                </div>
                 <ChevronLeft className="w-4 h-4 text-slate-500" />
-              </button>
+              </div>
 
+            </div>
+
+            {/* Desktop Switch & Logout Action */}
+            <div className="space-y-2 pt-2">
               <button
                 onClick={onSwitchToDesktop}
-                className="w-full px-4 py-3.5 flex items-center justify-between text-right text-xs font-bold text-slate-200 hover:bg-slate-850 active:bg-slate-800 transition-colors"
+                className="w-full py-3 px-4 rounded-xl bg-slate-850 hover:bg-slate-800 text-cyan-300 border border-slate-700 text-xs font-bold flex items-center justify-center gap-2 shadow"
               >
-                <span className="flex items-center gap-2.5">
-                  <Monitor className="w-4 h-4 text-cyan-400" />
-                  <span>التحويل لشاشة الكمبيوتر الأصلية (Desktop)</span>
-                </span>
-                <ChevronLeft className="w-4 h-4 text-slate-500" />
+                <Monitor className="w-4 h-4" />
+                <span>التبديل إلى نسخة شاشة الكمبيوتر (Desktop View)</span>
               </button>
 
               <button
                 onClick={onLogout}
-                className="w-full px-4 py-3.5 flex items-center justify-between text-right text-xs font-bold text-rose-400 hover:bg-rose-950/30 active:bg-rose-900/40 transition-colors"
+                className="w-full py-3 px-4 rounded-xl bg-rose-950/20 hover:bg-rose-950/40 text-rose-300 border border-rose-800/40 text-xs font-bold flex items-center justify-center gap-2"
               >
-                <span className="flex items-center gap-2.5">
-                  <LogOut className="w-4 h-4 text-rose-400" />
-                  <span>تسجيل الخروج من الحساب</span>
-                </span>
-                <ChevronLeft className="w-4 h-4 text-rose-400/50" />
+                <LogOut className="w-4 h-4" />
+                <span>تسجيل الخروج من المنظومة</span>
               </button>
             </div>
+
           </div>
         )}
 
       </main>
 
-      {/* ------------------------------------------------------------- */}
-      {/* MOBILE RECRUIT DOSSIER MODAL / BOTTOM SHEET */}
-      {/* ------------------------------------------------------------- */}
-      {selectedRecruit && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col justify-end sm:justify-center">
-          <div className="bg-darkslate-900 border-t sm:border border-slate-800 rounded-t-3xl sm:rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden mx-auto">
+      {/* ══════════════════════════════════════════════════
+          BOTTOM FILTER SHEET (درج الفلترة المتقدمة)
+         ══════════════════════════════════════════════════ */}
+      {isFilterSheetOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end justify-center animate-in fade-in duration-200">
+          <div className="bg-slate-900 border-t border-slate-800 rounded-t-3xl w-full max-w-lg p-4 space-y-4 max-h-[85vh] overflow-y-auto">
             
-            {/* Sheet Header */}
-            <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-darkslate-850">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
-                  <Shield className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <h2 className="text-xs font-bold text-white truncate">{selectedRecruit.name}</h2>
-                  <div className="text-[10px] text-slate-400 font-mono">{selectedRecruit.national_id || 'بدون رقم قومي'}</div>
-                </div>
-              </div>
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                <Filter className="w-4 h-4 text-blue-400" />
+                تصفية وفلاتر السجل الميداني
+              </h3>
+              <button 
+                onClick={() => setIsFilterSheetOpen(false)}
+                className="p-1 text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setIsEditingRecruit(!isEditingRecruit)}
-                  className={`p-2 rounded-xl border text-xs font-bold flex items-center gap-1 ${
-                    isEditingRecruit ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-slate-800 text-slate-300 border-slate-700'
-                  }`}
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>{isEditingRecruit ? 'إلغاء' : 'تعديل'}</span>
-                </button>
-                <button
-                  onClick={() => setSelectedRecruit(null)}
-                  className="p-2 rounded-xl bg-slate-800 text-slate-300"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+            {/* Filter: Batch */}
+            <div>
+              <label className="text-xs font-bold text-slate-300 mb-1.5 block">الدفع التجنيدي</label>
+              <select
+                value={filterBatch}
+                onChange={e => setFilterBatch(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white outline-none"
+              >
+                <option value="all">كافة الدفوع المسجلة</option>
+                {batches.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filter: Company */}
+            <div>
+              <label className="text-xs font-bold text-slate-300 mb-1.5 block">السرية</label>
+              <select
+                value={filterCompany}
+                onChange={e => setFilterCompany(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white outline-none"
+              >
+                <option value="all">كافة السرايا</option>
+                <option value="السرية الأولى ( ١ )">السرية الأولى</option>
+                <option value="السرية الثانية ( ٢ )">السرية الثانية</option>
+                <option value="السرية الثالثة ( ٣ )">السرية الثالثة</option>
+                <option value="السرية الرابعة ( ٤ )">السرية الرابعة</option>
+                <option value="السرية الخامسة ( ٥ )">السرية الخامسة</option>
+                <option value="السرية السادسة ( ٦ )">السرية السادسة</option>
+              </select>
+            </div>
+
+            {/* Filter: Qualification */}
+            <div>
+              <label className="text-xs font-bold text-slate-300 mb-1.5 block">المؤهل الدراسي</label>
+              <div className="grid grid-cols-4 gap-1.5">
+                {['all', 'عليا', 'فوق متوسط', 'متوسط', 'عادة'].map(q => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => setFilterQualification(q)}
+                    className={`py-1.5 text-xs font-bold rounded-lg border ${
+                      filterQualification === q 
+                        ? 'bg-blue-600 text-white border-blue-400' 
+                        : 'bg-slate-950 text-slate-400 border-slate-800'
+                    }`}
+                  >
+                    {q === 'all' ? 'الكل' : q}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Sheet Body */}
-            <div className="p-4 overflow-y-auto space-y-4 text-xs">
-              {/* Media Section: Photo & Video */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <div className="aspect-[4/3] rounded-2xl bg-black overflow-hidden border border-slate-800 flex items-center justify-center">
-                  {selectedRecruit.photo_path ? (
-                    <img src={selectedRecruit.photo_path} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-slate-600 text-[11px]">لا توجد صورة</span>
-                  )}
-                </div>
+            {/* Filter: Security Investigation */}
+            <div>
+              <label className="text-xs font-bold text-slate-300 mb-1.5 block">الموقف الأمني والتحريات</label>
+              <select
+                value={filterSecurity}
+                onChange={e => setFilterSecurity(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white outline-none"
+              >
+                <option value="all">الكل (سليم وإيجابي)</option>
+                <option value="criminal_record">أرباب سوابق / جنائي</option>
+                <option value="political_suspect">شبهة سياسية</option>
+                <option value="registered_relatives">أقارب مسجلين</option>
+                <option value="travel_abroad">سفر للخارج</option>
+                <option value="unbalanced_behavior">سلوك غير متزن</option>
+                <option value="addiction_history">شبهة إدمان</option>
+              </select>
+            </div>
 
-                <div className="aspect-[4/3] rounded-2xl bg-black overflow-hidden border border-slate-800 flex items-center justify-center">
-                  {selectedRecruit.video_path ? (
-                    <video src={selectedRecruit.video_path} controls playsInline className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-slate-600 text-[11px]">لا يوجد فيديو</span>
-                  )}
-                </div>
+            {/* Filter: Medical */}
+            <div>
+              <label className="text-xs font-bold text-slate-300 mb-1.5 block">اللياقة الطبية</label>
+              <div className="grid grid-cols-4 gap-1.5">
+                {['all', 'لائق', 'لائق ب', 'غير لائق'].map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setFilterMedical(m)}
+                    className={`py-1.5 text-xs font-bold rounded-lg border ${
+                      filterMedical === m 
+                        ? 'bg-emerald-600 text-white border-emerald-400' 
+                        : 'bg-slate-950 text-slate-400 border-slate-800'
+                    }`}
+                  >
+                    {m === 'all' ? 'الكل' : m}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Filter: Media (Video & Photo) */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 mb-1 block">تسجيل الفيديو</label>
+                <select
+                  value={filterVideo}
+                  onChange={e => setFilterVideo(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs text-white outline-none"
+                >
+                  <option value="all">الكل</option>
+                  <option value="with_video">يوجد فيديو</option>
+                  <option value="no_video">بدون فيديو</option>
+                </select>
               </div>
 
-              {/* View / Edit Mode */}
-              {isEditingRecruit ? (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 mb-1">الاسم الرباعي</label>
-                    <input
-                      type="text"
-                      value={editFormData.name || ''}
-                      onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
-                      className="w-full bg-darkslate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-400 mb-1">المهنة</label>
-                      <input
-                        type="text"
-                        value={editFormData.current_job || ''}
-                        onChange={(e) => setEditFormData({ ...editFormData, current_job: e.target.value })}
-                        className="w-full bg-darkslate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-400 mb-1">السرية</label>
-                      <input
-                        type="text"
-                        value={editFormData.company || ''}
-                        onChange={(e) => setEditFormData({ ...editFormData, company: e.target.value })}
-                        className="w-full bg-darkslate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 mb-1">الموقف من الاشتباه</label>
-                    <select
-                      value={editFormData.inspection || 'سليم'}
-                      onChange={(e) => setEditFormData({ ...editFormData, inspection: e.target.value })}
-                      className="w-full bg-darkslate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
-                    >
-                      <option value="سليم">سليم</option>
-                      <option value="اشتباه جنائي">اشتباه جنائي</option>
-                      <option value="اشتباه سياسي">اشتباه سياسي</option>
-                      <option value="غير متزن نفسياً">غير متزن نفسياً</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-400 mb-1">ملاحظات التحريات</label>
-                    <textarea
-                      rows={3}
-                      value={editFormData.notes || ''}
-                      onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
-                      className="w-full bg-darkslate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white resize-none"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-2">
-                    <button
-                      onClick={handleSaveEdit}
-                      className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-bold text-xs shadow"
-                    >
-                      حفظ التعديلات
-                    </button>
-                    <button
-                      onClick={() => setIsEditingRecruit(false)}
-                      className="px-4 py-3 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs"
-                    >
-                      إلغاء
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  <div className="bg-darkslate-950 border border-slate-800 rounded-2xl p-3 space-y-2">
-                    <div className="flex justify-between py-1 border-b border-slate-800/60">
-                      <span className="text-slate-400">المؤهل:</span>
-                      <span className="text-white font-bold">{selectedRecruit.qualification || 'متوسط'}</span>
-                    </div>
-                    <div className="flex justify-between py-1 border-b border-slate-800/60">
-                      <span className="text-slate-400">الديانة والحالة:</span>
-                      <span className="text-white font-bold">{selectedRecruit.religion} • {selectedRecruit.wife}</span>
-                    </div>
-                    <div className="flex justify-between py-1 border-b border-slate-800/60">
-                      <span className="text-slate-400">المهنة والحرفة:</span>
-                      <span className="text-white font-bold">{selectedRecruit.current_job || 'بدون'}</span>
-                    </div>
-                    <div className="flex justify-between py-1 border-b border-slate-800/60">
-                      <span className="text-slate-400">السرية والتوزيع:</span>
-                      <span className="text-white font-bold">{selectedRecruit.company || 'غير محدد'}</span>
-                    </div>
-                    <div className="flex justify-between py-1 border-b border-slate-800/60">
-                      <span className="text-slate-400">الاشتباه الأمني:</span>
-                      <span className={`font-bold ${selectedRecruit.inspection === 'سليم' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {selectedRecruit.inspection || 'سليم'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between py-1 border-b border-slate-800/60">
-                      <span className="text-slate-400">العنوان:</span>
-                      <span className="text-white font-bold text-left truncate max-w-[200px]">{selectedRecruit.address || 'غير محدد'}</span>
-                    </div>
-                    <div className="py-1">
-                      <span className="text-slate-400 block mb-1">الملاحظات:</span>
-                      <p className="text-slate-200 bg-slate-900 p-2 rounded-xl text-[11px] leading-relaxed">
-                        {selectedRecruit.notes || 'لا توجد ملاحظات مسجلة'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-2">
-                    <button
-                      onClick={() => setIsEditingRecruit(true)}
-                      className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700"
-                    >
-                      <Edit3 className="w-4 h-4 text-emerald-400" />
-                      <span>تعديل البيانات</span>
-                    </button>
-                    <button
-                      onClick={() => handleDelete(selectedRecruit.id)}
-                      className="p-3 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/30 text-rose-300"
-                      title="حذف الملف"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 mb-1 block">التقاط الصورة</label>
+                <select
+                  value={filterPhoto}
+                  onChange={e => setFilterPhoto(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs text-white outline-none"
+                >
+                  <option value="all">الكل</option>
+                  <option value="with_photo">يوجد صورة</option>
+                  <option value="no_photo">بدون صورة</option>
+                </select>
+              </div>
             </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                onClick={() => {
+                  setPage(1);
+                  setIsFilterSheetOpen(false);
+                }}
+                className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs shadow"
+              >
+                تطبيق الفلاتر
+              </button>
+
+              <button
+                onClick={resetFilters}
+                className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs border border-slate-700"
+              >
+                إعادة ضبط
+              </button>
+            </div>
+
           </div>
         </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
-      {/* BOTTOM NAVIGATION BAR (FIXED) */}
-      {/* ------------------------------------------------------------- */}
-      <nav className="fixed bottom-0 inset-x-0 z-40 bg-darkslate-900/98 backdrop-blur-xl border-t border-slate-800/90 py-2 px-3 shadow-2xl no-print">
-        <div className="max-w-md mx-auto grid grid-cols-5 gap-1">
-          {[
-            { id: 'home', label: 'الرئيسية', icon: Home },
-            { id: 'new', label: 'تسجيل', icon: UserPlus },
-            { id: 'directory', label: 'السجل', icon: Users },
-            { id: 'ai', label: 'المساعد AI', icon: Bot, isOrb: true },
-            { id: 'tools', label: 'الأدوات', icon: Settings }
-          ].map(item => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`flex flex-col items-center justify-center py-1 rounded-xl transition-all duration-200 ${
-                  isActive ? 'text-emerald-400 font-bold scale-105' : 'text-slate-400 hover:text-slate-200'
-                }`}
+      {/* ══════════════════════════════════════════════════
+          RECRUIT DOSSIER SHEET (درج فحص وتعديل المجند الميداني)
+         ══════════════════════════════════════════════════ */}
+      {selectedRecruit && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end justify-center animate-in fade-in duration-200">
+          <div className="bg-slate-900 border-t border-slate-800 rounded-t-3xl w-full max-w-lg p-4 space-y-3.5 max-h-[90vh] overflow-y-auto">
+            
+            {/* Header with Close */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Shield className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="text-xs font-black text-white truncate">
+                  ملف المجند: {selectedRecruit.name}
+                </span>
+              </div>
+              <button 
+                onClick={() => {
+                  setSelectedRecruit(null);
+                  setIsEditingRecruit(false);
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
               >
-                {item.isOrb ? (
-                  <div className="relative mb-0.5">
-                    <LiquidOrb size={22} state={isAiLoading ? 'thinking' : 'idle'} />
-                    {isActive && (
-                      <span className="absolute -bottom-1 inset-x-0 h-0.5 bg-emerald-400 rounded-full"></span>
-                    )}
-                  </div>
-                ) : (
-                  <Icon className={`w-5 h-5 mb-0.5 ${isActive ? 'text-emerald-400 stroke-[2.5]' : ''}`} />
-                )}
-                <span className="text-[10px] tracking-tight">{item.label}</span>
+                <X className="w-5 h-5" />
               </button>
-            );
-          })}
+            </div>
+
+            {/* Media Block: Photo & Video Player */}
+            <div className="grid grid-cols-2 gap-2">
+              {/* Photo */}
+              <div className="rounded-xl overflow-hidden bg-slate-950 border border-slate-800 h-36 flex items-center justify-center relative">
+                {selectedRecruit.photo_path ? (
+                  <img 
+                    src={`/uploads/${selectedRecruit.photo_path.replace(/\\/g, '/').split('/').pop()}`} 
+                    alt={selectedRecruit.name} 
+                    className="w-full h-full object-cover" 
+                  />
+                ) : (
+                  <div className="text-slate-500 text-xs flex flex-col items-center gap-1">
+                    <Camera className="w-6 h-6" />
+                    <span>لا توجد صورة</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Video Player */}
+              <div className="rounded-xl overflow-hidden bg-slate-950 border border-slate-800 h-36 flex items-center justify-center relative">
+                {selectedRecruit.video_path ? (
+                  <video 
+                    controls
+                    playsInline
+                    src={`/uploads/${selectedRecruit.video_path.replace(/\\/g, '/').split('/').pop()}`}
+                    className="w-full h-full object-contain bg-black"
+                  />
+                ) : (
+                  <div className="text-slate-500 text-xs flex flex-col items-center gap-1 p-2 text-center">
+                    <Video className="w-6 h-6" />
+                    <span>لا يوجد فيديو مسجل</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Specialized 6-Action Bar */}
+            <div className="grid grid-cols-3 gap-1.5 text-center">
+              
+              {/* 1. Ticket */}
+              <button
+                onClick={() => setTicketRecruit(selectedRecruit)}
+                className="p-2 rounded-xl bg-indigo-600/15 hover:bg-indigo-600/25 border border-indigo-500/30 text-indigo-300 text-[11px] font-bold flex flex-col items-center gap-1"
+              >
+                <IdCard className="w-4 h-4 text-indigo-400" />
+                <span>تذكرة الباركود</span>
+              </button>
+
+              {/* 2. Documents */}
+              <button
+                onClick={() => setDocumentsRecruit(selectedRecruit)}
+                className="p-2 rounded-xl bg-cyan-600/15 hover:bg-cyan-600/25 border border-cyan-500/30 text-cyan-300 text-[11px] font-bold flex flex-col items-center gap-1"
+              >
+                <FileCheck className="w-4 h-4 text-cyan-400" />
+                <span>الوثائق والمرفقات</span>
+              </button>
+
+              {/* 3. Psychological */}
+              <button
+                onClick={() => setPsychologicalRecruit(selectedRecruit)}
+                className="p-2 rounded-xl bg-purple-600/15 hover:bg-purple-600/25 border border-purple-500/30 text-purple-300 text-[11px] font-bold flex flex-col items-center gap-1"
+              >
+                <Brain className="w-4 h-4 text-purple-400" />
+                <span>متابعة نفسية</span>
+              </button>
+
+              {/* 4. Official Print */}
+              <button
+                onClick={() => setPrintRecruit(selectedRecruit)}
+                className="p-2 rounded-xl bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold flex flex-col items-center gap-1"
+              >
+                <Printer className="w-4 h-4 text-emerald-400" />
+                <span>تقرير رسمي A4</span>
+              </button>
+
+              {/* 5. Edit Dossier */}
+              <button
+                onClick={() => setIsEditingRecruit(!isEditingRecruit)}
+                className="p-2 rounded-xl bg-amber-600/15 hover:bg-amber-600/25 border border-amber-500/30 text-amber-300 text-[11px] font-bold flex flex-col items-center gap-1"
+              >
+                <Edit3 className="w-4 h-4 text-amber-400" />
+                <span>{isEditingRecruit ? 'إلغاء التعديل' : 'تعديل الملف'}</span>
+              </button>
+
+              {/* 6. Delete */}
+              <button
+                onClick={() => handleDeleteRecruit(selectedRecruit.id)}
+                className="p-2 rounded-xl bg-rose-600/15 hover:bg-rose-600/25 border border-rose-500/30 text-rose-300 text-[11px] font-bold flex flex-col items-center gap-1"
+              >
+                <Trash2 className="w-4 h-4 text-rose-400" />
+                <span>حذف السجل</span>
+              </button>
+
+            </div>
+
+            {/* Dossier Body: View or Edit Mode */}
+            {!isEditingRecruit ? (
+              <div className="space-y-3">
+                {/* Details table */}
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1.5 text-xs">
+                  <div className="flex justify-between py-1 border-b border-slate-800/80">
+                    <span className="text-slate-400">الرقم العسكري:</span>
+                    <span className="font-bold text-white font-mono">{selectedRecruit.military_number || '-'}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/80">
+                    <span className="text-slate-400">الرقم القومي:</span>
+                    <span className="font-bold text-white font-mono">{selectedRecruit.national_id || '-'}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/80">
+                    <span className="text-slate-400">السرية:</span>
+                    <span className="font-bold text-emerald-400">{selectedRecruit.company || '-'}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/80">
+                    <span className="text-slate-400">المؤهل الدراسي:</span>
+                    <span className="font-bold text-white">{selectedRecruit.qualification || '-'}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/80">
+                    <span className="text-slate-400">محل الإقامة:</span>
+                    <span className="font-bold text-white">{selectedRecruit.address || selectedRecruit.governorate || '-'}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/80">
+                    <span className="text-slate-400">رقم الهاتف:</span>
+                    <span className="font-bold text-white font-mono">{selectedRecruit.phone || '-'}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/80">
+                    <span className="text-slate-400">اللياقة الطبية:</span>
+                    <span className="font-bold text-emerald-400">{selectedRecruit.medical_status || 'لائق'}</span>
+                  </div>
+                  <div className="flex justify-between py-1">
+                    <span className="text-slate-400">الموقف الأمني:</span>
+                    <span className={`font-bold ${selectedRecruit.inspection === 'سليم' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {selectedRecruit.inspection || 'سليم'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 20 Security Inspection Checkpoints display */}
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                  <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5 border-b border-slate-800 pb-1.5">
+                    <Shield className="w-3.5 h-3.5" />
+                    <span>موقف التحريات الأمنية الـ 20 حقلاً</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                    {inspectionFields.map(f => {
+                      const val = selectedRecruit[f.key] || 'سليم';
+                      const isClear = val === 'سليم';
+                      return (
+                        <div key={f.key} className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between">
+                          <span className="text-slate-400 truncate max-w-[90px]">{f.label.split('/')[0]}</span>
+                          <span className={`font-bold px-1.5 py-0.2 rounded text-[10px] ${
+                            isClear ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/20 text-rose-300'
+                          }`}>
+                            {val}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {selectedRecruit.notes && (
+                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
+                    <div className="text-slate-400 font-bold mb-1">الملاحظات المسجلة:</div>
+                    <div className="text-white leading-relaxed">{selectedRecruit.notes}</div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* INLINE EDIT MODE */
+              <div className="space-y-3">
+                <div className="text-xs font-bold text-amber-400">تعديل بيانات المجند:</div>
+
+                <div>
+                  <label className="text-[11px] text-slate-400 font-bold block mb-1">الاسم بالكامل</label>
+                  <input 
+                    type="text"
+                    value={editFormData.name || ''}
+                    onChange={e => setEditFormData({ ...editFormData, name: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1">الرقم العسكري</label>
+                    <input 
+                      type="text"
+                      value={editFormData.military_number || ''}
+                      onChange={e => setEditFormData({ ...editFormData, military_number: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs text-white font-mono outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1">الرقم القومي</label>
+                    <input 
+                      type="text"
+                      value={editFormData.national_id || ''}
+                      onChange={e => setEditFormData({ ...editFormData, national_id: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs text-white font-mono outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1">المؤهل</label>
+                    <select
+                      value={editFormData.qualification || 'متوسط'}
+                      onChange={e => setEditFormData({ ...editFormData, qualification: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs text-white outline-none"
+                    >
+                      <option value="عليا">عليا</option>
+                      <option value="فوق متوسط">فوق متوسط</option>
+                      <option value="متوسط">متوسط</option>
+                      <option value="عادة">عادة</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1">السرية</label>
+                    <select
+                      value={editFormData.company || 'السرية الأولى ( ١ )'}
+                      onChange={e => setEditFormData({ ...editFormData, company: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs text-white outline-none"
+                    >
+                      <option value="السرية الأولى ( ١ )">السرية الأولى</option>
+                      <option value="السرية الثانية ( ٢ )">السرية الثانية</option>
+                      <option value="السرية الثالثة ( ٣ )">السرية الثالثة</option>
+                      <option value="السرية الرابعة ( ٤ )">السرية الرابعة</option>
+                      <option value="السرية الخامسة ( ٥ )">السرية الخامسة</option>
+                      <option value="السرية السادسة ( ٦ )">السرية السادسة</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-slate-400 font-bold block mb-1">الملاحظات</label>
+                  <textarea 
+                    rows={2}
+                    value={editFormData.notes || ''}
+                    onChange={e => setEditFormData({ ...editFormData, notes: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs text-white outline-none resize-none"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    onClick={handleSaveEdit}
+                    className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow"
+                  >
+                    حفظ التعديلات فوراً
+                  </button>
+                  <button
+                    onClick={() => setIsEditingRecruit(false)}
+                    className="px-4 py-3 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════
+          OVERLAY MODALS (نوافذ العمليات المتخصصة)
+         ══════════════════════════════════════════════════ */}
+
+      {/* 1. Ticket Modal (تذكرة التسجيل العسكرية والباركود) */}
+      {ticketRecruit && (
+        <TicketModal
+          isOpen={!!ticketRecruit}
+          recruit={ticketRecruit}
+          onClose={() => setTicketRecruit(null)}
+          onTicketChanged={fetchMobileRecruits}
+        />
+      )}
+
+      {/* 2. Documents & Attachments Modal (المستندات والوثائق المصورة) */}
+      {documentsRecruit && (
+        <RecruitDocumentsModal
+          recruit={documentsRecruit}
+          onClose={() => setDocumentsRecruit(null)}
+          onRefreshRecruits={fetchMobileRecruits}
+        />
+      )}
+
+      {/* 3. Psychological Followup Modal (المتابعة النفسية والعصبية) */}
+      {psychologicalRecruit && (
+        <PsychologicalFollowupModal
+          isOpen={!!psychologicalRecruit}
+          recruit={psychologicalRecruit}
+          onClose={() => setPsychologicalRecruit(null)}
+          onUpdated={() => {
+            fetchMobileRecruits();
+            onRefresh();
+            showToast('تم حفظ سجل المتابعة النفسية بنجاح');
+          }}
+        />
+      )}
+
+      {/* 4. Official Printable Examination Report (A4) */}
+      {printRecruit && (
+        <OfficialReport
+          recruit={printRecruit}
+          onClose={() => setPrintRecruit(null)}
+        />
+      )}
+
+      {/* 5. Export Suite Modal (تصدير إكسيل وبطاقات التعارف) */}
+      {showExportModal && (
+        <ExportModal
+          isOpen={showExportModal}
+          recruits={recruits}
+          selectedRecruitIds={selectedIds.length > 0 ? selectedIds : (selectedRecruit ? [selectedRecruit.id] : [])}
+          activeBatch={activeBatch}
+          onClose={() => setShowExportModal(false)}
+          onUpdateRecruit={() => {
+            fetchMobileRecruits();
+            onRefresh();
+          }}
+        />
+      )}
+
+      {/* 6. Company Colors Modal (تخصيص ألوان السرايا) */}
+      {showCompanyColorsModal && (
+        <CompanyColorsModal
+          isOpen={showCompanyColorsModal}
+          onClose={() => setShowCompanyColorsModal(false)}
+          onColorsUpdated={(colors) => {
+            setCompanyColors(colors);
+            showToast('تم تحديث ألوان السرايا بنجاح');
+          }}
+        />
+      )}
+
+      {/* 7. Activity Log Modal (سجل العمليات والرقابة) */}
+      {activityRecruit && (
+        <ActivityLogModal
+          isOpen={!!activityRecruit}
+          recruitId={activityRecruit.id === 'all' ? null : activityRecruit.id}
+          onClose={() => setActivityRecruit(null)}
+        />
+      )}
+
+      {/* ── BOTTOM NAVIGATION BAR (شريط التنقل السفلي اللمسي) ── */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 px-2 py-1.5 shadow-2xl max-w-lg mx-auto">
+        <div className="grid grid-cols-6 items-center text-center">
+          
+          {/* Tab 1: Home */}
+          <button
+            onClick={() => setActiveTab('home')}
+            className={`flex flex-col items-center justify-center py-1 transition-all ${
+              activeTab === 'home' ? 'text-blue-400 font-extrabold scale-105' : 'text-slate-400'
+            }`}
+          >
+            <Home className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">الرئيسية</span>
+          </button>
+
+          {/* Tab 2: New Recruit */}
+          <button
+            onClick={() => {
+              setIsMediaCapturing(false);
+              setActiveTab('new');
+            }}
+            className={`flex flex-col items-center justify-center py-1 transition-all ${
+              activeTab === 'new' ? 'text-emerald-400 font-extrabold scale-105' : 'text-slate-400'
+            }`}
+          >
+            <UserPlus className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">تسجيل</span>
+          </button>
+
+          {/* Tab 3: Directory */}
+          <button
+            onClick={() => setActiveTab('directory')}
+            className={`flex flex-col items-center justify-center py-1 transition-all ${
+              activeTab === 'directory' ? 'text-cyan-400 font-extrabold scale-105' : 'text-slate-400'
+            }`}
+          >
+            <Users className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">السجل</span>
+          </button>
+
+          {/* Tab 4: Analytics */}
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`flex flex-col items-center justify-center py-1 transition-all ${
+              activeTab === 'analytics' ? 'text-indigo-400 font-extrabold scale-105' : 'text-slate-400'
+            }`}
+          >
+            <BarChart3 className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">التحليلات</span>
+          </button>
+
+          {/* Tab 5: AI Assistant */}
+          <button
+            onClick={() => setActiveTab('ai')}
+            className={`flex flex-col items-center justify-center py-1 transition-all ${
+              activeTab === 'ai' ? 'text-purple-400 font-extrabold scale-105' : 'text-slate-400'
+            }`}
+          >
+            <div className="relative">
+              <LiquidOrb size={22} state={activeTab === 'ai' ? 'thinking' : 'idle'} />
+              {activeTab === 'ai' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 absolute -top-0.5 -right-0.5 animate-ping"></span>
+              )}
+            </div>
+            <span className="text-[10px] mt-0.5">مساعد AI</span>
+          </button>
+
+          {/* Tab 6: Tools */}
+          <button
+            onClick={() => setActiveTab('tools')}
+            className={`flex flex-col items-center justify-center py-1 transition-all ${
+              activeTab === 'tools' ? 'text-amber-400 font-extrabold scale-105' : 'text-slate-400'
+            }`}
+          >
+            <Settings className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">الأدوات</span>
+          </button>
+
         </div>
       </nav>
 
