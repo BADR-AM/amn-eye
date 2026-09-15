@@ -63,6 +63,16 @@ export default function UsersModal({ isOpen, onClose, currentUser, showToast }) 
   const [deletingUser, setDeletingUser] = useState(null);
   const [submittingDelete, setSubmittingDelete] = useState(false);
 
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
+
   const fetchUsers = async () => {
     setLoading(true);
     setError('');

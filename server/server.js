@@ -45,7 +45,9 @@ app.use('/uploads', (req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'");
   next();
-}, express.static(uploadsDir));
+}, express.static(uploadsDir), (req, res) => {
+  res.status(404).json({ error: 'الملف المطلوب غير موجود في مجلد المرفقات' });
+});
 
 // Multer config — type allowlist + random filenames
 const ALLOWED_PHOTO_MIME = ['image/jpeg', 'image/png', 'image/webp'];
@@ -2115,8 +2117,13 @@ app.delete('/api/backup/:fileName', requireAuth, (req, res) => {
   }
 });
 
-// Serve frontend static build if it exists (in production / packaged Electron app)
 const distDir = path.join(__dirname, '..', 'dist');
+
+// 404 Handler for unmatched API and uploads endpoints (prevent SPA fallback from serving HTML)
+app.all(['/api/*', '/uploads/*'], (req, res) => {
+  res.status(404).json({ error: 'المسار أو الملف المطلوب غير موجود' });
+});
+
 if (fs.existsSync(distDir)) {
   app.use(express.static(distDir));
   app.get('*', (req, res) => {

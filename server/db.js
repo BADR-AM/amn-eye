@@ -37,31 +37,67 @@ const db = new sqlite3.Database(dbPath, (err) => {
   }
 });
 
-// Promisified database helpers
-export const query = (sql, params = []) => {
+// Promisified database helpers with automatic retry on SQLITE_BUSY / lock contention
+export const query = (sql, params = [], maxRetries = 5) => {
   return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
+    let attempts = 0;
+    const execute = () => {
+      attempts++;
+      db.all(sql, params, (err, rows) => {
+        if (err) {
+          const isBusy = err.code === 'SQLITE_BUSY' || err.message?.includes('busy') || err.message?.includes('locked');
+          if (isBusy && attempts <= maxRetries) {
+            const delay = Math.min(30 * Math.pow(1.5, attempts), 500) + Math.random() * 20;
+            return setTimeout(execute, delay);
+          }
+          return reject(err);
+        }
+        resolve(rows);
+      });
+    };
+    execute();
   });
 };
 
-export const get = (sql, params = []) => {
+export const get = (sql, params = [], maxRetries = 5) => {
   return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
+    let attempts = 0;
+    const execute = () => {
+      attempts++;
+      db.get(sql, params, (err, row) => {
+        if (err) {
+          const isBusy = err.code === 'SQLITE_BUSY' || err.message?.includes('busy') || err.message?.includes('locked');
+          if (isBusy && attempts <= maxRetries) {
+            const delay = Math.min(30 * Math.pow(1.5, attempts), 500) + Math.random() * 20;
+            return setTimeout(execute, delay);
+          }
+          return reject(err);
+        }
+        resolve(row);
+      });
+    };
+    execute();
   });
 };
 
-export const run = (sql, params = []) => {
+export const run = (sql, params = [], maxRetries = 5) => {
   return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve({ lastID: this.lastID, changes: this.changes });
-    });
+    let attempts = 0;
+    const execute = () => {
+      attempts++;
+      db.run(sql, params, function (err) {
+        if (err) {
+          const isBusy = err.code === 'SQLITE_BUSY' || err.message?.includes('busy') || err.message?.includes('locked');
+          if (isBusy && attempts <= maxRetries) {
+            const delay = Math.min(30 * Math.pow(1.5, attempts), 500) + Math.random() * 20;
+            return setTimeout(execute, delay);
+          }
+          return reject(err);
+        }
+        resolve({ lastID: this.lastID, changes: this.changes });
+      });
+    };
+    execute();
   });
 };
 

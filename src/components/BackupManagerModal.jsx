@@ -64,6 +64,16 @@ export default function BackupManagerModal({ isOpen, onClose }) {
     }
   }, [isOpen]);
 
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
+
   // Save Settings
   const handleSaveConfig = async (newConfig) => {
     try {

@@ -54,6 +54,15 @@ export default function ActivityLogModal({ recruit, onClose, onRefreshRecruits, 
     }
   }, [recruit?.id]);
 
+  // Close on Escape key
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [onClose]);
+
   const handleCreateActivity = async (e) => {
     e.preventDefault();
     try {

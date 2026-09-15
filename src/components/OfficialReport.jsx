@@ -1,8 +1,17 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Printer, X, Download, Shield } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
 
 export default function OfficialReport({ recruit, onClose }) {
+  // Close on Escape key
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [onClose]);
+
   if (!recruit) return null;
 
   const handlePrint = () => {

@@ -64,6 +64,16 @@ export default function ChangePasswordModal({ isOpen, onClose, onSuccess }) {
     }
   };
 
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" dir="rtl">
       <div className="bg-darkslate-900 dark:bg-zinc-900 border border-slate-700/60 dark:border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">

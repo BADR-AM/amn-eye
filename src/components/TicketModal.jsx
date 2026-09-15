@@ -77,6 +77,16 @@ export default function TicketModal({
     }
   }, [isOpen, recruit?.id]);
 
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [isOpen, onClose]);
+
   if (!isOpen || !recruit) return null;
 
   // Handle creating new ticket

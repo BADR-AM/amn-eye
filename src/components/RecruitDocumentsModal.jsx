@@ -53,6 +53,15 @@ export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecru
     };
   }, [recruit?.id]);
 
+  // Close on Escape key
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [onClose]);
+
   // Camera handling for direct document scanning
   const startCamera = async (docType) => {
     setCaptureTargetType(docType);
