@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { Printer, X, Download, Shield } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
 
@@ -20,6 +21,21 @@ export default function OfficialReport({ recruit, onClose }) {
 
   // Format attendance date
   const attendanceDate = recruit.attendance_date || '  /  / 2026';
+
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
+
+  // Generate official digital verification QR Code for recruit report
+  useEffect(() => {
+    const payload = recruit.national_id 
+      ? `SEC-EYE:REC:${recruit.national_id}` 
+      : `SEC-EYE:REC:${recruit.police_number || recruit.id}`;
+    QRCode.toDataURL(payload, {
+      width: 160,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#000000', light: '#ffffff' }
+    }).then(url => setQrCodeUrl(url)).catch(() => {});
+  }, [recruit?.national_id, recruit?.police_number, recruit?.id]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-start p-4 sm:p-8 overflow-y-auto">
@@ -283,6 +299,33 @@ export default function OfficialReport({ recruit, onClose }) {
           <div>
             <div>يعتمد / قائد مركز تدريب المجندين</div>
             <div className="mt-6">..................................</div>
+          </div>
+        </div>
+
+        {/* Digital Security Verification Stamp & QR Code */}
+        <div className="mt-4 pt-2 border-t border-dashed border-slate-400 flex items-center justify-between text-[11px]">
+          <div className="flex items-center gap-2">
+            {qrCodeUrl && (
+              <img 
+                src={qrCodeUrl} 
+                alt="رمز التحقق الرقمي" 
+                className="w-14 h-14 border border-black p-0.5"
+              />
+            )}
+            <div className="flex flex-col">
+              <span className="font-extrabold text-black">وثيقة فحص رسمية مؤمنة رقمياً</span>
+              <span className="font-mono text-[10px] text-slate-600">
+                الرقم القومي: {recruit.national_id || '------'} | رقم الشرطة: {recruit.police_number || '------'}
+              </span>
+              <span className="text-[9px] text-slate-500 font-mono">
+                SECURITY EYE VERIFICATION • {new Date().toLocaleDateString('ar-EG')}
+              </span>
+            </div>
+          </div>
+
+          <div className="text-left font-mono text-[10px] text-slate-500">
+            <div>منظومة فحص وتسجيل المجندين</div>
+            <div>VER 02.1 • قطاع الأمن المركزي</div>
           </div>
         </div>
 

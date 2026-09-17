@@ -8,7 +8,7 @@ import multer from 'multer';
 import { fileURLToPath } from 'url';
 import { initDb, query, get, run } from './db.js';
 import { getLocalIpAddresses } from './network.js';
-import { requireAuth, requireRole, handleLogin, hashPassword, comparePassword } from './auth.js';
+import { requireAuth, requireRole, handleLogin, handleQrLogin, hashPassword, comparePassword } from './auth.js';
 import { createBackup, listBackups, deleteBackup, getAvailableDrives, startAutoBackupSchedule } from './backup.js';
 import { logAudit, computeRecruitDiff } from './auditLogger.js';
 import * as XLSX from 'xlsx';
@@ -131,6 +131,7 @@ if (!process.env.JWT_SECRET || !process.env.ADMIN_PASSWORD_HASH) {
 
 // 0. Auth — Login (public)
 app.post('/api/auth/login', handleLogin);
+app.post('/api/auth/qr-login', handleQrLogin);
 
 // 0.1 Current Authenticated User Info
 app.get('/api/auth/me', requireAuth, async (req, res) => {
@@ -203,7 +204,7 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
 // 0.3 Users Management (Admin Only)
 app.get('/api/users', requireAuth, requireRole('admin'), async (req, res) => {
   try {
-    const users = await query('SELECT id, username, full_name, role, created_at, updated_at FROM users ORDER BY id ASC');
+    const users = await query('SELECT id, username, full_name, role, qr_login_token, created_at, updated_at FROM users ORDER BY id ASC');
     res.json(users);
   } catch (err) {
     console.error('Get users error:', err);
@@ -233,10 +234,11 @@ app.post('/api/users', requireAuth, requireRole('admin'), async (req, res) => {
     const allowedRoles = ['admin', 'officer', 'operator'];
     const assignedRole = allowedRoles.includes(role) ? role : 'officer';
     const pwdHash = await hashPassword(password.trim());
+    const qrToken = crypto.randomBytes(32).toString('hex');
 
     const result = await run(
-      'INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)',
-      [cleanUsername, pwdHash, full_name.trim(), assignedRole]
+      'INSERT INTO users (username, password_hash, full_name, role, qr_login_token) VALUES (?, ?, ?, ?, ?)',
+      [cleanUsername, pwdHash, full_name.trim(), assignedRole, qrToken]
     );
 
     logAudit(req, {
@@ -253,12 +255,46 @@ app.post('/api/users', requireAuth, requireRole('admin'), async (req, res) => {
         id: result.lastID,
         username: cleanUsername,
         full_name: full_name.trim(),
-        role: assignedRole
+        role: assignedRole,
+        qr_login_token: qrToken
       }
     });
   } catch (err) {
     console.error('Create user error:', err);
     res.status(500).json({ error: 'خطأ في إنشاء الحساب' });
+  }
+});
+
+// Regenerate QR Login Token for a user (Admin Only)
+app.post('/api/users/:id/regenerate-qr', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    const user = await get('SELECT id, username, full_name FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ error: 'المستخدم غير موجود' });
+    }
+
+    const newQrToken = crypto.randomBytes(32).toString('hex');
+    await run(
+      'UPDATE users SET qr_login_token = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [newQrToken, userId]
+    );
+
+    logAudit(req, {
+      action_type: 'REGENERATE_QR_TOKEN',
+      entity_type: 'user',
+      entity_id: userId,
+      entity_name: user.username,
+      details: `تجديد الرمز الأمني لبطاقة الهوية الذكية للمستخدم: ${user.username} (${user.full_name}) وإلغاء البطاقة السابقة`,
+    });
+
+    res.json({
+      message: 'تم تجديد الرمز الأمني للبطاقة بنجاح وإلغاء الكارت القديم فوراً',
+      qr_login_token: newQrToken
+    });
+  } catch (err) {
+    console.error('Regenerate QR token error:', err);
+    res.status(500).json({ error: 'خطأ في تجديد رمز بطاقة الهوية' });
   }
 });
 

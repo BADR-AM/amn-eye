@@ -1,4 +1,5 @@
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useState, useEffect } from 'react';
+import QRCode from 'qrcode';
 import { getCompanyColorConfig } from '../utils/companyColors';
 import centralSecurityLogo from '../assets/central_security_logo.png';
 
@@ -23,6 +24,21 @@ const LockerCard = forwardRef(({
   customTextColor = null
 }, ref) => {
   if (!recruit) return null;
+
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
+
+  // Generate official QR code for recruit (national_id or police_number)
+  useEffect(() => {
+    const payload = recruit.national_id 
+      ? `SEC-EYE:REC:${recruit.national_id}` 
+      : `SEC-EYE:REC:${recruit.police_number || recruit.id}`;
+    QRCode.toDataURL(payload, {
+      width: 140,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#000000', light: '#ffffff' }
+    }).then(url => setQrCodeUrl(url)).catch(() => {});
+  }, [recruit?.national_id, recruit?.police_number, recruit?.id]);
 
   // Extract first name (large emphasis on card) and full remaining name
   const names = (recruit.name || '').trim().split(/\s+/);
@@ -189,19 +205,41 @@ const LockerCard = forwardRef(({
           </div>
         </div>
 
-        {/* Right Side: Official Central Security Emblem & Region name */}
-        <div className="w-[120px] flex flex-col items-center justify-center shrink-0">
-          <img 
-            src={centralSecurityLogo} 
-            alt="شعار الأمن المركزي" 
-            className="w-[90px] h-[110px] object-contain drop-shadow-sm select-none"
-          />
-          <span 
-            className="text-black font-extrabold text-[13px] mt-1 text-center leading-tight"
-            style={{ fontFamily: "'Cairo', 'Segoe UI', Tahoma, sans-serif", letterSpacing: '0px' }}
-          >
-            منطقة وسط الدلتا
-          </span>
+        {/* Right Side: Official Central Security Emblem, Region name & Recruit QR */}
+        <div className="w-[125px] flex flex-col items-center justify-between py-1 shrink-0 h-[260px]">
+          <div className="flex flex-col items-center">
+            <img 
+              src={centralSecurityLogo} 
+              alt="شعار الأمن المركزي" 
+              className="w-[78px] h-[95px] object-contain drop-shadow-sm select-none"
+            />
+            <span 
+              className="text-black font-extrabold text-[12px] mt-0.5 text-center leading-tight"
+              style={{ fontFamily: "'Cairo', 'Segoe UI', Tahoma, sans-serif", letterSpacing: '0px' }}
+            >
+              منطقة وسط الدلتا
+            </span>
+          </div>
+
+          {/* High-Resolution Recruit QR Code */}
+          <div className="flex flex-col items-center justify-center mt-1">
+            <div className="p-0.5 bg-white border border-black rounded shadow-xs">
+              {qrCodeUrl ? (
+                <img 
+                  src={qrCodeUrl} 
+                  alt="كود المجند" 
+                  className="w-[62px] h-[62px] object-contain"
+                />
+              ) : (
+                <div className="w-[62px] h-[62px] bg-slate-100 flex items-center justify-center text-[8px] text-slate-500 font-bold">
+                  QR
+                </div>
+              )}
+            </div>
+            <span className="text-[8.5px] font-bold text-slate-700 mt-0.5 font-mono">
+              كود التحقق
+            </span>
+          </div>
         </div>
 
       </div>

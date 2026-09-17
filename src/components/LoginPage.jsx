@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import { Lock, User, LogIn, Loader2, Shield, Eye } from 'lucide-react';
+import { Lock, User, LogIn, Loader2, Shield, Eye, QrCode, KeyRound, Camera, AlertCircle, RefreshCw } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
 import splashBanner from '../assets/splash_banner.jpg';
+import CameraQrScanner from './CameraQrScanner';
 
 export default function LoginPage({ onLogin }) {
+  const [loginMode, setLoginMode] = useState('password'); // 'password' | 'qr'
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [qrError, setQrError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -40,6 +43,34 @@ export default function LoginPage({ onLogin }) {
       onLogin(data.token, data.user);
     } catch (err) {
       setError('تعذر الاتصال بالخادم');
+      setLoading(false);
+    }
+  };
+
+  const handleQrScan = async (token) => {
+    if (!token || loading) return;
+    setLoading(true);
+    setError('');
+    setQrError('');
+
+    try {
+      const res = await fetch('/api/auth/qr-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qr_token: token }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setQrError(data.error || 'رمز بطاقة الهوية غير صالح أو تم إلغاؤه');
+        setLoading(false);
+        return;
+      }
+
+      onLogin(data.token, data.user);
+    } catch (err) {
+      setQrError('تعذر الاتصال بالخادم للتحقق من بطاقة الهوية');
       setLoading(false);
     }
   };
@@ -101,56 +132,124 @@ export default function LoginPage({ onLogin }) {
             </div>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-gray-300 mb-1.5 text-right">
-                <User className="w-3.5 h-3.5 inline ml-1 text-emerald-400" />
-                اسم المستخدم / الحساب
-              </label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => { setUsername(e.target.value); setError(''); }}
-                placeholder="اسم المستخدم (مثل admin)..."
-                className="w-full bg-[#0d1117] border border-[#30363d] focus:border-[#58a6ff] rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-sans"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-300 mb-1.5 text-right">
-                <Lock className="w-3.5 h-3.5 inline ml-1 text-blue-400" />
-                كلمة المرور المشفرة
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                placeholder="أدخل كلمة المرور لتسجيل الدخول..."
-                autoFocus
-                className="w-full bg-[#0d1117] border border-[#30363d] focus:border-[#58a6ff] rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-sans"
-              />
-            </div>
-
-            {error && (
-              <div className="px-3 py-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-xs font-bold text-center">
-                {error}
-              </div>
-            )}
+          {/* Login Method Mode Switcher (Password vs Smart ID QR Code) */}
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#0d1117] border border-[#30363d] rounded-xl mb-5">
+            <button
+              type="button"
+              onClick={() => {
+                setLoginMode('password');
+                setError('');
+                setQrError('');
+              }}
+              className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                loginMode === 'password'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-950/50'
+                  : 'text-gray-400 hover:text-white hover:bg-[#21262d]'
+              }`}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>كلمة المرور</span>
+            </button>
 
             <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-sm shadow-xl shadow-blue-950/40 transition-all disabled:opacity-60 transform active:scale-[0.99]"
+              type="button"
+              onClick={() => {
+                setLoginMode('qr');
+                setError('');
+                setQrError('');
+              }}
+              className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                loginMode === 'qr'
+                  ? 'bg-gradient-to-r from-blue-600 to-emerald-600 text-white shadow-md shadow-emerald-950/50'
+                  : 'text-gray-400 hover:text-white hover:bg-[#21262d]'
+              }`}
             >
-              {loading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <LogIn className="w-4 h-4" />
-              )}
-              <span>{loading ? 'جاري التحقق...' : 'دخول المنظومة'}</span>
+              <QrCode className="w-3.5 h-3.5 text-emerald-400" />
+              <span>بطاقة الهوية (QR)</span>
             </button>
-          </form>
+          </div>
+
+          {loginMode === 'qr' ? (
+            <div className="space-y-4">
+              <CameraQrScanner
+                onScan={handleQrScan}
+                title="الدخول ببطاقة الهوية الذكية"
+                instruction="وجّه كود الـ QR الخاص ببطاقتك نحو الكاميرا لتسجيل الدخول تلقائياً"
+              />
+
+              {qrError && (
+                <div className="px-3 py-2.5 bg-rose-500/15 border border-rose-500/30 rounded-xl text-rose-300 text-xs font-bold text-center flex items-center justify-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{qrError}</span>
+                </div>
+              )}
+
+              {loading && (
+                <div className="px-3 py-2.5 bg-blue-500/10 border border-blue-500/30 rounded-xl text-blue-300 text-xs font-bold text-center flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>جاري التحقق من الصلاحيات الأمنية للبطاقة...</span>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setLoginMode('password')}
+                className="w-full py-2.5 rounded-xl border border-[#30363d] text-gray-400 hover:text-white hover:bg-[#21262d] text-xs font-semibold transition-colors"
+              >
+                التبديل إلى الدخول بكلمة المرور اليدوية
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-300 mb-1.5 text-right">
+                  <User className="w-3.5 h-3.5 inline ml-1 text-emerald-400" />
+                  اسم المستخدم / الحساب
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => { setUsername(e.target.value); setError(''); }}
+                  placeholder="اسم المستخدم (مثل admin)..."
+                  className="w-full bg-[#0d1117] border border-[#30363d] focus:border-[#58a6ff] rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-sans"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-300 mb-1.5 text-right">
+                  <Lock className="w-3.5 h-3.5 inline ml-1 text-blue-400" />
+                  كلمة المرور المشفرة
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                  placeholder="أدخل كلمة المرور لتسجيل الدخول..."
+                  autoFocus
+                  className="w-full bg-[#0d1117] border border-[#30363d] focus:border-[#58a6ff] rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-sans"
+                />
+              </div>
+
+              {error && (
+                <div className="px-3 py-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-xs font-bold text-center">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-sm shadow-xl shadow-blue-950/40 transition-all disabled:opacity-60 transform active:scale-[0.99]"
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <LogIn className="w-4 h-4" />
+                )}
+                <span>{loading ? 'جاري التحقق...' : 'دخول المنظومة'}</span>
+              </button>
+            </form>
+          )}
 
           <div className="mt-6 pt-4 border-t border-[#21262d] text-center">
             <span className="text-[11px] text-gray-400 font-mono">

@@ -69,3 +69,14 @@
     margin: 10mm 12mm 10mm 12mm;
   }
 }
+
+/* Tactical QR Laser Scan Animation */
+@keyframes scan {
+  0% { top: 5%; opacity: 0.8; }
+  50% { top: 95%; opacity: 1; }
+  100% { top: 5%; opacity: 0.8; }
+}
+.animate-scan {
+  animation: scan 2.2s ease-in-out infinite;
+}
+

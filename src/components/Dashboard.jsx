@@ -44,6 +44,7 @@ import ActivityLogModal from './ActivityLogModal';
 import RecruitDocumentsModal from './RecruitDocumentsModal';
 import TicketModal from './TicketModal';
 import PsychologicalFollowupModal from './PsychologicalFollowupModal';
+import CameraQrScanner from './CameraQrScanner';
 import { fetchCompanyColors, DEFAULT_COMPANY_COLORS, getCompanyStyle } from '../utils/companyColors';
 import { authHeaders } from '../utils/auth';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -87,6 +88,7 @@ export default function Dashboard({
   const [documentsRecruit, setDocumentsRecruit] = useState(null);
   const [ticketRecruit, setTicketRecruit] = useState(null);
   const [psychologicalRecruit, setPsychologicalRecruit] = useState(null);
+  const [showCameraScanner, setShowCameraScanner] = useState(false);
   const [companyColors, setCompanyColors] = useState(DEFAULT_COMPANY_COLORS);
   
   const userClosedPanel = useRef(false);
@@ -387,6 +389,17 @@ export default function Dashboard({
               className="w-full bg-[#262626] border border-[#525252] text-white text-xs pr-9 pl-4 py-2.5 focus:outline-none focus:border-[#0f62fe] placeholder-gray-500 font-sans"
             />
           </div>
+
+          {/* Quick Camera Scanner for Recruits */}
+          <button
+            type="button"
+            onClick={() => setShowCameraScanner(true)}
+            className="flex items-center gap-1.5 px-3 py-2.5 bg-[#262626] hover:bg-blue-600/20 text-blue-400 hover:text-blue-300 border border-[#525252] hover:border-blue-500 transition-all text-xs font-bold shrink-0"
+            title="مسح كود المجند (كارت الدولاب أو الاستمارة) بالكاميرا للبحث الفوري"
+          >
+            <Scan className="w-4 h-4" />
+            <span className="hidden sm:inline">مسح QR</span>
+          </button>
 
           {/* Quick Filters */}
           <select
@@ -1231,6 +1244,28 @@ export default function Dashboard({
         companyColors={companyColors}
         onColorsUpdated={(updated) => setCompanyColors(updated)}
       />
+
+      {/* Quick Camera Scanner Modal for Recruits */}
+      {showCameraScanner && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in" dir="rtl">
+          <div className="w-full max-w-md">
+            <CameraQrScanner
+              title="مسح كود المجند بالكاميرا"
+              instruction="وجّه كارت دولاب المجند أو استمارة الفحص نحو الكاميرا للبحث الفوري"
+              onClose={() => setShowCameraScanner(false)}
+              onScan={(scannedText) => {
+                setShowCameraScanner(false);
+                let query = scannedText;
+                if (query.startsWith('SEC-EYE:REC:')) {
+                  query = query.replace('SEC-EYE:REC:', '');
+                }
+                setSearchTerm(query.trim());
+                setPage(1);
+              }}
+            />
+          </div>
+        </div>
+      )}
 
     </div>
   );

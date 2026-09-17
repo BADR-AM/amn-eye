@@ -14,9 +14,11 @@ import {
   X, 
   RefreshCw,
   UserCheck,
-  Lock
+  Lock,
+  QrCode
 } from 'lucide-react';
 import { authHeaders } from '../utils/auth';
+import UserBadgeCard from './UserBadgeCard';
 
 const ROLE_INFO = {
   admin: {
@@ -63,15 +65,18 @@ export default function UsersModal({ isOpen, onClose, currentUser, showToast }) 
   const [deletingUser, setDeletingUser] = useState(null);
   const [submittingDelete, setSubmittingDelete] = useState(false);
 
+  // Smart ID Badge Preview Modal State
+  const [badgeUser, setBadgeUser] = useState(null);
+
   // Close on Escape key
   useEffect(() => {
     if (!isOpen) return;
     const handleEsc = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !badgeUser) onClose();
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, badgeUser]);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -92,12 +97,32 @@ export default function UsersModal({ isOpen, onClose, currentUser, showToast }) 
     }
   };
 
+  const handleRegenerateQr = async (userId) => {
+    try {
+      const res = await fetch(`/api/users/${userId}/regenerate-qr`, {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل تجديد رمز البطاقة');
+
+      showToast('تم تجديد الرمز الأمني للبطاقة بنجاح وإلغاء الكارت القديم فوراً');
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, qr_login_token: data.qr_login_token } : u));
+      if (badgeUser && badgeUser.id === userId) {
+        setBadgeUser(prev => ({ ...prev, qr_login_token: data.qr_login_token }));
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       fetchUsers();
       setShowAddForm(false);
       setEditingUser(null);
       setDeletingUser(null);
+      setBadgeUser(null);
     }
   }, [isOpen]);
 
@@ -443,6 +468,17 @@ export default function UsersModal({ isOpen, onClose, currentUser, showToast }) 
                         </span>
 
                         <div className="flex items-center gap-1.5">
+                          {(!currentUser || currentUser.role === 'admin') && (
+                            <button
+                              onClick={() => setBadgeUser(user)}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 hover:text-blue-200 border border-blue-500/40 transition-colors text-xs font-semibold"
+                              title="استخراج وطباعة بطاقة الهوية الذكية (Smart ID Badge)"
+                            >
+                              <QrCode className="w-3.5 h-3.5 text-blue-400" />
+                              <span>بطاقة الهوية</span>
+                            </button>
+                          )}
+
                           <button
                             onClick={() => handleStartEdit(user)}
                             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors text-xs font-semibold"
@@ -608,6 +644,16 @@ export default function UsersModal({ isOpen, onClose, currentUser, showToast }) 
             </div>
           </div>
         </div>
+      )}
+
+      {/* Smart ID Badge Print & Preview Modal */}
+      {badgeUser && (
+        <UserBadgeCard
+          user={badgeUser}
+          onClose={() => setBadgeUser(null)}
+          onRegenerate={handleRegenerateQr}
+          showToast={showToast}
+        />
       )}
 
     </div>

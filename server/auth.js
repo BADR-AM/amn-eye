@@ -157,3 +157,56 @@ export const handleLogin = async (req, res) => {
   }
 };
 
+export const handleQrLogin = async (req, res) => {
+  const { qr_token } = req.body;
+  if (!qr_token || typeof qr_token !== 'string' || !qr_token.trim()) {
+    return res.status(400).json({ error: 'رمز بطاقة الهوية (QR Code) مطلوب' });
+  }
+
+  const cleanToken = qr_token.trim();
+
+  try {
+    const userRow = await get(`SELECT * FROM users WHERE qr_login_token = ?`, [cleanToken]);
+
+    if (!userRow) {
+      logAudit(req, {
+        action_type: 'QR_LOGIN_FAILED',
+        entity_type: 'auth',
+        entity_name: 'unknown_qr',
+        details: 'محاولة تسجيل دخول فاشلة برمز بطاقة هوية غير صالح أو ملغي'
+      });
+      return res.status(401).json({ error: 'رمز بطاقة الهوية غير صالح أو تم إلغاؤه' });
+    }
+
+    const userPayload = {
+      id: userRow.id,
+      username: userRow.username,
+      full_name: userRow.full_name,
+      role: userRow.role || 'officer'
+    };
+
+    logAudit(req, {
+      action_type: 'QR_LOGIN_SUCCESS',
+      entity_type: 'auth',
+      entity_id: userPayload.id,
+      entity_name: userPayload.username,
+      details: `تسجيل دخول ذكي ناجح عبر بطاقة الهوية (QR): ${userPayload.full_name} (${userPayload.username})`,
+      user_id: userPayload.id,
+      username: userPayload.username,
+      user_fullname: userPayload.full_name,
+      user_role: userPayload.role
+    });
+
+    const token = generateToken(userPayload);
+    return res.json({
+      token,
+      role: userPayload.role,
+      user: userPayload
+    });
+  } catch (err) {
+    console.error('QR Login error:', err);
+    res.status(500).json({ error: 'خطأ أثناء تسجيل الدخول بالبطاقة الذكية' });
+  }
+};
+
+

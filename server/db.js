@@ -1,6 +1,7 @@
 import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -363,6 +364,7 @@ export const initDb = async () => {
       password_hash TEXT NOT NULL,
       full_name TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'officer', -- admin, officer, operator
+      qr_login_token TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
@@ -370,16 +372,37 @@ export const initDb = async () => {
 
   await run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
 
+  // Auto-migration for existing users: add qr_login_token if missing
+  try {
+    const userCols = await query(`PRAGMA table_info(users)`);
+    const userColNames = userCols.map(c => c.name);
+    if (!userColNames.includes('qr_login_token')) {
+      await run(`ALTER TABLE users ADD COLUMN qr_login_token TEXT`);
+      console.log('✅ تم تحديث المخطط: إضافة عمود qr_login_token للمستخدمين');
+    }
+    await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_qr_token ON users(qr_login_token) WHERE qr_login_token IS NOT NULL AND qr_login_token != ''`);
+
+    // Generate tokens for existing users who do not have one
+    const usersWithoutToken = await query(`SELECT id, username FROM users WHERE qr_login_token IS NULL OR qr_login_token = ''`);
+    for (const u of usersWithoutToken) {
+      const token = crypto.randomBytes(32).toString('hex');
+      await run(`UPDATE users SET qr_login_token = ? WHERE id = ?`, [token, u.id]);
+    }
+  } catch (userMigErr) {
+    console.warn('⚠️ خطأ هجرة جدول المستخدمين:', userMigErr.message);
+  }
+
   // Seed default admin if no users exist
   const existingUsers = await query(`SELECT COUNT(*) as count FROM users`);
   if (existingUsers[0].count === 0) {
     // Hash for password '123456'
     const defaultHash = '$2b$10$bNpheeFBkTWNE1sDaCkmcuLCYEYzuHbmA/BVAvsHawdBrLTlhOgcG';
+    const adminQrToken = crypto.randomBytes(32).toString('hex');
     await run(
-      `INSERT INTO users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)`,
-      ['admin', defaultHash, 'مدير المنظومة', 'admin']
+      `INSERT INTO users (username, password_hash, full_name, role, qr_login_token) VALUES (?, ?, ?, ?, ?)`,
+      ['admin', defaultHash, 'مدير المنظومة', 'admin', adminQrToken]
     );
-    console.log('✅ تم إنشاء حساب مدير المنظومة الافتراضي (admin / 123456) بنجاح');
+    console.log('✅ تم إنشاء حساب مدير المنظومة الافتراضي (admin / 123456) بنجاح مع رمز QR ذكي');
   }
 
   // 8. Audit Logs table (سجل الرقابة وتتبع العمليات الشامل)
