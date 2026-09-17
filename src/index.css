@@ -80,3 +80,117 @@
   animation: scan 2.2s ease-in-out infinite;
 }
 
+/* ============================================================
+   Light Mode Tactical Overrides (Day Mode)
+   ============================================================ */
+html.light,
+html.light body {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+html.light ::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+html.light ::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Background surfaces */
+html.light .bg-darkslate-950,
+html.light .bg-zinc-950,
+html.light .bg-slate-950 {
+  background-color: #f8fafc;
+}
+
+html.light .bg-darkslate-900,
+html.light .bg-zinc-900,
+html.light .bg-darkslate-850,
+html.light [class*="bg-[#161616]"],
+html.light [class*="bg-[#1a1a1a]"],
+html.light [class*="bg-[#1e1e1e]"],
+html.light [class*="bg-[#262626]"] {
+  background-color: #ffffff;
+}
+
+html.light .bg-darkslate-850\/60,
+html.light .bg-darkslate-850\/70,
+html.light .bg-darkslate-850\/40,
+html.light [class*="bg-[#2a2a2a]"],
+html.light [class*="bg-[#212733]"] {
+  background-color: #f1f5f9;
+}
+
+/* Borders */
+html.light .border-slate-800,
+html.light .border-slate-700,
+html.light .border-zinc-800,
+html.light [class*="border-[#393939]"],
+html.light [class*="border-[#525252]"],
+html.light .border-slate-850 {
+  border-color: #cbd5e1;
+}
+
+/* Text adjustments */
+html.light .text-slate-100,
+html.light .text-slate-200,
+html.light .text-zinc-100,
+html.light .text-gray-100,
+html.light .text-gray-200 {
+  color: #0f172a;
+}
+
+html.light .text-slate-300,
+html.light .text-slate-400,
+html.light .text-zinc-300,
+html.light .text-zinc-400,
+html.light .text-gray-300,
+html.light .text-gray-400 {
+  color: #334155;
+}
+
+/* Headings and bold titles in light mode */
+html.light h1.text-white,
+html.light h2.text-white,
+html.light h3.text-white,
+html.light h4.text-white,
+html.light .font-bold.text-white {
+  color: #0f172a;
+}
+
+/* Inputs, selects, and textareas */
+html.light input,
+html.light select,
+html.light textarea {
+  background-color: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #94a3b8;
+}
+
+/* Solid colored buttons & badges MUST keep pure white text in both themes */
+html.light .bg-blue-600,
+html.light .bg-emerald-600,
+html.light .bg-rose-600,
+html.light .bg-amber-600,
+html.light .bg-indigo-600,
+html.light [class*="bg-[#0f62fe]"] {
+  color: #ffffff !important;
+}
+
+html.light .bg-blue-600 *,
+html.light .bg-emerald-600 *,
+html.light .bg-rose-600 *,
+html.light .bg-amber-600 *,
+html.light .bg-indigo-600 *,
+html.light [class*="bg-[#0f62fe]"] * {
+  color: #ffffff !important;
+}
+

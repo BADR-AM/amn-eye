@@ -41,10 +41,12 @@ export const FIELD_LABELS = {
 export function computeRecruitDiff(oldRecord = {}, newRecord = {}) {
   const diff = {};
   const changedFieldsArabic = [];
+  const safeOld = (oldRecord && typeof oldRecord === 'object') ? oldRecord : {};
+  const safeNew = (newRecord && typeof newRecord === 'object') ? newRecord : {};
 
-  for (const [key, newVal] of Object.entries(newRecord)) {
+  for (const [key, newVal] of Object.entries(safeNew)) {
     if (['id', 'created_at', 'updated_at', 'photo_path', 'video_path', 'remove_photo', 'remove_video', 'photo_base64'].includes(key)) continue;
-    const oldVal = oldRecord[key];
+    const oldVal = safeOld[key];
 
     // Normalize empty strings and null
     const normOld = oldVal === null || oldVal === undefined ? '' : String(oldVal).trim();

@@ -7,7 +7,7 @@ process.env.ADMIN_PASSWORD_HASH = '$2b$10$test';
 process.env.JWT_SECRET = 'test-secret-key-for-testing-only';
 process.env.PORT = '0';
 
-const { generateToken, verifyToken, comparePassword, hashPassword, requireAuth, requireRole, handleLogin } = await import('../auth.js');
+const { generateToken, verifyToken, comparePassword, hashPassword, requireAuth, requireRole, handleLogin, getOrInitJwtSecret } = await import('../auth.js');
 
 describe('Auth Module', () => {
   describe('generateToken / verifyToken', () => {
@@ -144,6 +144,22 @@ describe('Auth Module', () => {
       expect(hash).toBeTruthy();
       const match = await bcrypt.compare('secret123', hash);
       expect(match).toBe(true);
+    });
+  });
+
+  describe('getOrInitJwtSecret', () => {
+    it('should return a stable persistent secret and not be empty', () => {
+      const secret1 = getOrInitJwtSecret();
+      const secret2 = getOrInitJwtSecret();
+      expect(secret1).toBeTruthy();
+      expect(secret1.length).toBeGreaterThanOrEqual(32);
+      expect(secret1).toBe(secret2);
+    });
+
+    it('should verify tokens consistently across repeated calls', () => {
+      const token = generateToken({ user: 'commander' });
+      const decoded = verifyToken(token);
+      expect(decoded.user).toBe('commander');
     });
   });
 });

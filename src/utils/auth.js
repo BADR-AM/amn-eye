@@ -76,7 +76,7 @@ export const setupAuthInterceptor = () => {
     }
 
     const isApi = typeof url === 'string' && url.includes('/api/');
-    const isLogin = typeof url === 'string' && url.includes('/api/auth/login');
+    const isLogin = typeof url === 'string' && (url.includes('/api/auth/login') || url.includes('/api/auth/qr-login'));
 
     if (isApi && !isLogin) {
       const token = getToken();

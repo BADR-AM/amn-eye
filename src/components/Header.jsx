@@ -67,7 +67,7 @@ export default function Header({
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
 
   return (
-    <header className="bg-darkslate-900 dark:bg-zinc-950 border-b border-slate-800 dark:border-zinc-800 px-6 py-3 sticky top-0 z-30 shadow-xl no-print">
+    <header className="bg-white dark:bg-darkslate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3 sticky top-0 z-30 shadow-md no-print">
       <div className="flex flex-wrap items-center justify-between gap-4 max-w-[1600px] mx-auto">
         
         {/* Brand & Military Department Info */}
@@ -256,7 +256,9 @@ export default function Header({
 
           {/* Logout */}
           <button
-            onClick={onLogout}
+            onClick={() => {
+              if (typeof onLogout === 'function') onLogout();
+            }}
             className="p-2 rounded-xl bg-darkslate-850 dark:bg-zinc-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-700/60 dark:border-zinc-800 transition-colors"
             title="تسجيل الخروج من الجلسة"
           >
@@ -300,15 +302,24 @@ export default function Header({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (window.electronAPI && typeof window.electronAPI.quitApp === 'function') {
-                    window.electronAPI.quitApp();
-                  } else {
-                    onLogout();
-                    setShowQuitConfirm(false);
+                onClick={async () => {
+                  try {
+                    if (window.electronAPI && typeof window.electronAPI.quitApp === 'function') {
+                      await window.electronAPI.quitApp();
+                      return;
+                    }
+                  } catch (e) {
+                    console.warn('quitApp failed:', e);
                   }
+                  if (typeof onLogout === 'function') {
+                    onLogout();
+                  }
+                  setShowQuitConfirm(false);
+                  try {
+                    window.close();
+                  } catch (e) {}
                 }}
-                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-lg shadow-rose-900/40 flex items-center gap-2"
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-lg shadow-rose-900/40 flex items-center gap-2 cursor-pointer"
               >
                 <Power className="w-4 h-4" />
                 <span>نعم، إغلاق المنظومة</span>

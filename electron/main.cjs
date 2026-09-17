@@ -3,10 +3,18 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 
 // IPC Handlers for app lifecycle
-ipcMain.handle('app-quit', () => {
+const quitApplication = () => {
   console.log('🛑 استلام أمر إغلاق المنظومة من واجهة المستخدم، جاري إنهاء Electron...');
-  app.quit();
-});
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.destroy();
+    }
+  } catch (e) {}
+  app.exit(0);
+};
+
+ipcMain.handle('app-quit', quitApplication);
+ipcMain.on('app-quit', quitApplication);
 
 let mainWindow = null;
 const PORT = process.env.PORT || 5000;

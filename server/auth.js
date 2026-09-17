@@ -1,13 +1,52 @@
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
+import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { get, query, run } from './db.js';
 import { logAudit } from './auditLogger.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const DEFAULT_JWT_SECRET = '7e131eddafb06b08511e744666e8d2d34137b093a9e8e66ba0f1d194b4eda80ae326ed4d84ed35b6d54792892f4e7b4d';
 // Default hash for password '123456'
 const DEFAULT_ADMIN_HASH = '$2b$10$bNpheeFBkTWNE1sDaCkmcuLCYEYzuHbmA/BVAvsHawdBrLTlhOgcG';
 
-const getSecret = () => process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
+// Persistent secret loading & initialization
+export function getOrInitJwtSecret() {
+  if (process.env.JWT_SECRET && !process.env.JWT_SECRET.startsWith('dev-secret-change-me-in-production-')) {
+    return process.env.JWT_SECRET;
+  }
+  try {
+    const baseDir = process.env.APP_DATA_DIR || path.join(__dirname, '..');
+    const dataDir = path.join(baseDir, 'data');
+    const secretFilePath = path.join(dataDir, 'jwt.secret');
+
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    if (fs.existsSync(secretFilePath)) {
+      const savedSecret = fs.readFileSync(secretFilePath, 'utf8').trim();
+      if (savedSecret && savedSecret.length >= 32) {
+        process.env.JWT_SECRET = savedSecret;
+        return savedSecret;
+      }
+    }
+    // Write stable default secret so tokens remain valid permanently across reboots
+    fs.writeFileSync(secretFilePath, DEFAULT_JWT_SECRET, 'utf8');
+    process.env.JWT_SECRET = DEFAULT_JWT_SECRET;
+    return DEFAULT_JWT_SECRET;
+  } catch (err) {
+    process.env.JWT_SECRET = DEFAULT_JWT_SECRET;
+    return DEFAULT_JWT_SECRET;
+  }
+}
+
+// Initialize persistent secret immediately
+const PERSISTENT_SECRET = getOrInitJwtSecret();
+const getSecret = () => process.env.JWT_SECRET || PERSISTENT_SECRET;
 const getHash = () => process.env.ADMIN_PASSWORD_HASH || DEFAULT_ADMIN_HASH;
 const TOKEN_EXPIRY = '30d';
 

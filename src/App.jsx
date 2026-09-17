@@ -41,8 +41,13 @@ export default function App() {
   // Current view: 'dashboard' | 'kiosk' | 'media'
   const [view, setView] = useState('dashboard');
 
-  // Theme: 'dark' | 'light'
-  const [theme, setTheme] = useState('dark');
+  // Theme: 'dark' | 'light' (persisted)
+  const [theme, setTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('security_eye_theme') || 'dark';
+    }
+    return 'dark';
+  });
 
   // Active recruit for dossier / print modals
   const [selectedRecruit, setSelectedRecruit] = useState(null);
@@ -108,16 +113,22 @@ export default function App() {
 
   // Toggle Theme
   const handleToggleTheme = () => {
-    // Always keep dark mode
-    setTheme('dark');
-    document.documentElement.classList.add('dark');
+    setTheme(prev => {
+      const nextTheme = prev === 'dark' ? 'light' : 'dark';
+      try {
+        localStorage.setItem('security_eye_theme', nextTheme);
+      } catch (e) {}
+      return nextTheme;
+    });
   };
 
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
     } else {
       document.documentElement.classList.remove('dark');
+      document.documentElement.classList.add('light');
     }
   }, [theme]);
 
@@ -331,7 +342,7 @@ export default function App() {
   }
 
   return (
-    <div dir="rtl" className="min-h-screen bg-darkslate-950 dark:bg-zinc-950 text-slate-100 dark:text-zinc-100 flex flex-col font-sans transition-colors duration-200">
+    <div dir="rtl" className="min-h-screen bg-slate-100 dark:bg-darkslate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
       
       {/* Toast notification */}
       {toast && (
@@ -364,6 +375,7 @@ export default function App() {
           onToggleTheme={handleToggleTheme}
           networkInfo={networkInfo}
           onRefresh={loadInitialData}
+          onLogout={handleLogout}
         />
       )}
 
@@ -503,8 +515,8 @@ export default function App() {
       />
 
       {/* System Footer Branding */}
-      <footer className="w-full text-center py-2.5 bg-darkslate-950/90 dark:bg-zinc-950/90 border-t border-slate-850 dark:border-zinc-850 no-print text-[11px] text-slate-400 font-mono flex items-center justify-center gap-2 flex-wrap">
-        <span className="font-bold text-white">SECURITY EYE</span>
+      <footer className="w-full text-center py-2.5 bg-white/90 dark:bg-zinc-950/90 border-t border-slate-200 dark:border-zinc-850 no-print text-[11px] text-slate-600 dark:text-slate-400 font-mono flex items-center justify-center gap-2 flex-wrap">
+        <span className="font-bold text-slate-900 dark:text-white">SECURITY EYE</span>
         <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
           VER 02.1
         </span>

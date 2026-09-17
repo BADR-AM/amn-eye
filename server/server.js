@@ -8,7 +8,7 @@ import multer from 'multer';
 import { fileURLToPath } from 'url';
 import { initDb, query, get, run } from './db.js';
 import { getLocalIpAddresses } from './network.js';
-import { requireAuth, requireRole, handleLogin, handleQrLogin, hashPassword, comparePassword } from './auth.js';
+import { requireAuth, requireRole, handleLogin, handleQrLogin, hashPassword, comparePassword, getOrInitJwtSecret } from './auth.js';
 import { createBackup, listBackups, deleteBackup, getAvailableDrives, startAutoBackupSchedule } from './backup.js';
 import { logAudit, computeRecruitDiff } from './auditLogger.js';
 import * as XLSX from 'xlsx';
@@ -114,15 +114,10 @@ const upload = multer({
 // Initialize database
 await initDb();
 
-// Validate required environment variables
-if (!process.env.JWT_SECRET || !process.env.ADMIN_PASSWORD_HASH) {
-  console.warn('⚠️ تحذير: متغيرات البيئة JWT_SECRET أو ADMIN_PASSWORD_HASH غير محددة.');
-  console.warn('⚠️ سيتم استخدام قيم افتراضية للتطوير. لا تستخدم هذا في بيئة الإنتاج!');
-  if (!process.env.JWT_SECRET) process.env.JWT_SECRET = 'dev-secret-change-me-in-production-' + crypto.randomUUID();
-  if (!process.env.ADMIN_PASSWORD_HASH) {
-    // Default password: admin123 (bcrypt hash)
-    process.env.ADMIN_PASSWORD_HASH = '$2b$10$xJ8Ks7Y.mTgZQlMqR7x4QOjWz0q9H4yz3EYxVJx1X2Ib8YMlR4vmu';
-  }
+// Initialize persistent JWT secret and environment defaults
+getOrInitJwtSecret();
+if (!process.env.ADMIN_PASSWORD_HASH) {
+  process.env.ADMIN_PASSWORD_HASH = '$2b$10$bNpheeFBkTWNE1sDaCkmcuLCYEYzuHbmA/BVAvsHawdBrLTlhOgcG';
 }
 
 // -------------------------------------------------------------
@@ -1612,8 +1607,16 @@ app.put('/api/recruits/:id', requireAuth, requireRole('admin', 'officer'), uploa
     await run(sql, params);
     const updated = await get(`SELECT * FROM recruits WHERE id = ?`, [id]);
 
-    const diffRes = computeRecruitDiff(existing, updated);
-    if (diffRes.hasChanges) {
+    let diffRes = { hasChanges: false, diff: {}, summary: '' };
+    try {
+      if (typeof computeRecruitDiff === 'function') {
+        diffRes = computeRecruitDiff(existing, updated);
+      }
+    } catch (e) {
+      console.warn('⚠️ تعذر حساب الفروق:', e.message);
+    }
+
+    if (diffRes && diffRes.hasChanges) {
       logAudit(req, {
         action_type: 'UPDATE_RECRUIT',
         entity_type: 'recruit',

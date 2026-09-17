@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import jsQR from 'jsqr';
-import { Camera, RefreshCw, X, AlertCircle, Volume2, VolumeX, SwitchCamera } from 'lucide-react';
+import { Camera, RefreshCw, X, AlertCircle, Volume2, VolumeX, SwitchCamera, Upload, Image as ImageIcon } from 'lucide-react';
 
 // Play crisp tactical confirmation beep via Web Audio API
 const playScanChime = () => {
@@ -38,6 +38,8 @@ export default function CameraQrScanner({
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const animFrameId = useRef(null);
+  const fileInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
 
   const [devices, setDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -83,17 +85,26 @@ export default function CameraQrScanner({
 
       try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error('الكاميرا غير متوفرة أو غير مدعومة');
+          setLoading(false);
+          // Over HTTP on mobile, getUserMedia is disabled by browser security.
+          // Native file capture buttons below handle scanning smoothly!
+          return;
         }
 
-        const constraints = {
-          video: selectedDeviceId 
-            ? { deviceId: { exact: selectedDeviceId } }
-            : { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: false
-        };
+        let stream = null;
+        try {
+          const constraints = {
+            video: selectedDeviceId 
+              ? { deviceId: { exact: selectedDeviceId } }
+              : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false
+          };
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (specErr) {
+          console.warn('Exact constraints failed, falling back to basic video:', specErr);
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
 
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         if (!isMounted) {
           stream.getTracks().forEach(t => t.stop());
           return;
@@ -103,6 +114,7 @@ export default function CameraQrScanner({
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.setAttribute('playsinline', 'true'); // Required for iOS/Safari
+          videoRef.current.muted = true;
           await videoRef.current.play();
         }
 
@@ -110,14 +122,14 @@ export default function CameraQrScanner({
         startScanning();
       } catch (err) {
         if (!isMounted) return;
-        console.error('Camera access error:', err);
+        console.warn('Camera stream error:', err);
         setLoading(false);
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          setError('تم رفض إذن الوصول للكاميرا. يرجى منح الإذن والمحاولة مرة أخرى.');
+          setError('تم رفض إذن الوصول للكاميرا المباشرة. يمكنك استخدام زر فتح كاميرا الهاتف بالأسفل.');
         } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-          setError('لم يتم العثور على كاميرا متصلة بالجهاز.');
+          setError('لم يتم العثور على كاميرا متصلة. يمكنك استخدام زر فتح كاميرا الهاتف بالأسفل.');
         } else {
-          setError(`تعذر تشغيل الكاميرا (${err.message || 'خطأ غير معروف'})`);
+          setError(`تعذر فتح الكاميرا المباشرة. استخدم زر كاميرا الهاتف بالأسفل.`);
         }
       }
     };
@@ -129,6 +141,56 @@ export default function CameraQrScanner({
       stopCamera();
     };
   }, [selectedDeviceId]);
+
+  // Decode QR code from uploaded image or direct mobile camera snapshot
+  const handleImageFileScan = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    setError('');
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0);
+
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imgData.data, imgData.width, imgData.height, {
+          inversionAttempts: 'attemptBoth'
+        });
+
+        setLoading(false);
+
+        if (code && code.data && code.data.trim()) {
+          if (soundEnabled) playScanChime();
+          setScannedSuccess(true);
+          setTimeout(() => {
+            stopCamera();
+            onScan(code.data.trim());
+          }, 350);
+        } else {
+          setError('لم يتم العثور على كود QR واضح في الصورة الملتقطة. يرجى التقاط صورة قريبة وواضحة للكود وإعادة المحاولة.');
+        }
+      };
+      img.onerror = () => {
+        setLoading(false);
+        setError('تعذر معالجة الصورة الملتقطة.');
+      };
+      img.src = reader.result;
+    };
+    reader.onerror = () => {
+      setLoading(false);
+      setError('تعذر قراءة ملف الصورة.');
+    };
+    reader.readAsDataURL(file);
+    if (e.target) e.target.value = '';
+  };
 
   const stopCamera = () => {
     if (animFrameId.current) {
@@ -327,8 +389,48 @@ export default function CameraQrScanner({
         )}
       </div>
 
+      {/* Hidden file inputs for direct mobile camera capture & gallery image upload */}
+      <input
+        type="file"
+        accept="image/*"
+        capture="environment"
+        ref={fileInputRef}
+        onChange={handleImageFileScan}
+        className="hidden"
+      />
+      <input
+        type="file"
+        accept="image/*"
+        ref={galleryInputRef}
+        onChange={handleImageFileScan}
+        className="hidden"
+      />
+
+      {/* Direct Mobile Camera & Photo Upload Buttons */}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-emerald-950/40 active:scale-95 transition-all"
+          title="فتح كاميرا الموبايل لالتقاط صورة الكود مباشرة"
+        >
+          <Camera className="w-4 h-4" />
+          <span>فتح كاميرا الهاتف</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => galleryInputRef.current?.click()}
+          className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-700 active:scale-95 transition-all"
+          title="اختيار صورة كود QR من الاستوديو أو ملفات الجهاز"
+        >
+          <Upload className="w-4 h-4 text-cyan-400" />
+          <span>اختيار صورة الكود</span>
+        </button>
+      </div>
+
       {/* Bottom Guidance Instruction */}
-      <p className="text-[11px] text-gray-300 text-center mt-3 font-medium flex items-center justify-center gap-1.5">
+      <p className="text-[11px] text-gray-300 text-center mt-2.5 font-medium flex items-center justify-center gap-1.5">
         <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
         <span>{instruction}</span>
       </p>

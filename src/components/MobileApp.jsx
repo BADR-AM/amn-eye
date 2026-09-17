@@ -116,6 +116,21 @@ export default function MobileApp({
   const [isEditingRecruit, setIsEditingRecruit] = useState(false);
   const [editFormData, setEditFormData] = useState({});
 
+  // Edit recruit media state & refs
+  const editPhotoCameraRef = useRef(null);
+  const editPhotoGalleryRef = useRef(null);
+  const editVideoCameraRef = useRef(null);
+  const editVideoGalleryRef = useRef(null);
+
+  const [editNewPhotoFile, setEditNewPhotoFile] = useState(null);
+  const [editPhotoPreview, setEditPhotoPreview] = useState(null);
+  const [editRemovePhoto, setEditRemovePhoto] = useState(false);
+
+  const [editNewVideoFile, setEditNewVideoFile] = useState(null);
+  const [editVideoPreview, setEditVideoPreview] = useState(null);
+  const [editRemoveVideo, setEditRemoveVideo] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
   // Modals state for recruit actions
   const [ticketRecruit, setTicketRecruit] = useState(null);
   const [documentsRecruit, setDocumentsRecruit] = useState(null);
@@ -435,27 +450,119 @@ export default function MobileApp({
     }
   };
 
-  // Save edits to recruit dossier
+  const cancelEditingRecruit = () => {
+    setIsEditingRecruit(false);
+    setEditNewPhotoFile(null);
+    setEditPhotoPreview(null);
+    setEditRemovePhoto(false);
+    setEditNewVideoFile(null);
+    setEditVideoPreview(null);
+    setEditRemoveVideo(false);
+  };
+
+  const openRecruitDossier = (recruit) => {
+    cancelEditingRecruit();
+    setSelectedRecruit(recruit);
+  };
+
+  const startEditingRecruit = (targetRecruit) => {
+    const target = targetRecruit || selectedRecruit;
+    if (!target) return;
+    setEditFormData({
+      name: target.name || '',
+      military_number: target.military_number || '',
+      national_id: target.national_id || '',
+      police_number: target.police_number || '',
+      phone: target.phone || '',
+      qualification: target.qualification || 'متوسط',
+      company: target.company || 'السرية الأولى ( ١ )',
+      medical_status: target.medical_status || 'لائق',
+      current_job: target.current_job || '',
+      father_name: target.father_name || '',
+      mother_name: target.mother_name || '',
+      notes: target.notes || ''
+    });
+    setEditNewPhotoFile(null);
+    setEditPhotoPreview(null);
+    setEditRemovePhoto(false);
+    setEditNewVideoFile(null);
+    setEditVideoPreview(null);
+    setEditRemoveVideo(false);
+    setIsEditingRecruit(true);
+  };
+
+  const handleEditPhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('يرجى اختيار ملف صورة صالح (JPG / PNG / WEBP)', 'error');
+      return;
+    }
+    setEditNewPhotoFile(file);
+    setEditRemovePhoto(false);
+    setEditPhotoPreview(URL.createObjectURL(file));
+    showToast('تم تحديد الصورة بنجاح', 'info');
+  };
+
+  const handleEditVideoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('video/')) {
+      showToast('يرجى اختيار ملف فيديو صالح (MP4 / WEBM / MOV)', 'error');
+      return;
+    }
+    setEditNewVideoFile(file);
+    setEditRemoveVideo(false);
+    setEditVideoPreview(URL.createObjectURL(file));
+    showToast('تم تحديد مقطع الفيديو بنجاح', 'info');
+  };
+
+  // Save edits to recruit dossier with photo & video support
   const handleSaveEdit = async () => {
     if (!selectedRecruit) return;
+    setIsSavingEdit(true);
     try {
+      const formData = new FormData();
+      Object.entries(editFormData).forEach(([key, val]) => {
+        if (val !== undefined && val !== null) {
+          formData.append(key, val);
+        }
+      });
+
+      if (editNewPhotoFile) {
+        formData.append('photo', editNewPhotoFile);
+      } else if (editRemovePhoto) {
+        formData.append('remove_photo', 'true');
+      }
+
+      if (editNewVideoFile) {
+        formData.append('video', editNewVideoFile);
+      } else if (editRemoveVideo) {
+        formData.append('remove_video', 'true');
+      }
+
       const res = await fetch(`/api/recruits/${selectedRecruit.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...authHeaders()
-        },
-        body: JSON.stringify(editFormData)
+        headers: authHeaders(),
+        body: formData
       });
-      if (!res.ok) throw new Error('فشل حفظ التعديلات');
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || 'فشل حفظ التعديلات');
+      }
+
       const updated = await res.json();
       setSelectedRecruit(updated.recruit || { ...selectedRecruit, ...editFormData });
-      setIsEditingRecruit(false);
+      cancelEditingRecruit();
       fetchMobileRecruits();
-      onRefresh();
-      showToast('تم حفظ تعديلات ملف المجند بنجاح');
+      if (typeof onRefresh === 'function') onRefresh();
+      showToast('تم حفظ تعديلات وبيانات وملفات المجند بنجاح', 'success');
     } catch (err) {
+      console.error('Mobile save edit error:', err);
       showToast('خطأ في حفظ التعديلات: ' + err.message, 'error');
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -836,11 +943,7 @@ export default function MobileApp({
                     return (
                       <div
                         key={recruit.id}
-                        onClick={() => {
-                          setSelectedRecruit(recruit);
-                          setEditFormData(recruit);
-                          setIsEditingRecruit(false);
-                        }}
+                        onClick={() => openRecruitDossier(recruit)}
                         className="bg-slate-900 hover:bg-slate-850 p-3 rounded-xl border border-slate-800/80 flex items-center justify-between gap-3 transition-colors cursor-pointer shadow-sm active:scale-[0.99]"
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
@@ -1642,11 +1745,7 @@ export default function MobileApp({
                           />
 
                           <div 
-                            onClick={() => {
-                              setSelectedRecruit(recruit);
-                              setEditFormData(recruit);
-                              setIsEditingRecruit(false);
-                            }}
+                            onClick={() => openRecruitDossier(recruit)}
                             className="w-13 h-13 rounded-xl bg-slate-850 border border-slate-700 overflow-hidden shrink-0 flex items-center justify-center cursor-pointer"
                           >
                             {recruit.photo_path ? (
@@ -1662,11 +1761,7 @@ export default function MobileApp({
 
                           {/* Info */}
                           <div 
-                            onClick={() => {
-                              setSelectedRecruit(recruit);
-                              setEditFormData(recruit);
-                              setIsEditingRecruit(false);
-                            }}
+                            onClick={() => openRecruitDossier(recruit)}
                             className="min-w-0 cursor-pointer"
                           >
                             <div className="text-xs font-black text-white truncate">
@@ -1708,11 +1803,7 @@ export default function MobileApp({
                               </span>
                             )}
                             <button
-                              onClick={() => {
-                                setSelectedRecruit(recruit);
-                                setEditFormData(recruit);
-                                setIsEditingRecruit(false);
-                              }}
+                              onClick={() => openRecruitDossier(recruit)}
                               className="px-2 py-1 rounded bg-slate-800 text-slate-200 text-[10px] font-bold border border-slate-700 hover:bg-slate-700"
                             >
                               فحص
@@ -1788,11 +1879,7 @@ export default function MobileApp({
                             </td>
                             <td className="p-2.5 text-center">
                               <button
-                                onClick={() => {
-                                  setSelectedRecruit(recruit);
-                                  setEditFormData(recruit);
-                                  setIsEditingRecruit(false);
-                                }}
+                                onClick={() => openRecruitDossier(recruit)}
                                 className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px] font-bold border border-blue-500/30"
                               >
                                 عرض
@@ -2449,7 +2536,7 @@ export default function MobileApp({
               <button 
                 onClick={() => {
                   setSelectedRecruit(null);
-                  setIsEditingRecruit(false);
+                  cancelEditingRecruit();
                 }}
                 className="p-1 rounded-lg text-slate-400 hover:text-white"
               >
@@ -2457,37 +2544,208 @@ export default function MobileApp({
               </button>
             </div>
 
-            {/* Media Block: Photo & Video Player */}
+            {/* Media Block: Photo & Video Player / Editor */}
             <div className="grid grid-cols-2 gap-2">
-              {/* Photo */}
-              <div className="rounded-xl overflow-hidden bg-slate-950 border border-slate-800 h-36 flex items-center justify-center relative">
-                {selectedRecruit.photo_path ? (
-                  <img 
-                    src={`/uploads/${selectedRecruit.photo_path.replace(/\\/g, '/').split('/').pop()}`} 
-                    alt={selectedRecruit.name} 
-                    className="w-full h-full object-cover" 
-                  />
-                ) : (
-                  <div className="text-slate-500 text-xs flex flex-col items-center gap-1">
-                    <Camera className="w-6 h-6" />
-                    <span>لا توجد صورة</span>
+              {/* Photo Box */}
+              <div className="flex flex-col gap-1.5">
+                <div className="rounded-xl overflow-hidden bg-slate-950 border border-slate-800 h-36 flex items-center justify-center relative shadow-inner">
+                  {editPhotoPreview ? (
+                    <>
+                      <img 
+                        src={editPhotoPreview} 
+                        alt="صورة جديدة" 
+                        className="w-full h-full object-cover" 
+                      />
+                      <span className="absolute top-1 right-1 bg-emerald-600/90 text-white text-[9px] px-1.5 py-0.5 rounded font-bold shadow">
+                        صورة جديدة
+                      </span>
+                    </>
+                  ) : editRemovePhoto ? (
+                    <div className="text-rose-400 text-xs flex flex-col items-center gap-1 p-2 text-center">
+                      <Trash2 className="w-6 h-6 text-rose-500" />
+                      <span className="text-[10px] font-bold">سيتم حذف الصورة عند الحفظ</span>
+                    </div>
+                  ) : selectedRecruit.photo_path ? (
+                    <img 
+                      src={`/uploads/${selectedRecruit.photo_path.replace(/\\/g, '/').split('/').pop()}`} 
+                      alt={selectedRecruit.name} 
+                      className="w-full h-full object-cover" 
+                    />
+                  ) : (
+                    <div className="text-slate-500 text-xs flex flex-col items-center gap-1">
+                      <Camera className="w-6 h-6" />
+                      <span>لا توجد صورة</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Edit Controls for Photo */}
+                {isEditingRecruit && (
+                  <div className="space-y-1">
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      capture="user" 
+                      ref={editPhotoCameraRef} 
+                      className="hidden" 
+                      onChange={handleEditPhotoSelect} 
+                    />
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      ref={editPhotoGalleryRef} 
+                      className="hidden" 
+                      onChange={handleEditPhotoSelect} 
+                    />
+                    <div className="grid grid-cols-2 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => editPhotoCameraRef.current?.click()}
+                        className="py-1 px-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold flex items-center justify-center gap-1 shadow-sm active:scale-95"
+                        title="التقاط صورة بالكاميرا"
+                      >
+                        <Camera className="w-3 h-3" />
+                        <span>كاميرا</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => editPhotoGalleryRef.current?.click()}
+                        className="py-1 px-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-[10px] font-bold flex items-center justify-center gap-1 active:scale-95"
+                        title="اختيار من المعرض"
+                      >
+                        <Download className="w-3 h-3 rotate-180" />
+                        <span>ألبوم</span>
+                      </button>
+                    </div>
+                    {(editPhotoPreview || (!editRemovePhoto && selectedRecruit.photo_path)) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditRemovePhoto(true);
+                          setEditNewPhotoFile(null);
+                          setEditPhotoPreview(null);
+                        }}
+                        className="w-full py-0.5 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-[9px] font-bold flex items-center justify-center gap-1"
+                      >
+                        <Trash2 className="w-2.5 h-2.5" />
+                        <span>إزالة الصورة</span>
+                      </button>
+                    )}
+                    {editRemovePhoto && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditRemovePhoto(false);
+                        }}
+                        className="w-full py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[9px] font-bold flex items-center justify-center gap-1"
+                      >
+                        <RotateCcw className="w-2.5 h-2.5" />
+                        <span>تراجع عن الإزالة</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Video Player */}
-              <div className="rounded-xl overflow-hidden bg-slate-950 border border-slate-800 h-36 flex items-center justify-center relative">
-                {selectedRecruit.video_path ? (
-                  <video 
-                    controls
-                    playsInline
-                    src={`/uploads/${selectedRecruit.video_path.replace(/\\/g, '/').split('/').pop()}`}
-                    className="w-full h-full object-contain bg-black"
-                  />
-                ) : (
-                  <div className="text-slate-500 text-xs flex flex-col items-center gap-1 p-2 text-center">
-                    <Video className="w-6 h-6" />
-                    <span>لا يوجد فيديو مسجل</span>
+              {/* Video Box */}
+              <div className="flex flex-col gap-1.5">
+                <div className="rounded-xl overflow-hidden bg-slate-950 border border-slate-800 h-36 flex items-center justify-center relative shadow-inner">
+                  {editVideoPreview ? (
+                    <>
+                      <video 
+                        controls
+                        playsInline
+                        src={editVideoPreview} 
+                        className="w-full h-full object-contain bg-black" 
+                      />
+                      <span className="absolute top-1 right-1 bg-emerald-600/90 text-white text-[9px] px-1.5 py-0.5 rounded font-bold shadow">
+                        فيديو جديد
+                      </span>
+                    </>
+                  ) : editRemoveVideo ? (
+                    <div className="text-rose-400 text-xs flex flex-col items-center gap-1 p-2 text-center">
+                      <Trash2 className="w-6 h-6 text-rose-500" />
+                      <span className="text-[10px] font-bold">سيتم حذف الفيديو عند الحفظ</span>
+                    </div>
+                  ) : selectedRecruit.video_path ? (
+                    <video 
+                      controls
+                      playsInline
+                      src={`/uploads/${selectedRecruit.video_path.replace(/\\/g, '/').split('/').pop()}`}
+                      className="w-full h-full object-contain bg-black"
+                    />
+                  ) : (
+                    <div className="text-slate-500 text-xs flex flex-col items-center gap-1 p-2 text-center">
+                      <Video className="w-6 h-6" />
+                      <span>لا يوجد فيديو مسجل</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Edit Controls for Video */}
+                {isEditingRecruit && (
+                  <div className="space-y-1">
+                    <input 
+                      type="file" 
+                      accept="video/*" 
+                      capture="environment" 
+                      ref={editVideoCameraRef} 
+                      className="hidden" 
+                      onChange={handleEditVideoSelect} 
+                    />
+                    <input 
+                      type="file" 
+                      accept="video/*" 
+                      ref={editVideoGalleryRef} 
+                      className="hidden" 
+                      onChange={handleEditVideoSelect} 
+                    />
+                    <div className="grid grid-cols-2 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => editVideoCameraRef.current?.click()}
+                        className="py-1 px-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center gap-1 shadow-sm active:scale-95"
+                        title="تسجيل فيديو بالكاميرا"
+                      >
+                        <Video className="w-3 h-3" />
+                        <span>تصوير</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => editVideoGalleryRef.current?.click()}
+                        className="py-1 px-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-[10px] font-bold flex items-center justify-center gap-1 active:scale-95"
+                        title="اختيار فيديو من الجهاز"
+                      >
+                        <Download className="w-3 h-3 rotate-180" />
+                        <span>ملف</span>
+                      </button>
+                    </div>
+                    {(editVideoPreview || (!editRemoveVideo && selectedRecruit.video_path)) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditRemoveVideo(true);
+                          setEditNewVideoFile(null);
+                          setEditVideoPreview(null);
+                        }}
+                        className="w-full py-0.5 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-[9px] font-bold flex items-center justify-center gap-1"
+                      >
+                        <Trash2 className="w-2.5 h-2.5" />
+                        <span>إزالة الفيديو</span>
+                      </button>
+                    )}
+                    {editRemoveVideo && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditRemoveVideo(false);
+                        }}
+                        className="w-full py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[9px] font-bold flex items-center justify-center gap-1"
+                      >
+                        <RotateCcw className="w-2.5 h-2.5" />
+                        <span>تراجع عن الإزالة</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -2555,7 +2813,13 @@ export default function MobileApp({
               {/* 5. Edit Dossier (Not allowed for Operator) */}
               {(!currentUser || currentUser.role !== 'operator') && (
                 <button
-                  onClick={() => setIsEditingRecruit(!isEditingRecruit)}
+                  onClick={() => {
+                    if (isEditingRecruit) {
+                      cancelEditingRecruit();
+                    } else {
+                      startEditingRecruit(selectedRecruit);
+                    }
+                  }}
                   className="p-2 rounded-xl bg-amber-600/15 hover:bg-amber-600/25 border border-amber-500/30 text-amber-300 text-[11px] font-bold flex flex-col items-center gap-1"
                 >
                   <Edit3 className="w-4 h-4 text-amber-400" />
@@ -2855,16 +3119,52 @@ export default function MobileApp({
                   />
                 </div>
 
+                {(editNewPhotoFile || editRemovePhoto || editNewVideoFile || editRemoveVideo) && (
+                  <div className="p-2.5 rounded-xl bg-slate-950 border border-indigo-500/30 text-[11px] space-y-1.5">
+                    <div className="text-indigo-300 font-bold flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>تعديلات الوسائط المجهزة للحفظ:</span>
+                    </div>
+                    {editNewPhotoFile && (
+                      <div className="text-emerald-400 text-[10px] flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        <span>سيتم حفظ صورة جديدة: {editNewPhotoFile.name} ({(editNewPhotoFile.size / 1024).toFixed(1)} KB)</span>
+                      </div>
+                    )}
+                    {editRemovePhoto && (
+                      <div className="text-rose-400 text-[10px] flex items-center gap-1">
+                        <Trash2 className="w-3 h-3" />
+                        <span>سيتم إزالة الصورة الشخصية المسجلة</span>
+                      </div>
+                    )}
+                    {editNewVideoFile && (
+                      <div className="text-emerald-400 text-[10px] flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        <span>سيتم حفظ مقطع فيديو جديد: {editNewVideoFile.name} ({(editNewVideoFile.size / (1024 * 1024)).toFixed(1)} MB)</span>
+                      </div>
+                    )}
+                    {editRemoveVideo && (
+                      <div className="text-rose-400 text-[10px] flex items-center gap-1">
+                        <Trash2 className="w-3 h-3" />
+                        <span>سيتم إزالة مقطع الفيديو المسجل</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2 pt-2">
                   <button
+                    disabled={isSavingEdit}
                     onClick={handleSaveEdit}
-                    className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow"
+                    className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-extrabold text-xs shadow flex items-center justify-center gap-2"
                   >
-                    حفظ التعديلات فوراً
+                    {isSavingEdit && <Loader2 className="w-4 h-4 animate-spin" />}
+                    <span>{isSavingEdit ? 'جاري حفظ التعديلات والملفات...' : 'حفظ التعديلات والملفات فوراً'}</span>
                   </button>
                   <button
-                    onClick={() => setIsEditingRecruit(false)}
-                    className="px-4 py-3 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs"
+                    disabled={isSavingEdit}
+                    onClick={cancelEditingRecruit}
+                    className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs"
                   >
                     إلغاء
                   </button>
