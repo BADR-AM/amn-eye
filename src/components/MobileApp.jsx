@@ -63,6 +63,7 @@ import TicketModal from './TicketModal';
 import PsychologicalFollowupModal from './PsychologicalFollowupModal';
 import OfficialReport from './OfficialReport';
 import RecruitHistoryModal from './RecruitHistoryModal';
+import CameraQrScanner from './CameraQrScanner';
 import { fetchCompanyColors, DEFAULT_COMPANY_COLORS, getCompanyStyle } from '../utils/companyColors';
 import { authHeaders } from '../utils/auth';
 import { parseEgyptianNationalId } from '../utils/nationalId';
@@ -124,6 +125,7 @@ export default function MobileApp({
   const [historyRecruit, setHistoryRecruit] = useState(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showCompanyColorsModal, setShowCompanyColorsModal] = useState(false);
+  const [showMobileQrScanner, setShowMobileQrScanner] = useState(false);
 
   // Company badge colors
   const [companyColors, setCompanyColors] = useState(DEFAULT_COMPANY_COLORS);
@@ -1490,6 +1492,15 @@ export default function MobileApp({
                     </button>
                   )}
                 </div>
+
+                {/* Quick QR Camera Scanner */}
+                <button
+                  onClick={() => setShowMobileQrScanner(true)}
+                  className="p-2.5 rounded-xl border bg-slate-850 hover:bg-slate-800 text-blue-400 hover:text-blue-300 border-slate-700 hover:border-blue-500 transition-all flex items-center justify-center shrink-0 shadow-sm active:scale-95"
+                  title="مسح كود المجند بالكاميرا للبحث الفوري"
+                >
+                  <Scan className="w-4 h-4" />
+                </button>
 
                 {/* Filter Sheet Trigger */}
                 <button
@@ -2959,6 +2970,30 @@ export default function MobileApp({
           onClose={() => setHistoryRecruit(null)}
           companyColors={companyColors}
         />
+      )}
+
+      {/* 9. Mobile Camera QR Code Scanner */}
+      {showMobileQrScanner && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-md">
+            <CameraQrScanner
+              title="مسح كود المجند (QR Code)"
+              instruction="وجّه كارت دولاب المجند أو استمارة الفحص نحو الكاميرا"
+              onClose={() => setShowMobileQrScanner(false)}
+              onScan={(scannedText) => {
+                setShowMobileQrScanner(false);
+                let query = scannedText;
+                if (query.startsWith('SEC-EYE:REC:')) {
+                  query = query.replace('SEC-EYE:REC:', '');
+                }
+                setSearchTerm(query.trim());
+                setPage(1);
+                setActiveTab('directory');
+                if (showToast) showToast('تم مسح كود المجند وتحديد السجل بنجاح');
+              }}
+            />
+          </div>
+        </div>
       )}
 
       {/* ── BOTTOM NAVIGATION BAR (شريط التنقل السفلي اللمسي) ── */}
