@@ -112,9 +112,13 @@ export const closeDb = () => {
 
 // Initialize schema and seed default recruitment batches
 export const initDb = async () => {
-  // Enable Write-Ahead Logging for ultra-fast concurrency across LAN / Wi-Fi
+  // Enable Write-Ahead Logging & high-performance memory cache for ultra-fast concurrency
   await run('PRAGMA journal_mode = WAL;');
+  await run('PRAGMA synchronous = NORMAL;');
   await run('PRAGMA busy_timeout = 5000;');
+  await run('PRAGMA cache_size = -64000;'); // 64 MB RAM cache
+  await run('PRAGMA temp_store = MEMORY;');
+  await run('PRAGMA mmap_size = 268435456;'); // 256 MB Memory-Mapped I/O
   await run('PRAGMA foreign_keys = ON;');
 
   // 1. Batches table (الدفوع التجنيدية)
@@ -234,6 +238,18 @@ export const initDb = async () => {
   await run(`CREATE INDEX IF NOT EXISTS idx_activities_recruit_id ON recruit_activities(recruit_id)`);
   await run(`CREATE INDEX IF NOT EXISTS idx_activities_type ON recruit_activities(activity_type)`);
 
+  // Auto-migration for recruit_activities: check and add report_photo_path
+  try {
+    const actCols = await query(`PRAGMA table_info(recruit_activities)`);
+    const actColNames = actCols.map(c => c.name);
+    if (!actColNames.includes('report_photo_path')) {
+      await run(`ALTER TABLE recruit_activities ADD COLUMN report_photo_path TEXT DEFAULT ''`);
+      console.log('✅ تم تحديث المخطط: إضافة عمود report_photo_path إلى recruit_activities');
+    }
+  } catch (err) {
+    console.error('Migration error for recruit_activities:', err);
+  }
+
   // 5. Recruit Documents / Scanned Identification & Military Records (وثائق التعارف والسجل العسكري الممسوحة ضوئياً)
   await run(`
     CREATE TABLE IF NOT EXISTS recruit_documents (
@@ -280,22 +296,41 @@ export const initDb = async () => {
 
   // Seed default company colors if not set
   const companyColorsRow = await get(`SELECT value FROM settings WHERE key = 'company_colors'`);
+  const defaultCompanyColors = [
+    { id: 'c1', match: 'الأولى', name: 'السرية الأولى ( ١ )', color: '#16a34a', textColor: '#ffffff' },
+    { id: 'c2', match: 'الثانية', name: 'السرية الثانية ( ٢ )', color: '#dc2626', textColor: '#ffffff' },
+    { id: 'c3', match: 'الثالثة', name: 'السرية الثالثة ( ٣ )', color: '#2563eb', textColor: '#ffffff' },
+    { id: 'c4', match: 'الرابعة', name: 'السرية الرابعة ( ٤ )', color: '#ffffff', textColor: '#000000' },
+    { id: 'c5', match: 'الخامسة', name: 'السرية الخامسة ( ٥ )', color: '#f97316', textColor: '#000000' },
+    { id: 'c6', match: 'السادسة', name: 'السرية السادسة ( ٦ )', color: '#38bdf8', textColor: '#000000' },
+    { id: 'sec', match: 'أمن', name: 'سرية الأمن', color: '#0f172a', textColor: '#facc15' },
+    { id: 'base', match: 'أساسية', name: 'القوة الأساسية', color: '#1e1b4b', textColor: '#38bdf8' }
+  ];
+
   if (!companyColorsRow) {
-    const defaultColors = [
-      { id: 'c1', match: 'الأولى', name: 'السرية الأولى ( ١ )', color: '#16a34a', textColor: '#ffffff' },
-      { id: 'c2', match: 'الثانية', name: 'السرية الثانية ( ٢ )', color: '#dc2626', textColor: '#ffffff' },
-      { id: 'c3', match: 'الثالثة', name: 'السرية الثالثة ( ٣ )', color: '#2563eb', textColor: '#ffffff' },
-      { id: 'c4', match: 'الرابعة', name: 'السرية الرابعة ( ٤ )', color: '#ffffff', textColor: '#000000' },
-      { id: 'c5', match: 'الخامسة', name: 'السرية الخامسة ( ٥ )', color: '#f97316', textColor: '#000000' },
-      { id: 'c6', match: 'السادسة', name: 'السرية السادسة ( ٦ )', color: '#38bdf8', textColor: '#000000' }
-    ];
-    await run(`INSERT INTO settings (key, value) VALUES (?, ?)`, ['company_colors', JSON.stringify(defaultColors)]);
+    await run(`INSERT INTO settings (key, value) VALUES (?, ?)`, ['company_colors', JSON.stringify(defaultCompanyColors)]);
     console.log('✅ تم تهيئة إعدادات ألوان السرايا الافتراضية');
+  } else {
+    try {
+      const existing = JSON.parse(companyColorsRow.value);
+      if (Array.isArray(existing) && !existing.some(c => c.id === 'sec' || c.match === 'أمن')) {
+        await run(`UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = 'company_colors'`, [JSON.stringify(defaultCompanyColors)]);
+        console.log('✅ تم تحديث ألوان السرايا لتشمل سرية الأمن والقوة الأساسية');
+      }
+    } catch (e) {}
   }
 
   // Indexing for instant search + uniqueness (partial: only non-empty IDs)
   await run(`CREATE INDEX IF NOT EXISTS idx_recruits_name ON recruits(name)`);
   await run(`CREATE INDEX IF NOT EXISTS idx_recruits_batch_id ON recruits(batch_id)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_recruits_company ON recruits(company)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_recruits_attendance ON recruits(attendance_date)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_recruits_qualification ON recruits(qualification)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_recruits_psychological ON recruits(is_psychological_case)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_recruits_police_number ON recruits(police_number)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_activities_recruit_return ON recruit_activities(recruit_id, return_date)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_tickets_recruit_status ON recruit_tickets(recruit_id, status)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_tickets_status_type ON recruit_tickets(status, ticket_type)`);
   await run(`DROP INDEX IF EXISTS idx_recruits_national_id_unique`);
   await run(`DROP INDEX IF EXISTS idx_recruits_national_id`);
   await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_recruits_national_id_unique ON recruits(national_id) WHERE national_id IS NOT NULL AND national_id != ''`);
@@ -346,6 +381,30 @@ export const initDb = async () => {
     );
     console.log('✅ تم إنشاء حساب مدير المنظومة الافتراضي (admin / 123456) بنجاح');
   }
+
+  // 8. Audit Logs table (سجل الرقابة وتتبع العمليات الشامل)
+  await run(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      username TEXT NOT NULL DEFAULT 'system',
+      user_fullname TEXT NOT NULL DEFAULT 'النظام',
+      user_role TEXT NOT NULL DEFAULT 'system',
+      action_type TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT DEFAULT '',
+      entity_name TEXT DEFAULT '',
+      details TEXT NOT NULL,
+      diff_data TEXT DEFAULT '',
+      ip_address TEXT DEFAULT '',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await run(`CREATE INDEX IF NOT EXISTS idx_audit_user_id ON audit_logs(user_id)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_audit_action_type ON audit_logs(action_type)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity_type, entity_id)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_logs(created_at)`);
 };
 
 export default db;

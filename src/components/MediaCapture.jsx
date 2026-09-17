@@ -16,6 +16,7 @@ import {
   Smartphone,
   SwitchCamera
 } from 'lucide-react';
+import { authHeaders } from '../utils/auth';
 
 export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel }) {
   // Stages: 'photo' | 'video' | 'review' | 'saving'
@@ -268,19 +269,27 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
         const mime = (capturedVideoBlob.type || '').toLowerCase();
         let ext = 'mp4';
         if (mime.includes('webm')) ext = 'webm';
-        else if (mime.includes('quicktime')) ext = 'mov';
+        else if (mime.includes('quicktime') || /iphone|ipad|ipod/i.test(navigator.userAgent)) ext = 'mov';
         else if (mime.includes('mp4')) ext = 'mp4';
+        else if (capturedVideoBlob.name && capturedVideoBlob.name.includes('.')) {
+          ext = capturedVideoBlob.name.split('.').pop().toLowerCase();
+        }
         submitData.append('video', capturedVideoBlob, `video_${formData.national_id || Date.now()}.${ext}`);
       }
 
       const response = await fetch('/api/recruits', {
         method: 'POST',
+        headers: authHeaders(),
         body: submitData
       });
 
       if (!response.ok) {
-        const errJson = await response.json();
-        throw new Error(errJson.error || 'فشل حفظ بيانات المجند في السيرفر');
+        let errMsg = 'فشل حفظ بيانات المجند في السيرفر';
+        try {
+          const errJson = await response.json();
+          if (errJson && errJson.error) errMsg = errJson.error;
+        } catch (e) {}
+        throw new Error(errMsg);
       }
 
       const savedRecruit = await response.json();

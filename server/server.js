@@ -10,6 +10,8 @@ import { initDb, query, get, run } from './db.js';
 import { getLocalIpAddresses } from './network.js';
 import { requireAuth, requireRole, handleLogin, hashPassword, comparePassword } from './auth.js';
 import { createBackup, listBackups, deleteBackup, getAvailableDrives, startAutoBackupSchedule } from './backup.js';
+import { logAudit, computeRecruitDiff } from './auditLogger.js';
+import * as XLSX from 'xlsx';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,9 +51,12 @@ app.use('/uploads', (req, res, next) => {
   res.status(404).json({ error: 'الملف المطلوب غير موجود في مجلد المرفقات' });
 });
 
-// Multer config — type allowlist + random filenames
+// Multer config — type allowlist + random filenames + 100MB limit for mobile HD videos
 const ALLOWED_PHOTO_MIME = ['image/jpeg', 'image/png', 'image/webp'];
-const ALLOWED_VIDEO_MIME = ['video/webm', 'video/mp4', 'video/quicktime', 'video/x-m4v', 'video/3gpp', 'video/mov'];
+const ALLOWED_VIDEO_MIME = [
+  'video/webm', 'video/mp4', 'video/quicktime', 'video/x-m4v', 
+  'video/3gpp', 'video/3gp', 'video/mov', 'video/x-msvideo', 'video/avi'
+];
 const ALLOWED_DOC_MIME = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 
 const storage = multer.diskStorage({
@@ -60,21 +65,21 @@ const storage = multer.diskStorage({
       cb(null, photosDir);
     } else if (file.fieldname === 'video') {
       cb(null, videosDir);
-    } else if (file.fieldname === 'document' || file.fieldname === 'doc_file') {
+    } else if (file.fieldname === 'document' || file.fieldname === 'doc_file' || file.fieldname === 'report_photo') {
       cb(null, docsDir);
     } else {
       cb(null, uploadsDir);
     }
   },
   filename: (req, file, cb) => {
-    let origExt = path.extname(file.originalname).toLowerCase();
+    let origExt = path.extname(file.originalname || '').toLowerCase();
     const cleanMime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
-    if (!origExt) {
+    if (!origExt || origExt === '.dat') {
       if (file.fieldname === 'photo') origExt = '.jpg';
       else if (file.fieldname === 'video') {
-        origExt = cleanMime.includes('mp4') ? '.mp4' : (cleanMime.includes('quicktime') ? '.mov' : '.webm');
+        origExt = cleanMime.includes('quicktime') ? '.mov' : (cleanMime.includes('webm') ? '.webm' : '.mp4');
       } else {
-        origExt = '.dat';
+        origExt = cleanMime.includes('pdf') ? '.pdf' : '.jpg';
       }
     }
     cb(null, `${file.fieldname}_${Date.now()}_${crypto.randomUUID()}${origExt}`);
@@ -83,13 +88,16 @@ const storage = multer.diskStorage({
 
 const fileFilter = (req, file, cb) => {
   const cleanMime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
-  const isPhoto = file.fieldname === 'photo' && ALLOWED_PHOTO_MIME.includes(cleanMime);
+  const isPhoto = file.fieldname === 'photo' && (ALLOWED_PHOTO_MIME.includes(cleanMime) || cleanMime.startsWith('image/'));
   const isVideo = file.fieldname === 'video' && (
     ALLOWED_VIDEO_MIME.includes(cleanMime) ||
     cleanMime.startsWith('video/') ||
-    (cleanMime === 'application/octet-stream' && /\.(mp4|mov|webm|m4v)$/i.test(file.originalname))
+    cleanMime === 'application/octet-stream' ||
+    /\.(mp4|mov|webm|m4v|3gp|quicktime|avi)$/i.test(file.originalname || '')
   );
-  const isDoc = (file.fieldname === 'document' || file.fieldname === 'doc_file') && ALLOWED_DOC_MIME.includes(cleanMime);
+  const isDoc = (file.fieldname === 'document' || file.fieldname === 'doc_file' || file.fieldname === 'report_photo') && 
+    (ALLOWED_DOC_MIME.includes(cleanMime) || cleanMime.startsWith('image/') || cleanMime.includes('pdf'));
+
   if (isPhoto || isVideo || isDoc) {
     cb(null, true);
   } else {
@@ -100,7 +108,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 30 * 1024 * 1024 } // 30MB
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB for mobile 4K/1080p video
 });
 
 // Initialize database
@@ -231,6 +239,14 @@ app.post('/api/users', requireAuth, requireRole('admin'), async (req, res) => {
       [cleanUsername, pwdHash, full_name.trim(), assignedRole]
     );
 
+    logAudit(req, {
+      action_type: 'CREATE_USER',
+      entity_type: 'user',
+      entity_id: result.lastID,
+      entity_name: cleanUsername,
+      details: `إنشاء حساب مستخدم جديد: ${cleanUsername} (${full_name.trim()}) بصلاحية ${assignedRole}`,
+    });
+
     res.status(201).json({
       message: 'تم إنشاء الحساب بنجاح',
       user: {
@@ -283,6 +299,14 @@ app.put('/api/users/:id', requireAuth, requireRole('admin'), async (req, res) =>
       );
     }
 
+    logAudit(req, {
+      action_type: 'UPDATE_USER',
+      entity_type: 'user',
+      entity_id: userId,
+      entity_name: user.username,
+      details: `تعديل بيانات الحساب: ${user.username} (الاسم: ${newFullName}، الصلاحية: ${newRole}${password ? '، تم تغيير كلمة المرور' : ''})`,
+    });
+
     res.json({
       message: 'تم تحديث بيانات الحساب بنجاح',
       user: {
@@ -319,6 +343,15 @@ app.delete('/api/users/:id', requireAuth, requireRole('admin'), async (req, res)
     }
 
     await run('DELETE FROM users WHERE id = ?', [userId]);
+
+    logAudit(req, {
+      action_type: 'DELETE_USER',
+      entity_type: 'user',
+      entity_id: userId,
+      entity_name: user.username,
+      details: `حذف حساب المستخدم: ${user.username} (${user.full_name})`,
+    });
+
     res.json({ message: 'تم حذف الحساب بنجاح' });
   } catch (err) {
     console.error('Delete user error:', err);
@@ -352,7 +385,9 @@ app.get('/api/settings/company-colors', async (req, res) => {
       { id: 'c3', match: 'الثالثة', name: 'السرية الثالثة ( ٣ )', color: '#2563eb', textColor: '#ffffff' },
       { id: 'c4', match: 'الرابعة', name: 'السرية الرابعة ( ٤ )', color: '#ffffff', textColor: '#000000' },
       { id: 'c5', match: 'الخامسة', name: 'السرية الخامسة ( ٥ )', color: '#f97316', textColor: '#000000' },
-      { id: 'c6', match: 'السادسة', name: 'السرية السادسة ( ٦ )', color: '#38bdf8', textColor: '#000000' }
+      { id: 'c6', match: 'السادسة', name: 'السرية السادسة ( ٦ )', color: '#38bdf8', textColor: '#000000' },
+      { id: 'sec', match: 'أمن', name: 'سرية الأمن', color: '#0f172a', textColor: '#facc15' },
+      { id: 'base', match: 'أساسية', name: 'القوة الأساسية', color: '#1e1b4b', textColor: '#38bdf8' }
     ];
     res.json(defaultColors);
   } catch (err) {
@@ -403,6 +438,17 @@ app.get('/api/stats', requireAuth, async (req, res) => {
     const withPhotoRow = await get(`SELECT COUNT(*) as count FROM recruits WHERE photo_path IS NOT NULL AND photo_path != ''`);
     const withVideoRow = await get(`SELECT COUNT(*) as count FROM recruits WHERE video_path IS NOT NULL AND video_path != ''`);
 
+    // Separate counts for:
+    // 1. Regular 6 companies (المستجدين الـ 6 سرايا)
+    // 2. سرية الأمن
+    // 3. القوة الأساسية
+    const securityCompanyRow = await get(`SELECT COUNT(*) as count FROM recruits WHERE company LIKE '%أمن%'`);
+    const baseForceRow = await get(`SELECT COUNT(*) as count FROM recruits WHERE company LIKE '%أساسية%' OR company LIKE '%اساسية%'`);
+    const regularRecruitsRow = await get(`
+      SELECT COUNT(*) as count FROM recruits 
+      WHERE company NOT LIKE '%أمن%' AND company NOT LIKE '%أساسية%' AND company NOT LIKE '%اساسية%'
+    `);
+
     res.json({
       totalRecruits: totalRecruitsRow.count,
       todayRecruits: todayRecruitsRow.count,
@@ -410,6 +456,10 @@ app.get('/api/stats', requireAuth, async (req, res) => {
       activeBatchRecruits: activeBatchCount,
       withPhoto: withPhotoRow.count,
       withVideo: withVideoRow.count,
+      // Separate Unit counts:
+      regularRecruits: regularRecruitsRow.count,
+      securityCompanyRecruits: securityCompanyRow.count,
+      baseForceRecruits: baseForceRow.count,
     });
   } catch (error) {
     console.error('Error fetching stats:', error);
@@ -490,29 +540,85 @@ app.get('/api/analytics', requireAuth, async (req, res) => {
 
 // 2.2 AI Data Assistant Chat Endpoint (protected)
 app.post('/api/chat', requireAuth, async (req, res) => {
-  const { message, history } = req.body;
-  if (!message) return res.status(400).json({ error: 'نص الاستفسار مطلوب' });
+  const { message, history, stream } = req.body || {};
+  if (!message || !message.trim()) return res.status(400).json({ error: 'نص الاستفسار مطلوب' });
 
-  // Initialize SSE streaming headers
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
+  // Check if client expects standard JSON instead of SSE streaming
+  const wantsJson = stream === false || req.headers.accept?.includes('application/json');
+
+  if (!wantsJson) {
+    // Initialize SSE streaming headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+  }
 
   const sendEvent = (type, content) => {
-    res.write(`data: ${JSON.stringify({ type, content })}\n\n`);
+    if (!wantsJson && !res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ type, content })}\n\n`);
+    }
   };
 
   try {
     // 1. Initial Thought: Query Analysis
     sendEvent('THOUGHT', 'تحليل السؤال واستخراج الكيانات والكلمات المفتاحية الأمنية والإدارية...');
-    await new Promise(r => setTimeout(r, 200));
+    if (!wantsJson) await new Promise(r => setTimeout(r, 120));
 
     const q = message.toLowerCase().trim();
     let responseText = '';
     let suggestions = [];
 
+    // Query 0: Security Company & Base Force & Units
+    if (q.includes('أمن') || q.includes('أساسية') || q.includes('اساسية') || q.includes('سرية') || q.includes('سرايا') || q.includes('كتيبة')) {
+      sendEvent('THOUGHT', 'استعلام توزيع المجندين على السرايا وقوة سرية الأمن والقوة الأساسية...');
+      await new Promise(r => setTimeout(r, 200));
+
+      const secCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE company LIKE '%أمن%'`);
+      const baseCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE company LIKE '%أساسية%' OR company LIKE '%اساسية%'`);
+      const allCompanies = await query(`
+        SELECT company, COUNT(*) as count 
+        FROM recruits 
+        WHERE company IS NOT NULL AND company != '' 
+        GROUP BY company 
+        ORDER BY count DESC
+      `);
+
+      let secMembers = [];
+      if (q.includes('أمن')) {
+        secMembers = await query(`SELECT name, national_id, qualification, current_job FROM recruits WHERE company LIKE '%أمن%' LIMIT 10`);
+      }
+      let baseMembers = [];
+      if (q.includes('أساسية') || q.includes('اساسية')) {
+        baseMembers = await query(`SELECT name, national_id, qualification, current_job FROM recruits WHERE company LIKE '%أساسية%' OR company LIKE '%اساسية%' LIMIT 10`);
+      }
+
+      responseText = `### 🛡️ تقرير قوة سرايا المركز ووحدتي الأمن والقوة الأساسية\n\n`;
+      responseText += `* **قوة سرية الأمن:** **${secCount.count} مجند**\n`;
+      responseText += `* **القوة الأساسية للمركز:** **${baseCount.count} مجند**\n\n`;
+      responseText += `| السرية / الوحدة | إجمالي القوة المقيدة |\n`;
+      responseText += `| :--- | :---: |\n`;
+      for (const c of allCompanies) {
+        responseText += `| **${c.company}** | ${c.count} مجند |\n`;
+      }
+
+      if (secMembers.length > 0) {
+        responseText += `\n#### 🎖️ عينة من مجندي سرية الأمن:\n`;
+        secMembers.forEach(m => {
+          responseText += `* **${m.name}** — ${m.qualification} (${m.current_job || 'بدون مهنة'}) — \`${m.national_id || 'ـ'}\`\n`;
+        });
+      }
+
+      if (baseMembers.length > 0) {
+        responseText += `\n#### 🎖️ عينة من أفراد القوة الأساسية:\n`;
+        baseMembers.forEach(m => {
+          responseText += `* **${m.name}** — ${m.qualification} (${m.current_job || 'بدون مهنة'}) — \`${m.national_id || 'ـ'}\`\n`;
+        });
+      }
+
+      suggestions = ['حصر أرباب السوابق والاشتباهات', 'توزيع المؤهلات الدراسية', 'الحالات المرضية والتحركات'];
+    }
     // Query 1: Qualification inquiries
-    if (q.includes('مؤهل') || q.includes('شهادة') || q.includes('عالي') || q.includes('متوسط') || q.includes('جامع') || q.includes('دبلوم') || q.includes('كلية')) {
+    else if (q.includes('مؤهل') || q.includes('شهادة') || q.includes('عالي') || q.includes('متوسط') || q.includes('جامع') || q.includes('دبلوم') || q.includes('كلية')) {
       sendEvent('THOUGHT', 'تنفيذ استعلام إحصائي لحصر وتوزيع المؤهلات الدراسية عبر كافة الدفوع...');
       await new Promise(r => setTimeout(r, 200));
 
@@ -931,22 +1037,52 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 
       suggestions = ['حصر أعداد الدفوع', 'توزيع المؤهلات الدراسية', 'أصحاب المهن والحرف'];
     }
-    // Default Overview
+    // Default Overview / Intelligent Fallback Search
     else {
-      sendEvent('THOUGHT', 'إعداد ملخص عام وشامل لكافة مؤشرات منظومة المجندين...');
-      await new Promise(r => setTimeout(r, 200));
+      sendEvent('THOUGHT', 'محاولة مطابقة السؤال مع أسماء المجندين أو السجلات الميدانية...');
+      await new Promise(r => setTimeout(r, 150));
 
-      const stats = await get(`SELECT COUNT(*) as count FROM recruits`);
-      const activeBatch = await get(`SELECT name FROM batches WHERE active = 1 LIMIT 1`);
-      const ticketsCount = await get(`SELECT COUNT(*) as count FROM recruit_tickets WHERE status = 'open'`);
-      const psychCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE is_psychological_case = 1`);
+      // Dynamic name / keyword search across recruits table
+      const cleanMsg = message.trim().replace(/[؟?!.,]/g, '');
+      const words = cleanMsg.split(/\s+/).filter(w => w.length >= 2 && !['كم', 'ما', 'هل', 'من', 'هو', 'في', 'على', 'عن', 'مع'].includes(w));
+      let matchRecruits = [];
+      if (words.length > 0) {
+        const conds = words.map(() => `r.name LIKE ?`).join(' AND ');
+        const params = words.map(w => `%${w}%`);
+        try {
+          matchRecruits = await query(`
+            SELECT r.name, r.national_id, r.qualification, r.current_job, r.company, b.name as batch_name
+            FROM recruits r
+            JOIN batches b ON r.batch_id = b.id
+            WHERE ${conds}
+            LIMIT 8
+          `, params);
+        } catch(e) {}
+      }
 
-      responseText = `أهلاً بك! أنا **المساعد الذكي لمنظومة فحص وتسجيل المجندين** لوحدة الأمن والتحريات.\n\n`;
-      responseText += `* **إجمالي المجندين المقيدين:** **${stats.count} مجند**.\n`;
-      responseText += `* **الدفع التجنيدي النشط:** **${activeBatch ? activeBatch.name : 'غير محدد'}**.\n`;
-      responseText += `* **تيكتات الاشتباه المفتوحة:** **${ticketsCount.count} تيكت**.\n`;
-      responseText += `* **الحالات النفسية قيد المتابعة:** **${psychCount.count} مجند**.\n\n`;
-      responseText += `يمكنك سؤالي بأي صيغة عربية عن:\n`;
+      if (matchRecruits.length > 0) {
+        responseText = `### 🔍 نتائج المطابقة المباشرة في قاعدة البيانات\n\n`;
+        responseText += `تم العثور على **${matchRecruits.length} سجل** يطابق استفسارك:\n\n`;
+        for (const r of matchRecruits) {
+          responseText += `* **${r.name}** — السرية/الوحدة: \`${r.company || 'ـ'}\` — الرقم القومي: \`${r.national_id || 'ـ'}\` — ${r.batch_name} (${r.qualification})\n`;
+        }
+        suggestions = ['حصر أفراد سرية هذا المجند', 'فحص الموقف الطبي والتحريات', 'توزيع المؤهلات الدراسية'];
+      } else {
+        const stats = await get(`SELECT COUNT(*) as count FROM recruits`);
+        const activeBatch = await get(`SELECT name FROM batches WHERE active = 1 LIMIT 1`);
+        const ticketsCount = await get(`SELECT COUNT(*) as count FROM recruit_tickets WHERE status = 'open'`);
+        const psychCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE is_psychological_case = 1`);
+        const secCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE company LIKE '%أمن%'`);
+        const baseCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE company LIKE '%أساسية%' OR company LIKE '%اساسية%'`);
+
+        responseText = `أهلاً بك! أنا **المساعد الذكي لمنظومة فحص وتسجيل المجندين** لوحدة الأمن والتحريات.\n\n`;
+        responseText += `* **إجمالي المقيدين بالمنظومة:** **${stats.count} مجند**.\n`;
+        responseText += `* **المستجدين (السرايا الـ 6):** **${Math.max(0, stats.count - (secCount.count + baseCount.count))} مجند**.\n`;
+        responseText += `* **قوة سرية الأمن:** **${secCount.count} مجند** | **القوة الأساسية:** **${baseCount.count} فرد**.\n`;
+        responseText += `* **الدفع التجنيدي النشط:** **${activeBatch ? activeBatch.name : 'غير محدد'}**.\n`;
+        responseText += `* **تيكتات الاشتباه المفتوحة:** **${ticketsCount.count} تيكت**.\n`;
+        responseText += `* **الحالات النفسية قيد المتابعة:** **${psychCount.count} مجند**.\n\n`;
+        responseText += `يمكنك سؤالي بأي صيغة عربية عن:\n`;
       responseText += `1. **تيكتات الاشتباه الأمني والجنائي والسياسي**.\n`;
       responseText += `2. **الحالات النفسية والعصبية وغير المتزنين**.\n`;
       responseText += `3. **التحركات ومستشفيات الشرطة بطنطا ومدينة نصر**.\n`;
@@ -960,17 +1096,26 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 
       suggestions = ['تيكتات الاشتباه الأمني', 'الحالات غير المتزنة نفسياً', 'بيان تحركات مستشفيات الشرطة', 'حصر المجندين المتزوجين', 'أصحاب المهن والحرف'];
     }
+  }
+
+    if (wantsJson) {
+      return res.json({
+        reply: responseText,
+        dataSummary: null,
+        suggestions
+      });
+    }
 
     // Stream the final response chunk by chunk for smooth animation
     sendEvent('THOUGHT', 'اكتمال معالجة البيانات وصياغة التقرير الإحصائي النهائي.');
-    await new Promise(r => setTimeout(r, 150));
+    await new Promise(r => setTimeout(r, 100));
 
     // Stream in natural paragraphs
     const chunks = responseText.split('\n');
     for (let i = 0; i < chunks.length; i++) {
       const piece = (i > 0 ? '\n' : '') + chunks[i];
       sendEvent('FINAL_RESPONSE', piece);
-      await new Promise(r => setTimeout(r, 20));
+      await new Promise(r => setTimeout(r, 15));
     }
 
     // Send suggestions at the end
@@ -982,6 +1127,9 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     res.end();
   } catch (err) {
     console.error('Chat error:', err);
+    if (wantsJson) {
+      return res.status(500).json({ error: `عذراً، حدث خطأ أثناء معالجة الاستفسار: ${err.message}` });
+    }
     sendEvent('FINAL_RESPONSE', `عذراً، حدث خطأ أثناء معالجة الاستفسار: ${err.message}`);
     res.write('data: [DONE]\n\n');
     res.end();
@@ -1022,6 +1170,15 @@ app.post('/api/batches', requireAuth, async (req, res) => {
     );
 
     const created = await get(`SELECT * FROM batches WHERE id = ?`, [result.lastID]);
+
+    logAudit(req, {
+      action_type: 'CREATE_BATCH',
+      entity_type: 'batch',
+      entity_id: result.lastID,
+      entity_name: name,
+      details: `إضافة دفعة تجنيد جديدة: ${name} (${year}/${month})${active ? ' وتفعيلها كدفعة حالية' : ''}`,
+    });
+
     res.status(201).json(created);
   } catch (error) {
     console.error('Error creating batch:', error);
@@ -1035,6 +1192,15 @@ app.put('/api/batches/:id/set-active', requireAuth, async (req, res) => {
     await run(`UPDATE batches SET active = 0`);
     await run(`UPDATE batches SET active = 1 WHERE id = ?`, [id]);
     const updated = await get(`SELECT * FROM batches WHERE id = ?`, [id]);
+
+    logAudit(req, {
+      action_type: 'ACTIVATE_BATCH',
+      entity_type: 'batch',
+      entity_id: id,
+      entity_name: updated ? updated.name : id,
+      details: `تفعيل دفعة التجنيد كدفعة حالية نشطة: ${updated ? updated.name : id}`,
+    });
+
     res.json(updated);
   } catch (error) {
     console.error('Error activating batch:', error);
@@ -1188,7 +1354,7 @@ const cleanupUploadedFiles = (req) => {
 };
 
 // 6. Create Recruit with Multipart Photo and Video Upload
-app.post('/api/recruits', upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
+app.post('/api/recruits', requireAuth, upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
     const data = req.body;
 
@@ -1289,6 +1455,14 @@ app.post('/api/recruits', upload.fields([{ name: 'photo', maxCount: 1 }, { name:
     const result = await run(sql, params);
     const created = await get(`SELECT * FROM recruits WHERE id = ?`, [result.lastID]);
 
+    logAudit(req, {
+      action_type: 'CREATE_RECRUIT',
+      entity_type: 'recruit',
+      entity_id: created.id,
+      entity_name: created.name,
+      details: `تسجيل مجند جديد: ${created.name} (رقم عسكري: ${created.military_number || 'ـ'}، سرية: ${created.company || 'ـ'})`,
+    });
+
     console.log(`✅ تم تسجيل مجند جديد بنجاح: ${created.name} (ID: ${created.id})`);
     res.status(201).json(created);
   } catch (error) {
@@ -1300,8 +1474,8 @@ app.post('/api/recruits', upload.fields([{ name: 'photo', maxCount: 1 }, { name:
   }
 });
 
-// 7. Update Recruit Details (protected)
-app.put('/api/recruits/:id', requireAuth, upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
+// 7. Update Recruit Details (protected - Admin & Officer only)
+app.put('/api/recruits/:id', requireAuth, requireRole('admin', 'officer'), upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
     const { id } = req.params;
     const data = req.body;
@@ -1401,6 +1575,19 @@ app.put('/api/recruits/:id', requireAuth, upload.fields([{ name: 'photo', maxCou
 
     await run(sql, params);
     const updated = await get(`SELECT * FROM recruits WHERE id = ?`, [id]);
+
+    const diffRes = computeRecruitDiff(existing, updated);
+    if (diffRes.hasChanges) {
+      logAudit(req, {
+        action_type: 'UPDATE_RECRUIT',
+        entity_type: 'recruit',
+        entity_id: id,
+        entity_name: updated.name,
+        details: `تعديل بيانات المجند ${updated.name}: ${diffRes.summary}`,
+        diff_data: diffRes.diff
+      });
+    }
+
     res.json(updated);
   } catch (error) {
     console.error('Error updating recruit:', error);
@@ -1411,8 +1598,8 @@ app.put('/api/recruits/:id', requireAuth, upload.fields([{ name: 'photo', maxCou
   }
 });
 
-// 8. Delete Recruit (protected)
-app.delete('/api/recruits/:id', requireAuth, async (req, res) => {
+// 8. Delete Recruit (protected - Admin only)
+app.delete('/api/recruits/:id', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const { id } = req.params;
     const existing = await get(`SELECT * FROM recruits WHERE id = ?`, [id]);
@@ -1432,10 +1619,54 @@ app.delete('/api/recruits/:id', requireAuth, async (req, res) => {
       if (fs.existsSync(v)) try { fs.unlinkSync(v); } catch (e) { }
     }
 
+    logAudit(req, {
+      action_type: 'DELETE_RECRUIT',
+      entity_type: 'recruit',
+      entity_id: id,
+      entity_name: existing.name,
+      details: `حذف ملف المجند نهائياً: ${existing.name} (رقم عسكري: ${existing.military_number || 'ـ'})`,
+    });
+
     res.json({ message: 'تم حذف ملف المجند بنجاح' });
   } catch (error) {
     console.error('Error deleting recruit:', error);
     res.status(500).json({ error: 'خطأ في حذف المجند' });
+  }
+});
+
+// 8.1 Bulk Delete Recruits (protected - Admin only)
+app.post('/api/recruits/bulk-delete', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'قائمة المعرفات غير صالحة' });
+    }
+    const placeholders = ids.map(() => '?').join(',');
+    const recruitsToDelete = await query(`SELECT id, name, military_number, photo_path, video_path FROM recruits WHERE id IN (${placeholders})`, ids);
+    await run(`DELETE FROM recruits WHERE id IN (${placeholders})`, ids);
+    for (const r of recruitsToDelete) {
+      if (r.photo_path) {
+        const p = path.join(__dirname, '..', r.photo_path);
+        if (fs.existsSync(p)) try { fs.unlinkSync(p); } catch (e) {}
+      }
+      if (r.video_path) {
+        const v = path.join(__dirname, '..', r.video_path);
+        if (fs.existsSync(v)) try { fs.unlinkSync(v); } catch (e) {}
+      }
+    }
+
+    logAudit(req, {
+      action_type: 'BULK_DELETE_RECRUITS',
+      entity_type: 'recruit',
+      entity_id: ids.join(','),
+      entity_name: `${ids.length} مجندين`,
+      details: `حذف جماعي لعدد ${ids.length} مجندين (${recruitsToDelete.map(r => r.name).slice(0, 5).join('، ')}${recruitsToDelete.length > 5 ? '...' : ''})`,
+    });
+
+    res.json({ message: `تم حذف ${ids.length} مجند بنجاح`, count: ids.length });
+  } catch (error) {
+    console.error('Error bulk deleting recruits:', error);
+    res.status(500).json({ error: 'خطأ في الحذف المجمع' });
   }
 });
 
@@ -1444,7 +1675,7 @@ app.delete('/api/recruits/:id', requireAuth, async (req, res) => {
 // -------------------------------------------------------------
 
 // جلب سجل تحركات ومتابعة مجند معين
-app.get('/api/recruits/:id/activities', async (req, res) => {
+app.get('/api/recruits/:id/activities', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const activities = await query(
@@ -1458,8 +1689,8 @@ app.get('/api/recruits/:id/activities', async (req, res) => {
   }
 });
 
-// تسجيل حركة / متابعة جديدة لمجند (مستشفى الشرطة، عيادة، مأمورية، إلخ)
-app.post('/api/recruits/:id/activities', requireAuth, async (req, res) => {
+// تسجيل حركة / متابعة جديدة لمجند (مستشفى الشرطة، عيادة، مأمورية، إلخ - Admin & Officer only)
+app.post('/api/recruits/:id/activities', requireAuth, requireRole('admin', 'officer'), async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -1470,17 +1701,30 @@ app.post('/api/recruits/:id/activities', requireAuth, async (req, res) => {
       diagnosis,
       medical_decision,
       notes,
-      officer_name
+      officer_name,
+      report_photo_path,
+      report_photo_base64
     } = req.body;
 
     if (!activity_type || !departure_date) {
       return res.status(400).json({ error: 'نوع الحركة وتاريخ القيام مطلوبان' });
     }
 
+    let finalReportPhoto = report_photo_path || '';
+    if (!finalReportPhoto && report_photo_base64) {
+      const matches = report_photo_base64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (matches && matches.length === 3) {
+        const buffer = Buffer.from(matches[2], 'base64');
+        const filename = `report_${Date.now()}_${crypto.randomUUID()}.jpg`;
+        await fs.promises.writeFile(path.join(docsDir, filename), buffer);
+        finalReportPhoto = `/uploads/documents/${filename}`;
+      }
+    }
+
     const result = await run(
       `INSERT INTO recruit_activities 
-        (recruit_id, activity_type, destination, departure_date, return_date, diagnosis, medical_decision, notes, officer_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (recruit_id, activity_type, destination, departure_date, return_date, diagnosis, medical_decision, notes, officer_name, report_photo_path)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         activity_type,
@@ -1490,12 +1734,22 @@ app.post('/api/recruits/:id/activities', requireAuth, async (req, res) => {
         diagnosis || '',
         medical_decision || '',
         notes || '',
-        officer_name || ''
+        officer_name || '',
+        finalReportPhoto
       ]
     );
 
-    // إذا كان هناك قرار طبي، يمكن تحديث ملاحظات المجند أو حالته تلقائياً إذا لزم الأمر
     const newActivity = await get(`SELECT * FROM recruit_activities WHERE id = ?`, [result.lastID]);
+    const recruitRow = await get(`SELECT name, military_number FROM recruits WHERE id = ?`, [id]);
+
+    logAudit(req, {
+      action_type: 'ADD_ACTIVITY',
+      entity_type: 'activity',
+      entity_id: id,
+      entity_name: recruitRow?.name || `مجند #${id}`,
+      details: `تسجيل حركة (${activity_type === 'hospital' ? 'مستشفى الشرطة' : activity_type === 'clinic' ? 'عيادة' : activity_type}) للمجند ${recruitRow?.name || id}: جهة الذهاب (${destination || 'ـ'})، تشخيص: (${diagnosis || 'ـ'})`,
+    });
+
     res.status(201).json(newActivity);
   } catch (error) {
     console.error('Error adding activity:', error);
@@ -1503,8 +1757,8 @@ app.post('/api/recruits/:id/activities', requireAuth, async (req, res) => {
   }
 });
 
-// تحديث حركة متابعة (تسجيل عودة، إضافة تشخيص، إلخ)
-app.put('/api/activities/:activityId', requireAuth, async (req, res) => {
+// تحديث حركة متابعة (تسجيل عودة، إضافة تشخيص، إلخ - Admin & Officer only)
+app.put('/api/activities/:activityId', requireAuth, requireRole('admin', 'officer'), async (req, res) => {
   try {
     const { activityId } = req.params;
     const {
@@ -1515,12 +1769,25 @@ app.put('/api/activities/:activityId', requireAuth, async (req, res) => {
       diagnosis,
       medical_decision,
       notes,
-      officer_name
+      officer_name,
+      report_photo_path,
+      report_photo_base64
     } = req.body;
 
     const existing = await get(`SELECT * FROM recruit_activities WHERE id = ?`, [activityId]);
     if (!existing) {
       return res.status(404).json({ error: 'سجل المتابعة غير موجود' });
+    }
+
+    let finalReportPhoto = report_photo_path !== undefined ? report_photo_path : existing.report_photo_path;
+    if (report_photo_base64) {
+      const matches = report_photo_base64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (matches && matches.length === 3) {
+        const buffer = Buffer.from(matches[2], 'base64');
+        const filename = `report_${Date.now()}_${crypto.randomUUID()}.jpg`;
+        await fs.promises.writeFile(path.join(docsDir, filename), buffer);
+        finalReportPhoto = `/uploads/documents/${filename}`;
+      }
     }
 
     await run(
@@ -1533,6 +1800,7 @@ app.put('/api/activities/:activityId', requireAuth, async (req, res) => {
         medical_decision = COALESCE(?, medical_decision),
         notes = COALESCE(?, notes),
         officer_name = COALESCE(?, officer_name),
+        report_photo_path = ?,
         updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [
@@ -1544,11 +1812,22 @@ app.put('/api/activities/:activityId', requireAuth, async (req, res) => {
         medical_decision,
         notes,
         officer_name,
+        finalReportPhoto,
         activityId
       ]
     );
 
     const updated = await get(`SELECT * FROM recruit_activities WHERE id = ?`, [activityId]);
+    const recruitRow = await get(`SELECT name FROM recruits WHERE id = ?`, [existing.recruit_id]);
+
+    logAudit(req, {
+      action_type: 'UPDATE_ACTIVITY',
+      entity_type: 'activity',
+      entity_id: existing.recruit_id,
+      entity_name: recruitRow?.name || `مجند #${existing.recruit_id}`,
+      details: `تحديث متابعة للمجند ${recruitRow?.name || existing.recruit_id}: تسجيل عودة / قرار طبي (${medical_decision || updated.medical_decision || 'ـ'})`,
+    });
+
     res.json(updated);
   } catch (error) {
     console.error('Error updating activity:', error);
@@ -1556,8 +1835,8 @@ app.put('/api/activities/:activityId', requireAuth, async (req, res) => {
   }
 });
 
-// حذف حركة متابعة
-app.delete('/api/activities/:activityId', requireAuth, async (req, res) => {
+// حذف حركة متابعة (Admin & Officer)
+app.delete('/api/activities/:activityId', requireAuth, requireRole('admin', 'officer'), async (req, res) => {
   try {
     const { activityId } = req.params;
     const existing = await get(`SELECT * FROM recruit_activities WHERE id = ?`, [activityId]);
@@ -1565,7 +1844,17 @@ app.delete('/api/activities/:activityId', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'سجل المتابعة غير موجود' });
     }
 
+    const recruitRow = await get(`SELECT name FROM recruits WHERE id = ?`, [existing.recruit_id]);
     await run(`DELETE FROM recruit_activities WHERE id = ?`, [activityId]);
+
+    logAudit(req, {
+      action_type: 'DELETE_ACTIVITY',
+      entity_type: 'activity',
+      entity_id: existing.recruit_id,
+      entity_name: recruitRow?.name || `مجند #${existing.recruit_id}`,
+      details: `حذف قيد متابعة للمجند ${recruitRow?.name || existing.recruit_id}`,
+    });
+
     res.json({ message: 'تم حذف قيد المتابعة بنجاح' });
   } catch (error) {
     console.error('Error deleting activity:', error);
@@ -1623,6 +1912,16 @@ app.post('/api/recruits/:id/tickets', requireAuth, async (req, res) => {
     }
 
     const newTicket = await get(`SELECT * FROM recruit_tickets WHERE id = ?`, [result.lastID]);
+    const recruitRow = await get(`SELECT name, military_number FROM recruits WHERE id = ?`, [id]);
+
+    logAudit(req, {
+      action_type: 'CREATE_TICKET',
+      entity_type: 'ticket',
+      entity_id: id,
+      entity_name: recruitRow?.name || `مجند #${id}`,
+      details: `فتح تيكت/بلاغ (${title.trim()}) للمجند ${recruitRow?.name || id} - درجة الأهمية: ${sev} - نوع البلاغ: ${type}`,
+    });
+
     res.status(201).json({ ticket: newTicket, message: 'تم فتح التيكت بنجاح' });
   } catch (error) {
     console.error('Error creating ticket:', error);
@@ -1634,38 +1933,105 @@ app.post('/api/recruits/:id/tickets', requireAuth, async (req, res) => {
 app.put('/api/recruits/:id/tickets/:ticketId/resolve', requireAuth, async (req, res) => {
   try {
     const { id, ticketId } = req.params;
-    const { resolution_notes, resolved_by } = req.body;
+    const { resolution_notes, resolved_by, status } = req.body;
 
     const existing = await get(`SELECT * FROM recruit_tickets WHERE id = ? AND recruit_id = ?`, [ticketId, id]);
     if (!existing) {
       return res.status(404).json({ error: 'التيكت غير موجود' });
     }
 
+    const targetStatus = status === 'cancelled' ? 'cancelled' : 'resolved';
+    const defaultNote = targetStatus === 'cancelled'
+      ? 'تم إلغاء التيكت وحفظ الموضوع رسمياً'
+      : 'تم استيفاء الفحص والمتابعة ورفع البلاغ رسمياً';
+
     await run(
       `UPDATE recruit_tickets 
-       SET status = 'resolved',
+       SET status = ?,
            resolution_notes = ?,
            resolved_by = ?,
            resolved_at = CURRENT_TIMESTAMP,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND recruit_id = ?`,
       [
-        resolution_notes || 'تم استيفاء الفحص والمتابعة ورفع البلاغ رسمياً',
+        targetStatus,
+        resolution_notes || defaultNote,
         resolved_by || '',
         ticketId,
         id
       ]
     );
 
+    // إذا كان التيكت حالة نفسية، نتحقق إن مفيش تيكتات نفسية تانية مفتوحة
+    if (existing.ticket_type === 'psychological_condition') {
+      const remainingPsych = await get(
+        `SELECT COUNT(*) as count FROM recruit_tickets WHERE recruit_id = ? AND ticket_type = 'psychological_condition' AND status = 'open'`,
+        [id]
+      );
+      if (!remainingPsych || remainingPsych.count === 0) {
+        await run(`UPDATE recruits SET is_psychological_case = 0 WHERE id = ?`, [id]);
+      }
+    }
+
     const updated = await get(`SELECT * FROM recruit_tickets WHERE id = ?`, [ticketId]);
-    res.json({ ticket: updated, message: 'تم رفع التيكت بنجاح وإغلاق البلاغ' });
+    const recruitRow = await get(`SELECT name FROM recruits WHERE id = ?`, [id]);
+
+    logAudit(req, {
+      action_type: targetStatus === 'cancelled' ? 'CANCEL_TICKET' : 'RESOLVE_TICKET',
+      entity_type: 'ticket',
+      entity_id: id,
+      entity_name: recruitRow?.name || `مجند #${id}`,
+      details: `${targetStatus === 'cancelled' ? 'إلغاء' : 'رفع وتصفية'} التيكت/البلاغ (${existing.title}) للمجند ${recruitRow?.name || id}: ${resolution_notes || defaultNote}`,
+    });
+
+    res.json({ ticket: updated, message: targetStatus === 'cancelled' ? 'تم إلغاء التيكت بنجاح' : 'تم رفع التيكت بنجاح' });
   } catch (error) {
     console.error('Error resolving ticket:', error);
-    res.status(500).json({ error: 'خطأ في رفع التيكت' });
+    res.status(500).json({ error: 'خطأ في رفع أو إلغاء التيكت' });
   }
 });
 
-// تحديث حالة المتابعة النفسية والعصبية وتدوين متابعة دورية
+// حذف تيكت نهائياً وإلغاؤه (Admin & Officer only)
+app.delete('/api/recruits/:id/tickets/:ticketId', requireAuth, requireRole('admin', 'officer'), async (req, res) => {
+  try {
+    const { id, ticketId } = req.params;
+
+    const existing = await get(`SELECT * FROM recruit_tickets WHERE id = ? AND recruit_id = ?`, [ticketId, id]);
+    if (!existing) {
+      return res.status(404).json({ error: 'التيكت المطلوب غير موجود' });
+    }
+
+    await run(`DELETE FROM recruit_tickets WHERE id = ? AND recruit_id = ?`, [ticketId, id]);
+
+    // إذا كان التيكت حالة نفسية، نتحقق إن مفيش تيكتات نفسية تانية مفتوحة
+    if (existing.ticket_type === 'psychological_condition') {
+      const remainingPsych = await get(
+        `SELECT COUNT(*) as count FROM recruit_tickets WHERE recruit_id = ? AND ticket_type = 'psychological_condition' AND status = 'open'`,
+        [id]
+      );
+      if (!remainingPsych || remainingPsych.count === 0) {
+        await run(`UPDATE recruits SET is_psychological_case = 0 WHERE id = ?`, [id]);
+      }
+    }
+
+    const recruitRow = await get(`SELECT name FROM recruits WHERE id = ?`, [id]);
+
+    logAudit(req, {
+      action_type: 'DELETE_TICKET',
+      entity_type: 'ticket',
+      entity_id: id,
+      entity_name: recruitRow?.name || `مجند #${id}`,
+      details: `حذف وإلغاء تيكت (${existing.title}) للمجند ${recruitRow?.name || id}`,
+    });
+
+    res.json({ message: 'تم حذف وإلغاء التيكت بنجاح' });
+  } catch (error) {
+    console.error('Error deleting ticket:', error);
+    res.status(500).json({ error: 'خطأ في حذف التيكت' });
+  }
+});
+
+// تحديث حالة المتابعة النفسية والعصبية وتدوين متابعة دورية أو إلغاء الحالة
 app.put('/api/recruits/:id/psychological-status', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1678,20 +2044,39 @@ app.put('/api/recruits/:id/psychological-status', requireAuth, async (req, res) 
            last_psychological_followup = CURRENT_TIMESTAMP,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [is_psychological_case ? 1 : 0, psychological_notes || '', id]
+      [is_psychological_case ? 1 : 0, is_psychological_case ? (psychological_notes || '') : '', id]
     );
 
-    // إذا تم تدوين متابعة دورية، نضيف قيد في سجل الأنشطة والتحركات الطبية
-    if (followup_action || psychological_notes) {
+    // إذا تم إلغاء الحالة النفسية، نقوم بإغلاق أي إحالات نفسية مفتوحة فوراً لكي لا يبقى المجند معلقاً كـ "بالمستشفى"
+    if (!is_psychological_case) {
       await run(
-        `INSERT INTO recruit_activities (recruit_id, activity_type, destination, departure_date, diagnosis, medical_decision, notes)
-         VALUES (?, 'medical_referral', 'عيادة الفحص النفسي والعصبي بالمركز', CURRENT_TIMESTAMP, 'حالة نفسية وعصبية تحت المتابعة الدورية', ?, ?)`,
-        [id, is_psychological_case ? 'غير متزن نفسياً - متابعة دورية مستمرة' : 'استقرار الحالة', psychological_notes || followup_action || '']
+        `UPDATE recruit_activities 
+         SET return_date = CURRENT_TIMESTAMP,
+             diagnosis = 'سليم ومستقر نفسياً وعصبياً',
+             medical_decision = 'تم استقرار الحالة النفسية وإلغاء الاشتباه واعتباره لائقاً تماماً'
+         WHERE recruit_id = ? AND (return_date IS NULL OR return_date = '') AND (destination LIKE '%نفسي%' OR diagnosis LIKE '%نفسي%')`,
+        [id]
+      );
+    } else if (followup_action || psychological_notes) {
+      // إذا تم تدوين متابعة دورية داخل المركز، نسجلها مع تاريخ انتهاء الجلسة حتى لا يُعتبر المجند غائباً بالمستشفى
+      await run(
+        `INSERT INTO recruit_activities (recruit_id, activity_type, destination, departure_date, return_date, diagnosis, medical_decision, notes)
+         VALUES (?, 'mission', 'عيادة الفحص النفسي والعصبي بالمركز', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'فحص ومتابعة نفسية وعصبية دورية', 'مستقر وتحت المتابعة الدورية', ?)`,
+        [id, psychological_notes || followup_action || '']
       );
     }
 
     const recruit = await get(`SELECT * FROM recruits WHERE id = ?`, [id]);
-    res.json({ recruit, message: 'تم تحديث ملف المتابعة النفسية والعصبية' });
+
+    logAudit(req, {
+      action_type: 'UPDATE_PSYCHOLOGICAL',
+      entity_type: 'recruit',
+      entity_id: id,
+      entity_name: recruit?.name || `مجند #${id}`,
+      details: `تحديث المتابعة النفسية للمجند ${recruit?.name || id}: ${is_psychological_case ? 'مصنف حالة نفسية' : 'إلغاء الحالة النفسية (سليم ومستقر)'} - ملاحظات: ${psychological_notes || 'لا يوجد'}`,
+    });
+
+    res.json({ recruit, message: is_psychological_case ? 'تم حفظ وتحديث المتابعة النفسية' : 'تم إلغاء الحالة النفسية واعتبار المجند سليماً ومستقراً' });
   } catch (error) {
     console.error('Error updating psychological status:', error);
     res.status(500).json({ error: 'خطأ في تحديث الحالة النفسية للمجند' });
@@ -1701,7 +2086,7 @@ app.put('/api/recruits/:id/psychological-status', requireAuth, async (req, res) 
 // -------------------------------------------------------------
 // 10. Analytics & Telemetry Overview (إحصائيات الإنفوجرافيك التفاعلية)
 // -------------------------------------------------------------
-app.get('/api/analytics/overview', async (req, res) => {
+app.get('/api/analytics/overview', requireAuth, async (req, res) => {
   try {
     const { batch_id } = req.query;
     let batchFilter = '';
@@ -1712,122 +2097,116 @@ app.get('/api/analytics/overview', async (req, res) => {
       params.push(batch_id);
     }
 
-    // 1. الإحصائيات الأساسية
-    const totalRecruits = await get(`SELECT COUNT(*) as count FROM recruits ${batchFilter}`, params);
-    
-    // عدد الحالات ذات الملاحظات الأمنية
-    const flaggedRecruits = await get(
-      `SELECT COUNT(*) as count FROM recruits 
-       ${batchFilter ? batchFilter + ' AND' : 'WHERE'} 
-       (inspection LIKE '%ملاحظ%' OR inspection LIKE '%تحفظ%' OR family_security_status LIKE '%ملاحظ%' OR family_security_status LIKE '%تحفظ%')`,
-      params
-    );
-
-    // عدد الحالات النفسية والعصبية (غير متزنين نفسياً للمتابعة الدورية)
-    const psychologicalCases = await get(
-      `SELECT COUNT(*) as count FROM recruits 
-       ${batchFilter ? batchFilter + ' AND' : 'WHERE'} 
-       (is_psychological_case = 1 OR inspection LIKE '%نفسي%' OR inspection LIKE '%عصبي%' OR medical_status LIKE '%نفسي%' OR medical_status LIKE '%عصبي%' OR EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = recruits.id AND t.ticket_type = 'psychological_condition' AND t.status = 'open'))`,
-      params
-    );
-
-    // عدد التيكتات والبلاغات النشطة المفتوحة
-    const activeTickets = await get(
-      `SELECT COUNT(*) as count 
-       FROM recruit_tickets t
-       JOIN recruits r ON t.recruit_id = r.id
-       ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
-       t.status = 'open'`,
-      params
-    );
-
-    // عدد بلاغات الاشتباه الجنائي المفتوحة
-    const criminalTickets = await get(
-      `SELECT COUNT(*) as count 
-       FROM recruit_tickets t
-       JOIN recruits r ON t.recruit_id = r.id
-       ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
-       t.status = 'open' AND t.ticket_type = 'criminal_suspicion'`,
-      params
-    );
-
-    // عدد بلاغات الاشتباه السياسي المفتوحة
-    const politicalTickets = await get(
-      `SELECT COUNT(*) as count 
-       FROM recruit_tickets t
-       JOIN recruits r ON t.recruit_id = r.id
-       ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
-       t.status = 'open' AND t.ticket_type = 'political_suspicion'`,
-      params
-    );
-
-    // 2. توزيع السرايا
-    const companyDistribution = await query(
-      `SELECT company, COUNT(*) as count 
-       FROM recruits 
-       ${batchFilter}
-       GROUP BY company 
-       ORDER BY count DESC`,
-      params
-    );
-
-    // 3. الموقف الطبي وحالات مستشفى الشرطة الحالية
-    const inHospitalNow = await get(
-      `SELECT COUNT(DISTINCT r.id) as count 
-       FROM recruit_activities a
-       JOIN recruits r ON a.recruit_id = r.id
-       ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
-       a.activity_type = 'medical_referral' 
-       AND (a.return_date IS NULL OR a.return_date = '')`,
-      params
-    );
-
-    // قرارات طبية (حجز، راحة طبية، لائق)
-    const medicalDecisions = await query(
-      `SELECT a.medical_decision, COUNT(*) as count 
-       FROM recruit_activities a
-       JOIN recruits r ON a.recruit_id = r.id
-       ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
-       a.medical_decision != '' AND a.medical_decision IS NOT NULL
-       GROUP BY a.medical_decision`,
-      params
-    );
-
-    // 4. الحضور حسب التاريخ (آخر 7 تواريخ تسجيل)
-    const attendanceTrends = await query(
-      `SELECT attendance_date, COUNT(*) as count 
-       FROM recruits 
-       ${batchFilter}
-       GROUP BY attendance_date 
-       ORDER BY attendance_date DESC 
-       LIMIT 7`,
-      params
-    );
-
-    // 5. المؤهلات الدراسية
-    const qualificationStats = await query(
-      `SELECT qualification, COUNT(*) as count 
-       FROM recruits 
-       ${batchFilter}
-       GROUP BY qualification 
-       ORDER BY count DESC 
-       LIMIT 5`,
-      params
-    );
+    // Execute all statistical telemetry queries concurrently in parallel
+    const [
+      totalRecruits,
+      flaggedRecruits,
+      psychologicalCases,
+      activeTickets,
+      criminalTickets,
+      politicalTickets,
+      companyDistribution,
+      inHospitalNow,
+      medicalDecisions,
+      attendanceTrends,
+      qualificationStats
+    ] = await Promise.all([
+      get(`SELECT COUNT(*) as count FROM recruits ${batchFilter}`, params),
+      get(
+        `SELECT COUNT(*) as count FROM recruits 
+         ${batchFilter ? batchFilter + ' AND' : 'WHERE'} 
+         (inspection LIKE '%ملاحظ%' OR inspection LIKE '%تحفظ%' OR family_security_status LIKE '%ملاحظ%' OR family_security_status LIKE '%تحفظ%')`,
+        params
+      ),
+      get(
+        `SELECT COUNT(*) as count FROM recruits 
+         ${batchFilter ? batchFilter + ' AND' : 'WHERE'} 
+         (is_psychological_case = 1 OR inspection LIKE '%نفسي%' OR inspection LIKE '%عصبي%' OR medical_status LIKE '%نفسي%' OR medical_status LIKE '%عصبي%' OR EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = recruits.id AND t.ticket_type = 'psychological_condition' AND t.status = 'open'))`,
+        params
+      ),
+      get(
+        `SELECT COUNT(*) as count 
+         FROM recruit_tickets t
+         JOIN recruits r ON t.recruit_id = r.id
+         ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
+         t.status = 'open'`,
+        params
+      ),
+      get(
+        `SELECT COUNT(*) as count 
+         FROM recruit_tickets t
+         JOIN recruits r ON t.recruit_id = r.id
+         ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
+         t.status = 'open' AND t.ticket_type = 'criminal_suspicion'`,
+        params
+      ),
+      get(
+        `SELECT COUNT(*) as count 
+         FROM recruit_tickets t
+         JOIN recruits r ON t.recruit_id = r.id
+         ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
+         t.status = 'open' AND t.ticket_type = 'political_suspicion'`,
+        params
+      ),
+      query(
+        `SELECT company, COUNT(*) as count 
+         FROM recruits 
+         ${batchFilter}
+         GROUP BY company 
+         ORDER BY count DESC`,
+        params
+      ),
+      get(
+        `SELECT COUNT(DISTINCT r.id) as count 
+         FROM recruit_activities a
+         JOIN recruits r ON a.recruit_id = r.id
+         ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
+         a.activity_type = 'medical_referral' 
+         AND (a.return_date IS NULL OR a.return_date = '')`,
+        params
+      ),
+      query(
+        `SELECT a.medical_decision, COUNT(*) as count 
+         FROM recruit_activities a
+         JOIN recruits r ON a.recruit_id = r.id
+         ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
+         a.medical_decision != '' AND a.medical_decision IS NOT NULL
+         GROUP BY a.medical_decision`,
+        params
+      ),
+      query(
+        `SELECT attendance_date, COUNT(*) as count 
+         FROM recruits 
+         ${batchFilter}
+         GROUP BY attendance_date 
+         ORDER BY attendance_date DESC 
+         LIMIT 7`,
+        params
+      ),
+      query(
+        `SELECT qualification, COUNT(*) as count 
+         FROM recruits 
+         ${batchFilter}
+         GROUP BY qualification 
+         ORDER BY count DESC 
+         LIMIT 5`,
+        params
+      )
+    ]);
 
     res.json({
-      total: totalRecruits.count,
-      flagged: flaggedRecruits.count,
-      clean: Math.max(0, totalRecruits.count - flaggedRecruits.count),
-      inHospitalNow: inHospitalNow.count,
-      psychologicalCount: psychologicalCases.count,
-      activeTicketsCount: activeTickets.count,
-      criminalTicketsCount: criminalTickets.count,
-      politicalTicketsCount: politicalTickets.count,
-      companyDistribution,
-      medicalDecisions,
-      attendanceTrends: attendanceTrends.reverse(),
-      qualificationStats
+      total: totalRecruits?.count || 0,
+      flagged: flaggedRecruits?.count || 0,
+      clean: Math.max(0, (totalRecruits?.count || 0) - (flaggedRecruits?.count || 0)),
+      inHospitalNow: inHospitalNow?.count || 0,
+      psychologicalCount: psychologicalCases?.count || 0,
+      activeTicketsCount: activeTickets?.count || 0,
+      criminalTicketsCount: criminalTickets?.count || 0,
+      politicalTicketsCount: politicalTickets?.count || 0,
+      companyDistribution: companyDistribution || [],
+      medicalDecisions: medicalDecisions || [],
+      attendanceTrends: (attendanceTrends || []).reverse(),
+      qualificationStats: qualificationStats || []
     });
   } catch (error) {
     console.error('Error fetching analytics overview:', error);
@@ -1867,8 +2246,8 @@ app.get('/api/recruits/:id/documents', requireAuth, async (req, res) => {
   }
 });
 
-// رفع أو مسح وثيقة للمجند (يدعم ملف من الجهاز أو ماسح ضوئي Base64)
-app.post('/api/recruits/:id/documents', requireAuth, upload.single('document'), async (req, res) => {
+// رفع أو مسح وثيقة للمجند (يدعم ملف من الجهاز أو ماسح ضوئي Base64 - Admin & Officer only)
+app.post('/api/recruits/:id/documents', requireAuth, requireRole('admin', 'officer'), upload.single('document'), async (req, res) => {
   try {
     const { id } = req.params;
     const { doc_type, title, notes, base64_data } = req.body;
@@ -1931,6 +2310,16 @@ app.post('/api/recruits/:id/documents', requireAuth, upload.single('document'), 
     }
 
     const savedDoc = await get(`SELECT * FROM recruit_documents WHERE id = ?`, [result.lastID]);
+    const recruitRow = await get(`SELECT name, military_number FROM recruits WHERE id = ?`, [id]);
+
+    logAudit(req, {
+      action_type: 'UPLOAD_DOCUMENT',
+      entity_type: 'document',
+      entity_id: id,
+      entity_name: recruitRow?.name || `مجند #${id}`,
+      details: `إضافة مستند ضوئي (${docTitle}) للمجند ${recruitRow?.name || id}`,
+    });
+
     res.status(201).json(savedDoc);
   } catch (error) {
     console.error('Error uploading document:', error);
@@ -1938,8 +2327,8 @@ app.post('/api/recruits/:id/documents', requireAuth, upload.single('document'), 
   }
 });
 
-// حذف مستند
-app.delete('/api/documents/:id', requireAuth, async (req, res) => {
+// حذف مستند (Admin only)
+app.delete('/api/documents/:id', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const { id } = req.params;
     const doc = await get(`SELECT * FROM recruit_documents WHERE id = ?`, [id]);
@@ -1966,10 +2355,260 @@ app.delete('/api/documents/:id', requireAuth, async (req, res) => {
       await run(`UPDATE recruits SET military_record_path = '' WHERE id = ? AND military_record_path = ?`, [doc.recruit_id, doc.file_path]);
     }
 
+    const recruitRow = await get(`SELECT name FROM recruits WHERE id = ?`, [doc.recruit_id]);
+    logAudit(req, {
+      action_type: 'DELETE_DOCUMENT',
+      entity_type: 'document',
+      entity_id: doc.recruit_id,
+      entity_name: recruitRow?.name || `مجند #${doc.recruit_id}`,
+      details: `حذف مستند ضوئي (${doc.title}) للمجند ${recruitRow?.name || doc.recruit_id}`,
+    });
+
     res.json({ message: 'تم حذف المستند بنجاح' });
   } catch (error) {
     console.error('Error deleting document:', error);
     res.status(500).json({ error: 'خطأ في حذف المستند' });
+  }
+});
+
+// -------------------------------------------------------------
+// 11.5. Audit Logs & System History Tracking (سجل العمليات والرقابة والهيستوري)
+// -------------------------------------------------------------
+
+// جلب سجلات الرقابة مع التصفية والصفحات
+app.get('/api/audit-logs', requireAuth, requireRole('admin', 'officer'), async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 50,
+      search = '',
+      action_type = '',
+      user_id = '',
+      from_date = '',
+      to_date = ''
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const offset = (pageNum - 1) * limitNum;
+
+    const conditions = [];
+    const params = [];
+
+    if (search && search.trim()) {
+      const s = `%${search.trim()}%`;
+      conditions.push(`(details LIKE ? OR entity_name LIKE ? OR username LIKE ? OR user_fullname LIKE ? OR ip_address LIKE ?)`);
+      params.push(s, s, s, s, s);
+    }
+
+    if (action_type && action_type.trim()) {
+      conditions.push(`action_type = ?`);
+      params.push(action_type.trim());
+    }
+
+    if (user_id && user_id.trim()) {
+      conditions.push(`user_id = ?`);
+      params.push(user_id.trim());
+    }
+
+    if (from_date && from_date.trim()) {
+      conditions.push(`created_at >= ?`);
+      params.push(from_date.trim());
+    }
+
+    if (to_date && to_date.trim()) {
+      conditions.push(`created_at <= ?`);
+      params.push(to_date.trim() + ' 23:59:59');
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const countRow = await get(`SELECT COUNT(*) as total FROM audit_logs ${whereClause}`, params);
+    const total = countRow ? countRow.total : 0;
+
+    const logs = await query(
+      `SELECT * FROM audit_logs ${whereClause} ORDER BY id DESC LIMIT ? OFFSET ?`,
+      [...params, limitNum, offset]
+    );
+
+    const formattedLogs = logs.map(l => {
+      let parsedDiff = null;
+      if (l.diff_data) {
+        try {
+          parsedDiff = JSON.parse(l.diff_data);
+        } catch (e) {}
+      }
+      return { ...l, diff_data: parsedDiff };
+    });
+
+    res.json({
+      logs: formattedLogs,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum)
+    });
+  } catch (err) {
+    console.error('Error fetching audit logs:', err);
+    res.status(500).json({ error: 'خطأ في جلب سجلات الرقابة' });
+  }
+});
+
+// جلب الهيستوري والتايم لاين الخاص بمجند محدد
+app.get('/api/recruits/:id/history', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const recruitIdStr = String(id);
+
+    const recruit = await get(`SELECT id, name, military_number, company FROM recruits WHERE id = ?`, [id]);
+    if (!recruit) {
+      return res.status(404).json({ error: 'المجند غير موجود' });
+    }
+
+    const logs = await query(
+      `SELECT * FROM audit_logs 
+       WHERE (entity_type = 'recruit' AND entity_id = ?)
+          OR (entity_type = 'document' AND details LIKE ?)
+          OR (entity_type = 'ticket' AND details LIKE ?)
+          OR (entity_type = 'activity' AND details LIKE ?)
+          OR (entity_id = ? AND entity_type IN ('recruit', 'document', 'ticket', 'activity'))
+       ORDER BY id DESC LIMIT 200`,
+      [recruitIdStr, `%المجند ${recruit.name}%`, `%المجند ${recruit.name}%`, `%المجند ${recruit.name}%`, recruitIdStr]
+    );
+
+    const formattedLogs = logs.map(l => {
+      let parsedDiff = null;
+      if (l.diff_data) {
+        try {
+          parsedDiff = JSON.parse(l.diff_data);
+        } catch (e) {}
+      }
+      return { ...l, diff_data: parsedDiff };
+    });
+
+    res.json({
+      recruit,
+      history: formattedLogs
+    });
+  } catch (err) {
+    console.error('Error fetching recruit history:', err);
+    res.status(500).json({ error: 'خطأ في جلب سجل حركات المجند' });
+  }
+});
+
+// تصدير سجلات الرقابة إلى ملف Excel
+app.get('/api/audit-logs/export', requireAuth, requireRole('admin', 'officer'), async (req, res) => {
+  try {
+    const {
+      search = '',
+      action_type = '',
+      user_id = '',
+      from_date = '',
+      to_date = ''
+    } = req.query;
+
+    const conditions = [];
+    const params = [];
+
+    if (search && search.trim()) {
+      const s = `%${search.trim()}%`;
+      conditions.push(`(details LIKE ? OR entity_name LIKE ? OR username LIKE ? OR user_fullname LIKE ? OR ip_address LIKE ?)`);
+      params.push(s, s, s, s, s);
+    }
+
+    if (action_type && action_type.trim()) {
+      conditions.push(`action_type = ?`);
+      params.push(action_type.trim());
+    }
+
+    if (user_id && user_id.trim()) {
+      conditions.push(`user_id = ?`);
+      params.push(user_id.trim());
+    }
+
+    if (from_date && from_date.trim()) {
+      conditions.push(`created_at >= ?`);
+      params.push(from_date.trim());
+    }
+
+    if (to_date && to_date.trim()) {
+      conditions.push(`created_at <= ?`);
+      params.push(to_date.trim() + ' 23:59:59');
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const logs = await query(
+      `SELECT * FROM audit_logs ${whereClause} ORDER BY id DESC LIMIT 5000`,
+      params
+    );
+
+    const ACTION_MAP = {
+      LOGIN_SUCCESS: 'تسجيل دخول ناجح',
+      LOGIN_FAILED: 'محاولة دخول فاشلة',
+      CREATE_RECRUIT: 'إضافة مجند جديد',
+      UPDATE_RECRUIT: 'تعديل بيانات مجند',
+      DELETE_RECRUIT: 'حذف ملف مجند',
+      BULK_DELETE_RECRUITS: 'حذف جماعي لمجندين',
+      UPLOAD_DOCUMENT: 'رفع / مسح مستند',
+      DELETE_DOCUMENT: 'حذف مستند',
+      CREATE_TICKET: 'فتح تيكت / بلاغ',
+      RESOLVE_TICKET: 'رفع تيكت / تسوية بلاغ',
+      ADD_ACTIVITY: 'تسجيل حركة / متابعة',
+      UPDATE_ACTIVITY: 'تحديث حركة متابعة',
+      DELETE_ACTIVITY: 'حذف حركة متابعة',
+      UPDATE_PSYCHOLOGICAL: 'تحديث متابعة نفسية',
+      CREATE_USER: 'إنشاء حساب مستخدم',
+      UPDATE_USER: 'تعديل حساب مستخدم',
+      DELETE_USER: 'حذف حساب مستخدم',
+      CREATE_BATCH: 'إضافة دفعة تجنيد',
+      ACTIVATE_BATCH: 'تفعيل دفعة تجنيد',
+      BACKUP_CREATE: 'إنشاء نسخة احتياطية'
+    };
+
+    const ROLE_MAP = {
+      admin: 'مدير المنظومة',
+      officer: 'ضابط أمن / عمليات',
+      operator: 'كشك / تسجيل واستعلام',
+      system: 'النظام'
+    };
+
+    const rows = logs.map(l => ({
+      'المعرف': l.id,
+      'التاريخ والوقت': l.created_at,
+      'اسم المستخدم': l.username,
+      'الاسم بالكامل': l.user_fullname,
+      'الصلاحية / الرتبة': ROLE_MAP[l.user_role] || l.user_role,
+      'نوع الإجراء': ACTION_MAP[l.action_type] || l.action_type,
+      'الهدف / المعني': l.entity_name || l.entity_id || 'ـ',
+      'تفاصيل الإجراء': l.details,
+      'عنوان IP': l.ip_address || 'ـ'
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet['!cols'] = [
+      { wch: 8 },
+      { wch: 20 },
+      { wch: 15 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 25 },
+      { wch: 45 },
+      { wch: 16 }
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'سجل العمليات والرقابة');
+
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Disposition', `attachment; filename="audit_logs_${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buffer);
+  } catch (err) {
+    console.error('Error exporting audit logs:', err);
+    res.status(500).json({ error: 'خطأ في تصدير سجلات الرقابة' });
   }
 });
 
@@ -2070,6 +2709,14 @@ app.post('/api/backup/create', requireAuth, async (req, res) => {
       isAuto: false
     });
 
+    logAudit(req, {
+      action_type: 'BACKUP_CREATE',
+      entity_type: 'backup',
+      entity_id: backupResult.fileName,
+      entity_name: backupResult.fileName,
+      details: `إنشاء نسخة احتياطية للمنظومة: ${backupResult.fileName} (${(backupResult.sizeBytes / (1024 * 1024)).toFixed(2)} ميجابايت)`,
+    });
+
     res.json({
       message: 'تم إنشاء النسخة الاحتياطية بنجاح',
       backup: backupResult
@@ -2100,13 +2747,20 @@ app.get('/api/backup/download/:fileName', requireAuth, (req, res) => {
   }
 });
 
-// حذف نسخة احتياطية
-app.delete('/api/backup/:fileName', requireAuth, (req, res) => {
+// حذف نسخة احتياطية (Admin only)
+app.delete('/api/backup/:fileName', requireAuth, requireRole('admin'), (req, res) => {
   try {
     const { fileName } = req.params;
     const safeName = path.basename(fileName);
     const deleted = deleteBackup(safeName);
     if (deleted) {
+      logAudit(req, {
+        action_type: 'DELETE_BACKUP',
+        entity_type: 'backup',
+        entity_id: safeName,
+        entity_name: safeName,
+        details: `حذف نسخة احتياطية: ${safeName}`,
+      });
       res.json({ message: 'تم حذف النسخة الاحتياطية بنجاح' });
     } else {
       res.status(404).json({ error: 'الملف غير موجود' });
@@ -2135,12 +2789,12 @@ if (fs.existsSync(distDir)) {
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({ error: 'حجم الملف يتجاوز الحد الأقصى المسموح (20 ميجابايت)' });
+      return res.status(413).json({ error: 'حجم الملف يتجاوز الحد الأقصى المسموح (100 ميجابايت)' });
     }
     return res.status(400).json({ error: 'خطأ في رفع الملف: ' + err.message });
   }
-  if (err.message === 'نوع الملف غير مسموح') {
-    return res.status(415).json({ error: 'نوع الملف غير مسموح - يُسمح فقط بـ JPEG/PNG/WebP للصور و WebM/MP4 للفيديو' });
+  if (err.message && (err.message.includes('نوع الملف غير مسموح') || err.message.includes('MIME'))) {
+    return res.status(415).json({ error: 'نوع الملف غير مسموح - يُسمح بالصور JPG/PNG/WebP وفيديوهات MP4/WebM/MOV وملفات PDF' });
   }
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'خطأ داخلي في الخادم' });

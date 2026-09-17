@@ -1,13 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Plus, Calendar, Clock, MapPin, Activity, Stethoscope, 
-  CheckCircle2, AlertTriangle, Printer, Trash2, Edit3, ArrowRight, Shield
+  CheckCircle2, AlertTriangle, Printer, Trash2, Edit3, ArrowRight, Shield,
+  Camera, Upload, Eye, FileText, Image as ImageIcon
 } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
 import { getCompanyStyle } from '../utils/companyColors';
+import { authHeaders } from '../utils/auth';
 
-export default function ActivityLogModal({ recruit, onClose, onRefreshRecruits, companyColors = [] }) {
-  if (!recruit) return null;
+export default function ActivityLogModal({ recruit, recruitId, onClose, onRefreshRecruits, companyColors = [] }) {
+  const [currentRecruit, setCurrentRecruit] = useState(recruit || null);
+  const activeRecruitId = recruit?.id || recruitId;
+
+  useEffect(() => {
+    if (recruit) {
+      setCurrentRecruit(recruit);
+    } else if (recruitId) {
+      fetch(`/api/recruits/${recruitId}`, { headers: authHeaders() })
+        .then(res => res.json())
+        .then(data => setCurrentRecruit(data.recruit || data))
+        .catch(console.error);
+    }
+  }, [recruit, recruitId]);
+
+  const activeRecruit = currentRecruit || recruit || {};
 
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,16 +43,23 @@ export default function ActivityLogModal({ recruit, onClose, onRefreshRecruits, 
   });
 
   const [returnDialogActivity, setReturnDialogActivity] = useState(null);
-  const [returnDateInput, setReturnDateInput] = useState(new Date().toISOString().slice(0, 16));
+  const [returnDateInput, setReturnDateInput] = useState('');
   const [returnDiagnosisInput, setReturnDiagnosisInput] = useState('');
-  const [returnDecisionInput, setReturnDecisionInput] = useState('لائق واستكمال التدريب');
+  const [returnDecisionInput, setReturnDecisionInput] = useState('');
+  const [returnReportPhotoBase64, setReturnReportPhotoBase64] = useState(null);
+  const [returnReportPhotoPreview, setReturnReportPhotoPreview] = useState(null);
+  const [previewReportPhotoUrl, setPreviewReportPhotoUrl] = useState(null);
+  const reportPhotoInputRef = useRef(null);
 
-  const companyStyle = getCompanyStyle(recruit?.company, companyColors);
+  const companyStyle = getCompanyStyle(activeRecruit?.company, companyColors);
 
   const fetchActivities = async () => {
+    if (!activeRecruitId) return;
     try {
       setLoading(true);
-      const res = await fetch(`/api/recruits/${recruit.id}/activities`);
+      const res = await fetch(`/api/recruits/${activeRecruitId}/activities`, {
+        headers: authHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         setActivities(data);
@@ -49,10 +72,10 @@ export default function ActivityLogModal({ recruit, onClose, onRefreshRecruits, 
   };
 
   useEffect(() => {
-    if (recruit?.id) {
+    if (activeRecruitId) {
       fetchActivities();
     }
-  }, [recruit?.id]);
+  }, [activeRecruitId]);
 
   // Close on Escape key
   useEffect(() => {
@@ -67,12 +90,11 @@ export default function ActivityLogModal({ recruit, onClose, onRefreshRecruits, 
     e.preventDefault();
     try {
       setSubmitting(true);
-      const token = localStorage.getItem('token');
-      const res = await fetch(`/api/recruits/${recruit.id}/activities`, {
+      const res = await fetch(`/api/recruits/${activeRecruitId}/activities`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          ...authHeaders()
         },
         body: JSON.stringify(formData)
       });
@@ -92,7 +114,7 @@ export default function ActivityLogModal({ recruit, onClose, onRefreshRecruits, 
         await fetchActivities();
         onRefreshRecruits?.();
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         alert(err.error || 'حدث خطأ أثناء حفظ قيد المتابعة');
       }
     } catch (err) {
@@ -105,22 +127,24 @@ export default function ActivityLogModal({ recruit, onClose, onRefreshRecruits, 
 
   const handleRecordReturn = async (activityId) => {
     try {
-      const token = localStorage.getItem('token');
       const res = await fetch(`/api/activities/${activityId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          ...authHeaders()
         },
         body: JSON.stringify({
           return_date: returnDateInput,
           diagnosis: returnDiagnosisInput,
-          medical_decision: returnDecisionInput
+          medical_decision: returnDecisionInput,
+          report_photo_base64: returnReportPhotoBase64
         })
       });
 
       if (res.ok) {
         setReturnDialogActivity(null);
+        setReturnReportPhotoBase64('');
+        setReturnReportPhotoPreview(null);
         await fetchActivities();
         onRefreshRecruits?.();
       } else {
@@ -132,22 +156,66 @@ export default function ActivityLogModal({ recruit, onClose, onRefreshRecruits, 
     }
   };
 
+  const handleReportPhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setReturnReportPhotoBase64(reader.result);
+        setReturnReportPhotoPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+    if (e.target) e.target.value = '';
+  };
+
+  // Handle cancelling active follow-up/referral immediately
+  const handleCancelActivity = async (activityId) => {
+    if (!window.confirm('هل تريد إلغاء هذه الإحالة/المتابعة فوراً وإنهاء وضع المجند (بالمستشفى)؟')) return;
+    try {
+      const res = await fetch(`/api/activities/${activityId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders()
+        },
+        body: JSON.stringify({
+          return_date: new Date().toISOString().slice(0, 16),
+          diagnosis: 'سليم ومستقر (تم إلغاء المتابعة)',
+          medical_decision: 'إلغاء المتابعة واستئناف التدريب فوراً'
+        })
+      });
+
+      if (res.ok) {
+        await fetchActivities();
+        onRefreshRecruits?.();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'خطأ في إلغاء المتابعة');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('خطأ في الاتصال بالخادم');
+    }
+  };
+
   const handleDeleteActivity = async (activityId) => {
     if (!window.confirm('هل أنت متأكد من حذف هذا السجل من ملف المتابعة؟')) return;
     try {
-      const token = localStorage.getItem('token');
       const res = await fetch(`/api/activities/${activityId}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: authHeaders()
       });
       if (res.ok) {
         await fetchActivities();
         onRefreshRecruits?.();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'فشل حذف سجل المتابعة');
       }
     } catch (err) {
       console.error(err);
+      alert('خطأ في الاتصال بالخادم');
     }
   };
 
@@ -275,16 +343,16 @@ export default function ActivityLogModal({ recruit, onClose, onRefreshRecruits, 
               <div className="flex items-center gap-3">
                 <h2 className="text-xl font-bold tracking-wide">سجل التحركات والمتابعة الطبية</h2>
                 <span className="text-xs px-2.5 py-0.5 border font-mono" style={{ backgroundColor: companyStyle.bg, color: companyStyle.text, borderColor: companyStyle.border }}>
-                  {recruit.company || 'بدون سرية'}
+                  {activeRecruit.company || 'بدون سرية'}
                 </span>
-                {recruit.active_activity === 'medical_referral' && (
+                {activeRecruit.active_activity === 'medical_referral' && (
                   <span className="text-xs px-2.5 py-0.5 bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse font-bold">
                     🏥 حالياً بمستشفى الشرطة
                   </span>
                 )}
               </div>
               <p className="text-sm text-gray-400 mt-0.5">
-                المجند: <strong className="text-white">{recruit.name}</strong> — رقم الشرطة: <strong className="text-white font-mono">{recruit.police_number || '---'}</strong> — الرقم القومي: <span className="font-mono text-gray-300">{recruit.national_id || '---'}</span>
+                المجند: <strong className="text-white">{activeRecruit.name}</strong> — رقم الشرطة: <strong className="text-white font-mono">{activeRecruit.police_number || '---'}</strong> — الرقم القومي: <span className="font-mono text-gray-300">{activeRecruit.national_id || '---'}</span>
               </p>
             </div>
           </div>
@@ -576,17 +644,28 @@ export default function ActivityLogModal({ recruit, onClose, onRefreshRecruits, 
                       {/* Right controls */}
                       <div className="flex items-center gap-2">
                         {isCurrentlyOut && (
-                          <button
-                            onClick={() => {
-                              setReturnDialogActivity(act);
-                              setReturnDiagnosisInput(act.diagnosis || '');
-                              setReturnDecisionInput(act.medical_decision || 'لائق واستكمال التدريب');
-                            }}
-                            className="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            تسجيل العودة
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleCancelActivity(act.id)}
+                              className="px-2.5 py-1 bg-amber-600/20 hover:bg-amber-600/35 text-amber-300 border border-amber-500/40 text-xs font-bold flex items-center gap-1 transition-all"
+                              title="إلغاء الإحالة فوراً وإنهاء وضع المجند (بالمستشفى)"
+                            >
+                              <X className="w-3.5 h-3.5 text-amber-400" />
+                              <span>إلغاء المتابعة</span>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setReturnDialogActivity(act);
+                                setReturnDiagnosisInput(act.diagnosis || '');
+                                setReturnDecisionInput(act.medical_decision || 'لائق واستكمال التدريب');
+                              }}
+                              className="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              تسجيل العودة
+                            </button>
+                          </>
                         )}
                         <button
                           onClick={() => handlePrintReferralLetter(act)}
@@ -630,6 +709,23 @@ export default function ActivityLogModal({ recruit, onClose, onRefreshRecruits, 
                         )}
                       </div>
                     )}
+                    {/* Attached Medical Report Photo */}
+                    {act.report_photo_path && (
+                      <div className="mt-2.5 pt-2 border-t border-[#333333] flex items-center justify-between bg-blue-950/20 p-2 border border-blue-800/40">
+                        <div className="flex items-center gap-2 text-blue-300 text-xs font-bold">
+                          <FileText className="w-4 h-4 text-blue-400" />
+                          <span>يوجد تقرير طبي رسمي مرفق مع هذا القيد</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewReportPhotoUrl(act.report_photo_path)}
+                          className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>معاينة التقرير الطبي</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -653,6 +749,193 @@ export default function ActivityLogModal({ recruit, onClose, onRefreshRecruits, 
         </div>
 
       </div>
+
+      {/* Return Dialog Modal with Medical Report Camera/Upload */}
+      {returnDialogActivity && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#1a1a1a] border border-emerald-500/50 max-w-lg w-full p-6 shadow-2xl space-y-4" dir="rtl">
+            <div className="flex items-center justify-between border-b border-[#333333] pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <span>تسجيل عودة من المستشفى / العيادة</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setReturnDialogActivity(null);
+                  setReturnReportPhotoBase64('');
+                  setReturnReportPhotoPreview(null);
+                }}
+                className="text-gray-400 hover:text-white p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">تاريخ وساعة العودة:</label>
+                <input
+                  type="datetime-local"
+                  value={returnDateInput}
+                  onChange={(e) => setReturnDateInput(e.target.value)}
+                  className="w-full bg-[#262626] border border-[#525252] text-white text-xs px-3 py-2 focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">التشخيص الطبي الصادر:</label>
+                <input
+                  type="text"
+                  placeholder="مثال: فحص قاع عين سليم / كسر بالذراع الأيمن تم تجبيره"
+                  value={returnDiagnosisInput}
+                  onChange={(e) => setReturnDiagnosisInput(e.target.value)}
+                  className="w-full bg-[#262626] border border-[#525252] text-white text-xs px-3 py-2 focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">القرار الطبي:</label>
+                <select
+                  value={returnDecisionInput}
+                  onChange={(e) => setReturnDecisionInput(e.target.value)}
+                  className="w-full bg-[#262626] border border-[#525252] text-white text-xs px-3 py-2 focus:border-emerald-500 focus:outline-none"
+                >
+                  <option value="لائق واستكمال التدريب">لائق واستكمال التدريب</option>
+                  <option value="راحة طبية 24 ساعة">راحة طبية 24 ساعة</option>
+                  <option value="راحة طبية 48 ساعة">راحة طبية 48 ساعة</option>
+                  <option value="راحة طبية 72 ساعة">راحة طبية 72 ساعة</option>
+                  <option value="حجز بمستشفى الشرطة">حجز بمستشفى الشرطة</option>
+                  <option value="إعادة عرض بعد أسبوع">إعادة عرض بعد أسبوع</option>
+                  <option value="عرض على اللجنة الطبية العليا">عرض على اللجنة الطبية العليا</option>
+                </select>
+              </div>
+
+              {/* Attach / Photograph Medical Report */}
+              <div className="pt-2 border-t border-[#333333]">
+                <label className="block text-xs font-bold text-amber-300 mb-1.5 flex items-center gap-1.5">
+                  <Camera className="w-4 h-4 text-amber-400" />
+                  <span>تصوير أو إرفاق صورة التقرير الطبي الرسمي:</span>
+                </label>
+
+                <input
+                  ref={reportPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleReportPhotoSelect}
+                  className="hidden"
+                />
+
+                {returnReportPhotoPreview ? (
+                  <div className="relative border border-emerald-500/50 bg-[#111] p-2 flex items-center gap-3">
+                    <img
+                      src={returnReportPhotoPreview}
+                      alt="تقرير طبي"
+                      className="w-20 h-20 object-cover border border-slate-700 rounded"
+                    />
+                    <div className="flex-1 text-xs text-gray-300">
+                      <div className="text-emerald-400 font-bold mb-1 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>تم التقاط / إرفاق التقرير بنجاح</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReturnReportPhotoBase64('');
+                          setReturnReportPhotoPreview(null);
+                        }}
+                        className="text-xs text-rose-400 hover:text-rose-300 underline"
+                      >
+                        حذف وإعادة التصوير
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => reportPhotoInputRef.current?.click()}
+                      className="flex-1 py-2.5 px-3 bg-[#262626] hover:bg-[#333333] border border-dashed border-[#525252] text-xs font-bold text-gray-200 hover:text-white flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <Camera className="w-4 h-4 text-emerald-400" />
+                      <span>فتح الكاميرا لتصوير التقرير</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#333333]">
+              <button
+                type="button"
+                onClick={() => {
+                  setReturnDialogActivity(null);
+                  setReturnReportPhotoBase64('');
+                  setReturnReportPhotoPreview(null);
+                }}
+                className="px-4 py-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] text-gray-300 text-xs font-bold"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRecordReturn(returnDialogActivity.id)}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>تأكيد تسجيل العودة والتقرير</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox for previewing attached medical report */}
+      {previewReportPhotoUrl && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4"
+          onClick={() => setPreviewReportPhotoUrl(null)}
+        >
+          <div className="max-w-4xl w-full max-h-[90vh] flex flex-col items-center relative" onClick={(e) => e.stopPropagation()}>
+            <div className="w-full flex items-center justify-between pb-3 text-white border-b border-slate-700 mb-3">
+              <h4 className="text-sm font-bold flex items-center gap-2">
+                <FileText className="w-4 h-4 text-blue-400" />
+                <span>التقرير الطبي الرسمي المرفق</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setPreviewReportPhotoUrl(null)}
+                className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <img
+              src={previewReportPhotoUrl}
+              alt="التقرير الطبي المرفق"
+              className="max-h-[75vh] w-auto max-w-full object-contain border-2 border-slate-700 rounded shadow-2xl"
+            />
+            <div className="mt-3 flex items-center gap-3">
+              <a
+                href={previewReportPhotoUrl}
+                download="تقرير_طبي.jpg"
+                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded flex items-center gap-1.5"
+              >
+                <Upload className="w-3.5 h-3.5 rotate-180" />
+                <span>تحميل الصورة</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setPreviewReportPhotoUrl(null)}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

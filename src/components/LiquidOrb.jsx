@@ -155,6 +155,8 @@ export default function LiquidOrb({
     : size === 'xl' ? 100 
     : 36;
 
+  const isSmall = pxSize <= 48;
+
   // React to state prop updates
   useEffect(() => {
     if (orbControllerRef.current && orbControllerRef.current.setState) {
@@ -167,6 +169,9 @@ export default function LiquidOrb({
   }, [state]);
 
   useEffect(() => {
+    // If small or fallback, do not allocate WebGL/WebGPU contexts
+    if (isSmall || useFallback) return;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -549,7 +554,7 @@ export default function LiquidOrb({
       style={{ width: pxSize, height: pxSize }}
       onClick={onClick}
     >
-      {useFallback ? (
+      {(isSmall || useFallback) ? (
         <div 
           className={
             'w-full h-full rounded-full relative flex items-center justify-center transition-transform duration-500 ' +

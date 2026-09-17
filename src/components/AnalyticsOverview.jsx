@@ -5,8 +5,9 @@ import {
   Brain, AlertOctagon
 } from 'lucide-react';
 import { getCompanyStyle } from '../utils/companyColors';
+import { authHeaders } from '../utils/auth';
 
-export default function AnalyticsOverview({ 
+function AnalyticsOverview({ 
   selectedBatch, 
   companyColors = [], 
   onSelectCompany, 
@@ -21,7 +22,9 @@ export default function AnalyticsOverview({
   const fetchOverview = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/analytics/overview?batch_id=${selectedBatch || 'all'}`);
+      const res = await fetch(`/api/analytics/overview?batch_id=${selectedBatch || 'all'}`, {
+        headers: authHeaders()
+      });
       if (res.ok) {
         const json = await res.json();
         setData(json);
@@ -219,7 +222,7 @@ export default function AnalyticsOverview({
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
           {companyColors.map((c) => {
             const row = data.companyDistribution?.find(d => d.company === c.match || d.company?.includes(c.match));
             const count = row ? row.count : 0;
@@ -327,3 +330,5 @@ export default function AnalyticsOverview({
     </div>
   );
 }
+
+export default React.memo(AnalyticsOverview);

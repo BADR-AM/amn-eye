@@ -134,7 +134,7 @@ export default function CompanyColorsModal({ isOpen, onClose, companyColors, onC
           <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-3 text-xs text-slate-300 flex items-center justify-between">
             <div>
               <span className="text-orange-400 font-bold block mb-0.5">القاعدة المعتمدة للألوان:</span>
-              <span>السرية الأولى: أخضر • الثانية: أحمر • الثالثة: أزرق • الرابعة: أبيض • الخامسة: برتقالي • السادسة: لبني</span>
+              <span>السرية الأولى: أخضر • الثانية: أحمر • الثالثة: أزرق • الرابعة: أبيض • الخامسة: برتقالي • السادسة: لبني • سرية الأمن: كحلي داكن ملكي • القوة الأساسية: أرجواني كحلي</span>
             </div>
             <button
               onClick={handleResetDefaults}

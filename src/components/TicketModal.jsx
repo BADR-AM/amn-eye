@@ -171,6 +171,49 @@ export default function TicketModal({
     }
   };
 
+  // Handle deleting (حذف نهائي) ticket
+  const handleDeleteTicket = async (ticketId) => {
+    if (!confirm('هل أنت متأكد من رغبتك في حذف وإلغاء هذا التيكت/البلاغ نهائياً من سجل المجند؟')) return;
+    try {
+      const res = await fetch(`/api/recruits/${recruit.id}/tickets/${ticketId}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'فشل حذف التيكت');
+      }
+      await fetchTickets();
+      if (onTicketChanged) onTicketChanged();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  // Handle quick cancel (إلغاء التيكت السريع)
+  const handleQuickCancelTicket = async (ticketId) => {
+    if (!confirm('هل تريد إلغاء التيكت وحفظ الموضوع رسمياً؟')) return;
+    try {
+      const res = await fetch(`/api/recruits/${recruit.id}/tickets/${ticketId}/resolve`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders()
+        },
+        body: JSON.stringify({
+          status: 'cancelled',
+          resolution_notes: 'تم إلغاء التيكت وإنهاء البلاغ وحفظ الموضوع رسمياً',
+          resolved_by: officerName.trim() || 'وحدة الأمن والتحريات'
+        })
+      });
+      if (!res.ok) throw new Error('فشل إلغاء التيكت');
+      await fetchTickets();
+      if (onTicketChanged) onTicketChanged();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   // Ticket type configuration
   const getTypeInfo = (type) => {
     switch (type) {
@@ -509,6 +552,11 @@ export default function TicketModal({
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30 animate-pulse">
                                 ● نشط ومفتوح
                               </span>
+                            ) : t.status === 'cancelled' ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                                <X className="w-3 h-3" />
+                                تم إلغاء التيكت وحفظه
+                              </span>
                             ) : (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                                 <Check className="w-3 h-3" />
@@ -539,19 +587,46 @@ export default function TicketModal({
                             )}
                           </div>
 
-                          {/* Action button: رفع التيكت */}
-                          {isOpen && resolvingTicketId !== t.id && (
+                          {/* Action buttons: إلغاء / تسوية / حذف */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {isOpen && resolvingTicketId !== t.id && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickCancelTicket(t.id)}
+                                  className="px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all flex items-center gap-1"
+                                  title="إلغاء التيكت وحفظه فوراً"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>إلغاء التيكت</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setResolvingTicketId(t.id);
+                                    setResolutionNotes('');
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all flex items-center gap-1 shadow-sm"
+                                  title="رفع وتسوية البلاغ مع إدخال ملاحظات مفصلة"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>رفع التيكت (تسوية)</span>
+                                </button>
+                              </>
+                            )}
+
+                            {/* زر حذف التيكت نهائياً */}
                             <button
-                              onClick={() => {
-                                setResolvingTicketId(t.id);
-                                setResolutionNotes('');
-                              }}
-                              className="px-3 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all flex items-center gap-1 shadow-sm"
+                              type="button"
+                              onClick={() => handleDeleteTicket(t.id)}
+                              className="px-2 py-1 rounded-lg bg-rose-600/15 hover:bg-rose-600/30 text-rose-400 border border-rose-500/30 text-xs font-bold transition-all flex items-center gap-1"
+                              title="حذف هذا التيكت نهائياً وإلغاؤه من السجل"
                             >
-                              <Check className="w-3.5 h-3.5" />
-                              <span>رفع التيكت (تسوية البلاغ)</span>
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>حذف نهائي</span>
                             </button>
-                          )}
+                          </div>
                         </div>
 
                         {/* Inline Resolution Box */}

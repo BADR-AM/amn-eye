@@ -22,12 +22,21 @@ import {
   Smartphone,
   Check,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  History,
+  Brain,
+  FileCheck,
+  AlertOctagon
 } from 'lucide-react';
 import LockerCard from './LockerCard';
+import RecruitHistoryModal from './RecruitHistoryModal';
+import ActivityLogModal from './ActivityLogModal';
+import RecruitDocumentsModal from './RecruitDocumentsModal';
+import TicketModal from './TicketModal';
+import PsychologicalFollowupModal from './PsychologicalFollowupModal';
 import { toPng } from 'html-to-image';
 import { parseEgyptianNationalId } from '../utils/nationalId';
-import { authHeaders } from '../utils/auth';
+import { authHeaders, getUser } from '../utils/auth';
 
 export default function RecruitModal({ 
   recruit, 
@@ -38,6 +47,11 @@ export default function RecruitModal({
   initialEditMode = false 
 }) {
   const [showCardPreview, setShowCardPreview] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showActivityModal, setShowActivityModal] = useState(false);
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+  const [showTicketModal, setShowTicketModal] = useState(false);
+  const [showPsychologicalModal, setShowPsychologicalModal] = useState(false);
   const cardRef = useRef(null);
 
   // Edit Mode State
@@ -299,14 +313,60 @@ export default function RecruitModal({
           <div className="flex items-center gap-2">
             {!isEditing ? (
               <>
+                {currentUser?.role !== 'operator' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-black font-extrabold text-xs shadow-md transition-all"
+                    title="تعديل كافة بيانات المجند والصور والفيديو"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                    <span>تعديل البيانات والوسائط</span>
+                  </button>
+                )}
+
+                {/* 1. سجل المتابعات والتحركات الطبية والوقائع */}
                 <button
                   type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-black font-extrabold text-xs shadow-md transition-all"
-                  title="تعديل كافة بيانات المجند والصور والفيديو"
+                  onClick={() => setShowActivityModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-teal-600/15 hover:bg-teal-600/25 text-teal-300 border border-teal-500/30 text-xs font-bold transition-all shadow-sm hover:border-teal-400"
+                  title="سجل المتابعات والتحركات الطبية والوقائع الميدانية"
                 >
-                  <Edit3 className="w-4 h-4" />
-                  <span>تعديل البيانات والوسائط</span>
+                  <Activity className="w-4 h-4 text-teal-400" />
+                  <span className="hidden sm:inline">المتابعات والوقائع</span>
+                </button>
+
+                {/* 2. الوثائق والمستندات الممسوحة */}
+                <button
+                  type="button"
+                  onClick={() => setShowDocumentsModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-600/15 hover:bg-cyan-600/25 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all shadow-sm hover:border-cyan-400"
+                  title="رفع أو مسح وثيقة التعارف، أصل السجل العسكري، وأي مستندات إضافية"
+                >
+                  <FileCheck className="w-4 h-4 text-cyan-400" />
+                  <span className="hidden sm:inline">الوثائق والمستندات</span>
+                </button>
+
+                {/* 3. تيكتات وبلاغات الاشتباه */}
+                <button
+                  type="button"
+                  onClick={() => setShowTicketModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600/15 hover:bg-rose-600/25 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all shadow-sm hover:border-rose-400"
+                  title="فتح أو متابعة أو حذف تيكتات الاشتباه الجنائي والسياسي"
+                >
+                  <AlertOctagon className="w-4 h-4 text-rose-400" />
+                  <span className="hidden sm:inline">تيكتات الاشتباه</span>
+                </button>
+
+                {/* 4. المتابعة النفسية والعصبية */}
+                <button
+                  type="button"
+                  onClick={() => setShowPsychologicalModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-600/15 hover:bg-purple-600/25 text-purple-300 border border-purple-500/30 text-xs font-bold transition-all shadow-sm hover:border-purple-400"
+                  title="سجل المتابعة النفسية والعصبية للحالات الخاصة"
+                >
+                  <Brain className="w-4 h-4 text-purple-400" />
+                  <span className="hidden sm:inline">متابعة نفسية</span>
                 </button>
 
                 <button
@@ -334,16 +394,28 @@ export default function RecruitModal({
 
                 <button
                   type="button"
-                  onClick={() => {
-                    if (confirm(`هل أنت متأكد من رغبتك في حذف ملف المجند "${recruit.name}"؟ هذا الإجراء نهائي.`)) {
-                      onDelete(recruit.id);
-                    }
-                  }}
-                  className="p-2 rounded-xl bg-slate-800 hover:bg-rose-900/40 text-slate-400 hover:text-rose-300 border border-slate-700 transition-colors"
-                  title="حذف الملف"
+                  onClick={() => setShowHistoryModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-850 hover:bg-slate-750 text-amber-300 border border-slate-700 text-xs font-bold transition-all shadow-sm hover:border-amber-500/40"
+                  title="سجل الحركات والتعديلات والعمليات السابقة للمجند"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <History className="w-4 h-4 text-amber-400" />
+                  <span className="hidden sm:inline">سجل الحركات (History)</span>
                 </button>
+
+                {(!currentUser || currentUser.role === 'admin') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`هل أنت متأكد من رغبتك في حذف ملف المجند "${recruit.name}"؟ هذا الإجراء نهائي ولا يمكن التراجع عنه.`)) {
+                        onDelete(recruit.id);
+                      }
+                    }}
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-rose-900/40 text-slate-400 hover:text-rose-300 border border-slate-700 transition-colors"
+                    title="حذف الملف (صلاحية المدير فقط)"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </>
             ) : (
               <>
@@ -699,6 +771,35 @@ export default function RecruitModal({
                     </div>
 
                     <div>
+                      <label className="text-slate-400 block mb-1">السرية / الوحدة الملحق عليها</label>
+                      <select
+                        value={editData.company || 'السرية الأولى ( ١ )'}
+                        onChange={(e) => handleFieldChange('company', e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold focus:border-emerald-500 outline-none"
+                      >
+                        <option value="السرية الأولى ( ١ )">السرية الأولى ( ١ )</option>
+                        <option value="السرية الثانية ( ٢ )">السرية الثانية ( ٢ )</option>
+                        <option value="السرية الثالثة ( ٣ )">السرية الثالثة ( ٣ )</option>
+                        <option value="السرية الرابعة ( ٤ )">السرية الرابعة ( ٤ )</option>
+                        <option value="السرية الخامسة ( ٥ )">السرية الخامسة ( ٥ )</option>
+                        <option value="السرية السادسة ( ٦ )">السرية السادسة ( ٦ )</option>
+                        <option value="سرية الأمن">سرية الأمن (خاصة)</option>
+                        <option value="القوة الأساسية">القوة الأساسية (المركز)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-slate-400 block mb-1">رقم الشرطة (كارت الدولاب)</label>
+                      <input 
+                        type="text" 
+                        value={editData.police_number || ''} 
+                        onChange={(e) => handleFieldChange('police_number', e.target.value)}
+                        placeholder="مثال: ١٢٤٩"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+
+                    <div>
                       <label className="text-slate-400 block mb-1">الرقم القومي (14 رقم)</label>
                       <input 
                         type="text" 
@@ -973,6 +1074,52 @@ export default function RecruitModal({
         </div>
 
       </div>
+
+      {/* Recruit History Modal */}
+      {showHistoryModal && (
+        <RecruitHistoryModal
+          recruit={recruit}
+          onClose={() => setShowHistoryModal(false)}
+        />
+      )}
+
+      {/* Activity Log Modal (المتابعات والوقائع والتحركات الطبية) */}
+      {showActivityModal && (
+        <ActivityLogModal
+          recruit={recruit}
+          onClose={() => setShowActivityModal(false)}
+          onRefreshRecruits={() => onUpdate?.(recruit)}
+        />
+      )}
+
+      {/* Recruit Documents Modal (المستندات والوثائق الممسوحة) */}
+      {showDocumentsModal && (
+        <RecruitDocumentsModal
+          recruit={recruit}
+          onClose={() => setShowDocumentsModal(false)}
+          onRefreshRecruits={() => onUpdate?.(recruit)}
+        />
+      )}
+
+      {/* Ticket Modal (تيكتات وبلاغات الاشتباه) */}
+      {showTicketModal && (
+        <TicketModal
+          isOpen={showTicketModal}
+          recruit={recruit}
+          onClose={() => setShowTicketModal(false)}
+          onTicketChanged={() => onUpdate?.(recruit)}
+        />
+      )}
+
+      {/* Psychological Followup Modal (المتابعة النفسية) */}
+      {showPsychologicalModal && (
+        <PsychologicalFollowupModal
+          isOpen={showPsychologicalModal}
+          recruit={recruit}
+          onClose={() => setShowPsychologicalModal(false)}
+          onUpdated={() => onUpdate?.(recruit)}
+        />
+      )}
     </div>
   );
 }

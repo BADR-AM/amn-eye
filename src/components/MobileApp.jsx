@@ -23,6 +23,7 @@ import {
   Edit3, 
   Trash2, 
   LogOut, 
+  Power,
   Wifi, 
   Monitor, 
   KeyRound, 
@@ -48,7 +49,8 @@ import {
   HardDrive,
   Printer,
   Copy,
-  ExternalLink
+  ExternalLink,
+  History
 } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
 import LiquidOrb from './LiquidOrb';
@@ -60,8 +62,10 @@ import RecruitDocumentsModal from './RecruitDocumentsModal';
 import TicketModal from './TicketModal';
 import PsychologicalFollowupModal from './PsychologicalFollowupModal';
 import OfficialReport from './OfficialReport';
+import RecruitHistoryModal from './RecruitHistoryModal';
 import { fetchCompanyColors, DEFAULT_COMPANY_COLORS, getCompanyStyle } from '../utils/companyColors';
 import { authHeaders } from '../utils/auth';
+import { parseEgyptianNationalId } from '../utils/nationalId';
 
 export default function MobileApp({
   currentUser,
@@ -77,6 +81,7 @@ export default function MobileApp({
   onOpenBackup,
   onOpenUsers,
   onOpenChangePassword,
+  onOpenAuditLogs,
   showToast
 }) {
   // Active Navigation Tab
@@ -116,6 +121,7 @@ export default function MobileApp({
   const [psychologicalRecruit, setPsychologicalRecruit] = useState(null);
   const [printRecruit, setPrintRecruit] = useState(null);
   const [activityRecruit, setActivityRecruit] = useState(null);
+  const [historyRecruit, setHistoryRecruit] = useState(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showCompanyColorsModal, setShowCompanyColorsModal] = useState(false);
 
@@ -156,7 +162,6 @@ export default function MobileApp({
     { key: 'unknown_lineage', label: 'مجهول النسب أو إهمال بالرعاية', icon: Users }
   ];
 
-  // Initial New Recruit Form Data
   const initialNewForm = {
     name: '',
     military_number: '',
@@ -165,25 +170,26 @@ export default function MobileApp({
     governorate: 'الغربية',
     address: '',
     phone: '',
-    current_job: '',
-    other_jobs: '',
+    current_job: 'بدون عمل',
+    other_jobs: 'لا يوجد',
     qualification: 'متوسط',
     religion: 'مسلم',
     marital_status: 'أعزب',
-    travel_abroad: 'لا',
+    wife: 'أعزب',
+    travel_abroad: 'لم يسافر خارج البلاد',
     travel_details: '',
     literacy: 'يجيد القراءة والكتابة',
-    medical_status: 'لائق',
+    medical_status: 'لائق طبياً وسليم ظاهرياً',
     is_psychological_case: 0,
     psychological_notes: '',
-    inspection: 'سليم',
-    family_social_status: 'مستقرة',
-    family_security_status: 'سليم أمنياً',
+    inspection: 'بنية جيدة - لا توجد علامات مميزة أو وشم - سلوك معتدل',
+    family_social_status: 'الأسرة مستقرة والوالدان على قيد الحياة',
+    family_security_status: 'العائلة خالية من السوابق والشبهات الجنائية والسياسية',
     father_name: '',
-    father_job: '',
+    father_job: 'عامل',
     mother_name: '',
-    mother_job: '',
-    siblings_check: 'سليم',
+    mother_job: 'ربة منزل',
+    siblings_check: 'لا توجد ملاحظات أمنية على الأشقاء',
     police_number: '',
     company: 'السرية الأولى ( ١ )',
     notes: ''
@@ -269,27 +275,33 @@ export default function MobileApp({
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: authHeaders(),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          ...authHeaders()
+        },
         body: JSON.stringify({ 
           message: query, 
+          stream: false,
           batch_id: activeBatch ? activeBatch.id : null 
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        setAiMessages(prev => [
-          ...prev, 
-          { 
-            role: 'model', 
-            content: data.reply || 'تم استلام وتحليل استفسارك بنجاح.',
-            dataSummary: data.dataSummary || null,
-            suggestions: data.suggestions || ['إحصائية الدفع الحالي', 'بيان الحالات غير اللائقة', 'توزيع المؤهلات']
-          }
-        ]);
-      } else {
-        throw new Error('خطأ في استجابة المساعد الذكي');
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || 'خطأ في استجابة المساعد الذكي');
       }
+
+      const data = await res.json();
+      setAiMessages(prev => [
+        ...prev, 
+        { 
+          role: 'model', 
+          content: data.reply || 'تم استلام وتحليل استفسارك بنجاح.',
+          dataSummary: data.dataSummary || null,
+          suggestions: data.suggestions || ['إحصائية الدفع الحالي', 'بيان الحالات غير اللائقة', 'توزيع المؤهلات']
+        }
+      ]);
     } catch (err) {
       setAiMessages(prev => [
         ...prev, 
@@ -310,11 +322,40 @@ export default function MobileApp({
       showToast('يرجى كتابة اسم المجند ثلاثي على الأقل', 'error');
       return;
     }
+    const nid = (newForm.national_id || '').trim();
+    if (nid && !/^\d{14}$/.test(nid)) {
+      showToast('الرقم القومي يجب أن يتكون من 14 رقماً بالضبط', 'error');
+      return;
+    }
     setPendingFormData({
       ...newForm,
       batch_id: activeBatch?.id
     });
     setIsMediaCapturing(true);
+  };
+
+  // Auto-parse National ID for birth date and governorate
+  const handleNationalIdChange = (idVal) => {
+    const updated = { ...newForm, national_id: idVal };
+    if (idVal && idVal.length === 14) {
+      const parsed = parseEgyptianNationalId(idVal);
+      if (parsed) {
+        if (parsed.birthDate) updated.birth_date = parsed.birthDate;
+        if (parsed.governorate) updated.governorate = parsed.governorate;
+      }
+    }
+    setNewForm(updated);
+  };
+
+  // Safe quit application handler
+  const handleQuitApp = () => {
+    if (window.confirm('هل أنت متأكد من رغبتك في إغلاق وإنهاء تشغيل المنظومة بالكامل؟')) {
+      if (window.electronAPI?.quitApp) {
+        window.electronAPI.quitApp();
+      } else {
+        onLogout?.();
+      }
+    }
   };
 
   // Media Capture Save Success
@@ -328,8 +369,12 @@ export default function MobileApp({
     showToast('تم تسجيل وحفظ ملف المجند والصورة والفيديو بنجاح');
   };
 
-  // Delete recruit
+  // Delete recruit (Strictly Admin only)
   const handleDeleteRecruit = async (recruitId) => {
+    if (currentUser?.role && currentUser.role !== 'admin') {
+      showToast('عفواً، حذف السجلات مقتصر على مدير المنظومة (Admin) فقط', 'error');
+      return;
+    }
     if (!window.confirm('هل أنت متأكد من حذف هذا المجند نهائياً وسجلاته من المنظومة؟')) {
       return;
     }
@@ -338,7 +383,10 @@ export default function MobileApp({
         method: 'DELETE',
         headers: authHeaders()
       });
-      if (!res.ok) throw new Error('فشل الحذف');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'فشل الحذف');
+      }
       if (selectedRecruit?.id === recruitId) setSelectedRecruit(null);
       fetchMobileRecruits();
       onRefresh();
@@ -348,13 +396,53 @@ export default function MobileApp({
     }
   };
 
+  // Bulk delete selected recruits (Admin only)
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (currentUser?.role && currentUser.role !== 'admin') {
+      showToast('حذف المجندين مقتصر حصرياً على رتبة المشرف العام (Admin)', 'error');
+      return;
+    }
+    if (!window.confirm(`هل أنت متأكد من حذف عدد (${selectedIds.length}) مجند محدد نهائياً من قاعدة البيانات والمنظومة؟ هذا الإجراء نهائي ولا يمكن التراجع عنه!`)) return;
+
+    try {
+      const res = await fetch('/api/recruits/bulk-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders()
+        },
+        body: JSON.stringify({ ids: selectedIds })
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'فشل حذف المجندين');
+      }
+
+      showToast(`تم حذف (${selectedIds.length}) مجند بنجاح`);
+      setSelectedIds([]);
+      if (selectedRecruit && selectedIds.includes(selectedRecruit.id)) {
+        setSelectedRecruit(null);
+      }
+      fetchMobileRecruits();
+      onRefresh();
+    } catch (err) {
+      console.error('Mobile bulk delete error:', err);
+      showToast(err.message || 'خطأ أثناء الحذف الجماعي', 'error');
+    }
+  };
+
   // Save edits to recruit dossier
   const handleSaveEdit = async () => {
     if (!selectedRecruit) return;
     try {
       const res = await fetch(`/api/recruits/${selectedRecruit.id}`, {
         method: 'PUT',
-        headers: authHeaders(),
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders()
+        },
         body: JSON.stringify(editFormData)
       });
       if (!res.ok) throw new Error('فشل حفظ التعديلات');
@@ -462,6 +550,15 @@ export default function MobileApp({
             >
               <Monitor className="w-4 h-4 text-cyan-400" />
             </button>
+
+            {/* Quit Application Button */}
+            <button
+              onClick={handleQuitApp}
+              className="p-2 rounded-lg bg-rose-950/50 hover:bg-rose-900/70 text-rose-300 border border-rose-800/60 transition-colors"
+              title="إغلاق وإنهاء تشغيل المنظومة"
+            >
+              <Power className="w-4 h-4 text-rose-400" />
+            </button>
           </div>
 
         </div>
@@ -480,7 +577,18 @@ export default function MobileApp({
             <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 p-4 rounded-2xl border border-slate-800 shadow-lg relative overflow-hidden">
               <div className="flex items-center justify-between relative z-10">
                 <div>
-                  <div className="text-xs text-slate-400 font-medium">مرحباً بك،</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400 font-medium">مرحباً بك،</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                      currentUser?.role === 'admin' 
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' 
+                        : currentUser?.role === 'officer'
+                          ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                          : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    }`}>
+                      {currentUser?.role === 'admin' ? 'مدير المنظومة (Admin)' : currentUser?.role === 'officer' ? 'ضابط التحريات' : 'مشغل كشك'}
+                    </span>
+                  </div>
                   <div className="text-base font-extrabold text-white">
                     {currentUser?.full_name || 'ضابط التحريات والأمن'}
                   </div>
@@ -502,6 +610,67 @@ export default function MobileApp({
 
               {/* Decorative background glow */}
               <div className="absolute -left-10 -bottom-10 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl pointer-events-none"></div>
+            </div>
+
+            {/* ── SEPARATE MILITARY UNITS STATS (3 UNITS) ── */}
+            <div className="space-y-1.5">
+              <div className="text-[11px] font-bold text-slate-400 px-1 flex items-center justify-between">
+                <span>توزيع القوة الميدانية والوحدات:</span>
+                <span className="text-[10px] text-emerald-400 font-mono">حصر لحظي</span>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-2">
+                {/* Regular 6 Companies */}
+                <div 
+                  onClick={() => {
+                    setFilterCompany('all');
+                    setActiveTab('directory');
+                  }}
+                  className="bg-slate-900 hover:bg-slate-850 p-2.5 rounded-xl border border-slate-800 text-center cursor-pointer transition-all shadow-sm active:scale-95"
+                >
+                  <div className="text-[10px] text-slate-400 font-bold mb-1">المستجدين (6 سرايا)</div>
+                  <div className="text-xl font-black text-blue-400 font-mono">
+                    {stats?.regularRecruits ?? recruits.filter(r => !r.company?.includes('أمن') && !r.company?.includes('أساسية') && !r.company?.includes('اساسية')).length}
+                  </div>
+                  <div className="text-[9px] text-slate-500 font-semibold mt-0.5">قوة التدريب</div>
+                </div>
+
+                {/* Security Company (سرية الأمن) */}
+                <div 
+                  onClick={() => {
+                    setFilterCompany('سرية الأمن');
+                    setActiveTab('directory');
+                  }}
+                  className="bg-gradient-to-b from-slate-900 to-amber-950/30 hover:border-amber-500/60 p-2.5 rounded-xl border border-amber-500/40 text-center cursor-pointer transition-all shadow-sm active:scale-95"
+                >
+                  <div className="text-[10px] text-amber-300 font-extrabold mb-1 flex items-center justify-center gap-1">
+                    <span>سرية الأمن</span>
+                    <span className="text-[8px] text-amber-400">★</span>
+                  </div>
+                  <div className="text-xl font-black text-amber-400 font-mono">
+                    {stats?.securityCompanyRecruits ?? recruits.filter(r => r.company?.includes('أمن')).length}
+                  </div>
+                  <div className="text-[9px] text-amber-400/80 font-semibold mt-0.5">وحدة تأمين خاصة</div>
+                </div>
+
+                {/* Base Force (القوة الأساسية) */}
+                <div 
+                  onClick={() => {
+                    setFilterCompany('القوة الأساسية');
+                    setActiveTab('directory');
+                  }}
+                  className="bg-gradient-to-b from-slate-900 to-indigo-950/30 hover:border-indigo-500/60 p-2.5 rounded-xl border border-indigo-500/40 text-center cursor-pointer transition-all shadow-sm active:scale-95"
+                >
+                  <div className="text-[10px] text-indigo-300 font-extrabold mb-1 flex items-center justify-center gap-1">
+                    <span>القوة الأساسية</span>
+                    <span className="text-[8px] text-indigo-400">★</span>
+                  </div>
+                  <div className="text-xl font-black text-indigo-400 font-mono">
+                    {stats?.baseForceRecruits ?? recruits.filter(r => r.company?.includes('أساسية') || r.company?.includes('اساسية')).length}
+                  </div>
+                  <div className="text-[9px] text-indigo-400/80 font-semibold mt-0.5">أفراد المركز الدائمين</div>
+                </div>
+              </div>
             </div>
 
             {/* Live KPI Cards (4 metrics) */}
@@ -757,7 +926,7 @@ export default function MobileApp({
                 <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-3">
                   <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5 border-b border-slate-800 pb-2">
                     <FileText className="w-4 h-4" />
-                    البيانات الشخصية والرسمية
+                    البيانات الشخصية والرسمية (كارت القيد)
                   </div>
 
                   <div>
@@ -786,14 +955,39 @@ export default function MobileApp({
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">الرقم القومي (14 رقم)</label>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">
+                        الرقم القومي (14 رقم)
+                      </label>
                       <input 
                         type="text" 
                         maxLength={14}
                         placeholder="الرقم القومي..." 
                         value={newForm.national_id} 
-                        onChange={e => setNewForm({ ...newForm, national_id: e.target.value })}
+                        onChange={e => handleNationalIdChange(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 font-mono focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">رقم الشرطة (كارت الدولاب)</label>
+                      <input 
+                        type="text" 
+                        placeholder="رقم السلاح / القيد..." 
+                        value={newForm.police_number} 
+                        onChange={e => setNewForm({ ...newForm, police_number: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 font-mono focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">رقم الهاتف</label>
+                      <input 
+                        type="tel" 
+                        placeholder="01xxxxxxxxx" 
+                        value={newForm.phone} 
+                        onChange={e => setNewForm({ ...newForm, phone: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 outline-none"
                       />
                     </div>
                   </div>
@@ -824,7 +1018,7 @@ export default function MobileApp({
                     <label className="text-[11px] text-slate-300 font-semibold mb-1 block">العنوان ومحل الإقامة التفصيلي</label>
                     <input 
                       type="text" 
-                      placeholder="المركز / القرية / الشارع..." 
+                      placeholder="المركز / القرية / الشارع ورقم المنزل..." 
                       value={newForm.address} 
                       onChange={e => setNewForm({ ...newForm, address: e.target.value })}
                       className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-emerald-500 outline-none"
@@ -833,24 +1027,51 @@ export default function MobileApp({
 
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">رقم الهاتف</label>
-                      <input 
-                        type="tel" 
-                        placeholder="01xxxxxxxxx" 
-                        value={newForm.phone} 
-                        onChange={e => setNewForm({ ...newForm, phone: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:border-emerald-500 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">المهنة الحالية أو الحرفة</label>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">المهنة الحالية</label>
                       <input 
                         type="text" 
-                        placeholder="مثال: نجار / سائق / طالب" 
+                        placeholder="مثال: عامل / نجار / سائق" 
                         value={newForm.current_job} 
                         onChange={e => setNewForm({ ...newForm, current_job: e.target.value })}
                         className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-emerald-500 outline-none"
                       />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">مهن وحرف أخرى</label>
+                      <input 
+                        type="text" 
+                        placeholder="مثال: كهربائي / سباك / نقاش" 
+                        value={newForm.other_jobs} 
+                        onChange={e => setNewForm({ ...newForm, other_jobs: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">السفر خارج البلاد</label>
+                      <select
+                        value={newForm.travel_abroad}
+                        onChange={e => setNewForm({ ...newForm, travel_abroad: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2 py-2 text-xs text-white outline-none"
+                      >
+                        <option value="لم يسافر خارج البلاد">لم يسافر خارج البلاد</option>
+                        <option value="سافر للعمل بالخارج">سافر للعمل بالخارج</option>
+                        <option value="سافر للسياحة">سافر للسياحة</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">القراءة والكتابة</label>
+                      <select
+                        value={newForm.literacy}
+                        onChange={e => setNewForm({ ...newForm, literacy: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2 py-2 text-xs text-white outline-none"
+                      >
+                        <option value="يجيد القراءة والكتابة">يجيد القراءة والكتابة</option>
+                        <option value="يقرأ ويكتب بصعوبة">يقرأ ويكتب بصعوبة</option>
+                        <option value="لا يجيد (أمي)">لا يجيد (أمي)</option>
+                      </select>
                     </div>
                   </div>
                 </div>
@@ -859,19 +1080,19 @@ export default function MobileApp({
                 <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-3.5">
                   <div className="text-xs font-bold text-blue-400 flex items-center gap-1.5 border-b border-slate-800 pb-2">
                     <Briefcase className="w-4 h-4" />
-                    المؤهل الدراسي والتوزيع
+                    المؤهل والسرية واللياقة
                   </div>
 
                   {/* Qualification Pills */}
                   <div>
                     <label className="text-[11px] text-slate-400 font-bold block mb-1.5">المؤهل الدراسي</label>
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {['عليا', 'فوق متوسط', 'متوسط', 'عادة'].map(q => (
+                    <div className="grid grid-cols-5 gap-1">
+                      {['عليا', 'فوق متوسط', 'متوسط', 'عادة', 'محو أمية'].map(q => (
                         <button
                           type="button"
                           key={q}
                           onClick={() => setNewForm({ ...newForm, qualification: q })}
-                          className={`py-2 text-xs font-bold rounded-xl border transition-all ${
+                          className={`py-2 text-[11px] font-bold rounded-xl border transition-all ${
                             newForm.qualification === q 
                               ? 'bg-blue-600 text-white border-blue-400 shadow-md shadow-blue-900/30' 
                               : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'
@@ -907,13 +1128,13 @@ export default function MobileApp({
 
                     <div>
                       <label className="text-[11px] text-slate-400 font-bold block mb-1.5">الحالة الاجتماعية</label>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {['أعزب', 'متزوج'].map(m => (
+                      <div className="grid grid-cols-3 gap-1">
+                        {['أعزب', 'متزوج', 'مطلق'].map(m => (
                           <button
                             type="button"
                             key={m}
-                            onClick={() => setNewForm({ ...newForm, marital_status: m })}
-                            className={`py-1.5 text-xs font-bold rounded-xl border ${
+                            onClick={() => setNewForm({ ...newForm, marital_status: m, wife: m })}
+                            className={`py-1.5 text-[11px] font-bold rounded-xl border ${
                               newForm.marital_status === m 
                                 ? 'bg-indigo-600/30 text-indigo-300 border-indigo-500' 
                                 : 'bg-slate-950 text-slate-400 border-slate-800'
@@ -926,17 +1147,19 @@ export default function MobileApp({
                     </div>
                   </div>
 
-                  {/* Assigned Company */}
+                  {/* Assigned Company & Special Units */}
                   <div>
-                    <label className="text-[11px] text-slate-400 font-bold block mb-1.5">السرية الملحق عليها</label>
-                    <div className="grid grid-cols-3 gap-1.5">
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1.5">السرية / الوحدة الملحق عليها (السرايا الـ 6 • سرية الأمن • القوة الأساسية)</label>
+                    <div className="grid grid-cols-4 gap-1.5">
                       {[
                         'السرية الأولى ( ١ )',
                         'السرية الثانية ( ٢ )',
                         'السرية الثالثة ( ٣ )',
                         'السرية الرابعة ( ٤ )',
                         'السرية الخامسة ( ٥ )',
-                        'السرية السادسة ( ٦ )'
+                        'السرية السادسة ( ٦ )',
+                        'سرية الأمن',
+                        'القوة الأساسية'
                       ].map(comp => {
                         const style = getCompanyStyle(comp, companyColors);
                         const isSelected = newForm.company === comp;
@@ -947,7 +1170,7 @@ export default function MobileApp({
                             onClick={() => setNewForm({ ...newForm, company: comp })}
                             className={`py-2 px-1 text-[11px] font-bold rounded-xl border transition-all text-center ${
                               isSelected 
-                                ? 'border-white/80 shadow-md scale-[1.02]' 
+                                ? 'border-white/90 shadow-md scale-[1.02]' 
                                 : 'border-slate-800/80 opacity-70'
                             }`}
                             style={{
@@ -960,6 +1183,45 @@ export default function MobileApp({
                           </button>
                         );
                       })}
+                    </div>
+
+                    {/* Special Military Units: سرية الأمن & القوة الأساسية */}
+                    <div className="mt-2.5 pt-2 border-t border-slate-800/80">
+                      <div className="text-[10px] text-amber-400/90 font-bold mb-1.5 flex items-center gap-1">
+                        <span>★</span>
+                        <span>وحدات خاصة ومعسكر التدريب:</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* سرية الأمن */}
+                        <button
+                          type="button"
+                          onClick={() => setNewForm({ ...newForm, company: 'سرية الأمن' })}
+                          className={`py-2.5 px-2 rounded-xl border transition-all text-center flex items-center justify-center gap-1.5 ${
+                            newForm.company === 'سرية الأمن'
+                              ? 'bg-slate-900 border-amber-400 text-amber-300 shadow-md shadow-amber-950/40 scale-[1.02]'
+                              : 'bg-slate-950/80 border-amber-600/30 text-amber-400/70 hover:border-amber-500/50'
+                          }`}
+                        >
+                          <span className="text-amber-400 text-xs">★</span>
+                          <span className="text-xs font-black">سرية الأمن</span>
+                          <span className="text-[9px] px-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">خاصة</span>
+                        </button>
+
+                        {/* القوة الأساسية */}
+                        <button
+                          type="button"
+                          onClick={() => setNewForm({ ...newForm, company: 'القوة الأساسية' })}
+                          className={`py-2.5 px-2 rounded-xl border transition-all text-center flex items-center justify-center gap-1.5 ${
+                            newForm.company === 'القوة الأساسية'
+                              ? 'bg-slate-900 border-indigo-400 text-indigo-300 shadow-md shadow-indigo-950/40 scale-[1.02]'
+                              : 'bg-slate-950/80 border-indigo-600/30 text-indigo-400/70 hover:border-indigo-500/50'
+                          }`}
+                        >
+                          <span className="text-indigo-400 text-xs">★</span>
+                          <span className="text-xs font-black">القوة الأساسية</span>
+                          <span className="text-[9px] px-1 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">دائم</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -986,6 +1248,94 @@ export default function MobileApp({
                     </div>
                   </div>
 
+                </div>
+
+                {/* Section 2.5: Family & Social Investigation Details */}
+                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 space-y-3">
+                  <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                    <Users className="w-4 h-4" />
+                    بيانات الأسرة والفحص الأمني للعائلة
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">اسم الوالد</label>
+                      <input 
+                        type="text" 
+                        placeholder="اسم الوالد ثلاثي..." 
+                        value={newForm.father_name} 
+                        onChange={e => setNewForm({ ...newForm, father_name: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">مهنة الوالد</label>
+                      <input 
+                        type="text" 
+                        placeholder="مثال: عامل / مزارع / متوفى" 
+                        value={newForm.father_job} 
+                        onChange={e => setNewForm({ ...newForm, father_job: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">اسم الأم</label>
+                      <input 
+                        type="text" 
+                        placeholder="اسم والدة المجند..." 
+                        value={newForm.mother_name} 
+                        onChange={e => setNewForm({ ...newForm, mother_name: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">مهنة الأم</label>
+                      <input 
+                        type="text" 
+                        placeholder="مثال: ربة منزل / موظفة" 
+                        value={newForm.mother_job} 
+                        onChange={e => setNewForm({ ...newForm, mother_job: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] text-slate-300 font-semibold mb-1 block">فحص الإخوة والأشقاء</label>
+                    <input 
+                      type="text" 
+                      placeholder="عدد الأشقاء وملاحظات الفحص عليهم..." 
+                      value={newForm.siblings_check} 
+                      onChange={e => setNewForm({ ...newForm, siblings_check: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500 outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">الحالة الاجتماعية للأسرة</label>
+                      <input 
+                        type="text" 
+                        placeholder="مستقرة / الوالدان على قيد الحياة..." 
+                        value={newForm.family_social_status} 
+                        onChange={e => setNewForm({ ...newForm, family_social_status: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-300 font-semibold mb-1 block">الموقف الجنائي والسياسي للعائلة</label>
+                      <input 
+                        type="text" 
+                        placeholder="خالية من السوابق والشبهات..." 
+                        value={newForm.family_security_status} 
+                        onChange={e => setNewForm({ ...newForm, family_security_status: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500 outline-none"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {/* Section 3: 20-Point Security Inspection Checklist */}
@@ -1211,13 +1561,26 @@ export default function MobileApp({
                   </span>
                 </div>
 
-                <button
-                  onClick={() => setShowExportModal(true)}
-                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>تصدير المحددين</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowExportModal(true)}
+                    className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1 shadow"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>تصدير ({selectedIds.length})</span>
+                  </button>
+
+                  {(!currentUser || currentUser.role === 'admin') && (
+                    <button
+                      onClick={handleBulkDelete}
+                      className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold flex items-center gap-1 shadow-md shadow-rose-950/50"
+                      title="حذف المجندين المحددين نهائياً"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>حذف ({selectedIds.length})</span>
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1518,7 +1881,9 @@ export default function MobileApp({
                 'السرية الثالثة ( ٣ )',
                 'السرية الرابعة ( ٤ )',
                 'السرية الخامسة ( ٥ )',
-                'السرية السادسة ( ٦ )'
+                'السرية السادسة ( ٦ )',
+                'سرية الأمن',
+                'القوة الأساسية'
               ].map(comp => {
                 const count = recruits.filter(r => r.company === comp).length;
                 const percent = recruits.length > 0 ? Math.round((count / recruits.length) * 100) : 0;
@@ -1804,7 +2169,7 @@ export default function MobileApp({
 
               {/* 6. Activity Log (Audit Trail) */}
               <div 
-                onClick={() => setActivityRecruit({ id: 'all' })}
+                onClick={onOpenAuditLogs}
                 className="p-3.5 flex items-center justify-between hover:bg-slate-850 cursor-pointer transition-colors"
               >
                 <div className="flex items-center gap-3">
@@ -1867,10 +2232,18 @@ export default function MobileApp({
 
               <button
                 onClick={onLogout}
-                className="w-full py-3 px-4 rounded-xl bg-rose-950/20 hover:bg-rose-950/40 text-rose-300 border border-rose-800/40 text-xs font-bold flex items-center justify-center gap-2"
+                className="w-full py-3 px-4 rounded-xl bg-slate-850 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs font-bold flex items-center justify-center gap-2"
               >
-                <LogOut className="w-4 h-4" />
-                <span>تسجيل الخروج من المنظومة</span>
+                <LogOut className="w-4 h-4 text-slate-400" />
+                <span>تسجيل الخروج من الحساب</span>
+              </button>
+
+              <button
+                onClick={handleQuitApp}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-rose-950 to-red-950 hover:from-rose-900 hover:to-red-900 text-rose-200 border border-rose-800/60 text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-rose-950/40"
+              >
+                <Power className="w-4 h-4 text-rose-400" />
+                <span>إغلاق المنظومة وإنهاء تشغيل البرنامج</span>
               </button>
             </div>
 
@@ -1916,19 +2289,21 @@ export default function MobileApp({
 
             {/* Filter: Company */}
             <div>
-              <label className="text-xs font-bold text-slate-300 mb-1.5 block">السرية</label>
+              <label className="text-xs font-bold text-slate-300 mb-1.5 block">السرية / الوحدة</label>
               <select
                 value={filterCompany}
                 onChange={e => setFilterCompany(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-white outline-none"
               >
-                <option value="all">كافة السرايا</option>
+                <option value="all">كافة السرايا والوحدات</option>
                 <option value="السرية الأولى ( ١ )">السرية الأولى</option>
                 <option value="السرية الثانية ( ٢ )">السرية الثانية</option>
                 <option value="السرية الثالثة ( ٣ )">السرية الثالثة</option>
                 <option value="السرية الرابعة ( ٤ )">السرية الرابعة</option>
                 <option value="السرية الخامسة ( ٥ )">السرية الخامسة</option>
                 <option value="السرية السادسة ( ٦ )">السرية السادسة</option>
+                <option value="سرية الأمن">سرية الأمن (خاصة)</option>
+                <option value="القوة الأساسية">القوة الأساسية (المركز)</option>
               </select>
             </div>
 
@@ -2146,23 +2521,47 @@ export default function MobileApp({
                 <span>تقرير رسمي A4</span>
               </button>
 
-              {/* 5. Edit Dossier */}
+              {/* 4.5. Activity & Events Log */}
               <button
-                onClick={() => setIsEditingRecruit(!isEditingRecruit)}
-                className="p-2 rounded-xl bg-amber-600/15 hover:bg-amber-600/25 border border-amber-500/30 text-amber-300 text-[11px] font-bold flex flex-col items-center gap-1"
+                onClick={() => setActivityRecruit(selectedRecruit)}
+                className="p-2 rounded-xl bg-teal-600/15 hover:bg-teal-600/25 border border-teal-500/30 text-teal-300 text-[11px] font-bold flex flex-col items-center gap-1"
+                title="سجل المتابعات والتحركات الطبية والوقائع"
               >
-                <Edit3 className="w-4 h-4 text-amber-400" />
-                <span>{isEditingRecruit ? 'إلغاء التعديل' : 'تعديل الملف'}</span>
+                <Activity className="w-4 h-4 text-teal-400" />
+                <span>المتابعة والوقائع</span>
               </button>
 
-              {/* 6. Delete */}
+              {/* 4.6. History / Timeline */}
               <button
-                onClick={() => handleDeleteRecruit(selectedRecruit.id)}
-                className="p-2 rounded-xl bg-rose-600/15 hover:bg-rose-600/25 border border-rose-500/30 text-rose-300 text-[11px] font-bold flex flex-col items-center gap-1"
+                onClick={() => setHistoryRecruit(selectedRecruit)}
+                className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-amber-300 text-[11px] font-bold flex flex-col items-center gap-1"
+                title="سجل التعديلات والعمليات السابقة"
               >
-                <Trash2 className="w-4 h-4 text-rose-400" />
-                <span>حذف السجل</span>
+                <History className="w-4 h-4 text-amber-400" />
+                <span>سجل التعديلات</span>
               </button>
+
+              {/* 5. Edit Dossier (Not allowed for Operator) */}
+              {(!currentUser || currentUser.role !== 'operator') && (
+                <button
+                  onClick={() => setIsEditingRecruit(!isEditingRecruit)}
+                  className="p-2 rounded-xl bg-amber-600/15 hover:bg-amber-600/25 border border-amber-500/30 text-amber-300 text-[11px] font-bold flex flex-col items-center gap-1"
+                >
+                  <Edit3 className="w-4 h-4 text-amber-400" />
+                  <span>{isEditingRecruit ? 'إلغاء التعديل' : 'تعديل الملف'}</span>
+                </button>
+              )}
+
+              {/* 6. Delete (Admin Only) */}
+              {(!currentUser || currentUser.role === 'admin') && (
+                <button
+                  onClick={() => handleDeleteRecruit(selectedRecruit.id)}
+                  className="p-2 rounded-xl bg-rose-600/15 hover:bg-rose-600/25 border border-rose-500/30 text-rose-300 text-[11px] font-bold flex flex-col items-center gap-1"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-400" />
+                  <span>حذف السجل</span>
+                </button>
+              )}
 
             </div>
 
@@ -2180,12 +2579,20 @@ export default function MobileApp({
                     <span className="font-bold text-white font-mono">{selectedRecruit.national_id || '-'}</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-800/80">
-                    <span className="text-slate-400">السرية:</span>
+                    <span className="text-slate-400">رقم الشرطة (كارت الدولاب):</span>
+                    <span className="font-bold text-cyan-400 font-mono">{selectedRecruit.police_number || '-'}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/80">
+                    <span className="text-slate-400">السرية / الوحدة:</span>
                     <span className="font-bold text-emerald-400">{selectedRecruit.company || '-'}</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-800/80">
                     <span className="text-slate-400">المؤهل الدراسي:</span>
                     <span className="font-bold text-white">{selectedRecruit.qualification || '-'}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/80">
+                    <span className="text-slate-400">المهنة الحالية / الحرف:</span>
+                    <span className="font-bold text-white">{selectedRecruit.current_job || '-'} {selectedRecruit.other_jobs ? `(${selectedRecruit.other_jobs})` : ''}</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-800/80">
                     <span className="text-slate-400">محل الإقامة:</span>
@@ -2199,13 +2606,65 @@ export default function MobileApp({
                     <span className="text-slate-400">اللياقة الطبية:</span>
                     <span className="font-bold text-emerald-400">{selectedRecruit.medical_status || 'لائق'}</span>
                   </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/80">
+                    <span className="text-slate-400">السفر للخارج:</span>
+                    <span className="font-bold text-white">{selectedRecruit.travel_abroad || 'لم يسافر خارج البلاد'}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/80">
+                    <span className="text-slate-400">إجادة القراءة والكتابة:</span>
+                    <span className="font-bold text-white">{selectedRecruit.literacy || 'يجيد القراءة والكتابة'}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-800/80">
+                    <span className="text-slate-400">الحالة الاجتماعية:</span>
+                    <span className="font-bold text-white">{selectedRecruit.wife || selectedRecruit.marital_status || 'أعزب'}</span>
+                  </div>
                   <div className="flex justify-between py-1">
-                    <span className="text-slate-400">الموقف الأمني:</span>
+                    <span className="text-slate-400">الموقف الأمني العام:</span>
                     <span className={`font-bold ${selectedRecruit.inspection === 'سليم' ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {selectedRecruit.inspection || 'سليم'}
                     </span>
                   </div>
                 </div>
+
+                {/* Family Details Box */}
+                {(selectedRecruit.father_name || selectedRecruit.mother_name || selectedRecruit.siblings_check || selectedRecruit.family_security_status) && (
+                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1.5 text-xs">
+                    <div className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5 border-b border-slate-800 pb-1">
+                      <Users className="w-3.5 h-3.5" />
+                      <span>بيانات الأسرة والفحص العائلي</span>
+                    </div>
+                    {selectedRecruit.father_name && (
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-slate-400">الوالد:</span>
+                        <span className="font-bold text-white">{selectedRecruit.father_name} ({selectedRecruit.father_job || 'عامل'})</span>
+                      </div>
+                    )}
+                    {selectedRecruit.mother_name && (
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-slate-400">الأم:</span>
+                        <span className="font-bold text-white">{selectedRecruit.mother_name} ({selectedRecruit.mother_job || 'ربة منزل'})</span>
+                      </div>
+                    )}
+                    {selectedRecruit.siblings_check && (
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-slate-400">فحص الأشقاء:</span>
+                        <span className="font-bold text-white">{selectedRecruit.siblings_check}</span>
+                      </div>
+                    )}
+                    {selectedRecruit.family_social_status && (
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-slate-400">الحالة الاجتماعية للأسرة:</span>
+                        <span className="font-bold text-white">{selectedRecruit.family_social_status}</span>
+                      </div>
+                    )}
+                    {selectedRecruit.family_security_status && (
+                      <div className="flex justify-between py-0.5">
+                        <span className="text-slate-400">الموقف الأمني للعائلة:</span>
+                        <span className="font-bold text-emerald-400">{selectedRecruit.family_security_status}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* 20 Security Inspection Checkpoints display */}
                 <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
@@ -2277,6 +2736,27 @@ export default function MobileApp({
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1">رقم الشرطة (كارت الدولاب)</label>
+                    <input 
+                      type="text"
+                      value={editFormData.police_number || ''}
+                      onChange={e => setEditFormData({ ...editFormData, police_number: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs text-white font-mono outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1">رقم الهاتف</label>
+                    <input 
+                      type="tel"
+                      value={editFormData.phone || ''}
+                      onChange={e => setEditFormData({ ...editFormData, phone: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs text-white font-mono outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
                     <label className="text-[11px] text-slate-400 font-bold block mb-1">المؤهل</label>
                     <select
                       value={editFormData.qualification || 'متوسط'}
@@ -2287,22 +2767,70 @@ export default function MobileApp({
                       <option value="فوق متوسط">فوق متوسط</option>
                       <option value="متوسط">متوسط</option>
                       <option value="عادة">عادة</option>
+                      <option value="محو أمية">محو أمية</option>
                     </select>
                   </div>
                   <div>
-                    <label className="text-[11px] text-slate-400 font-bold block mb-1">السرية</label>
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1">السرية / الوحدة</label>
                     <select
                       value={editFormData.company || 'السرية الأولى ( ١ )'}
                       onChange={e => setEditFormData({ ...editFormData, company: e.target.value })}
                       className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs text-white outline-none"
                     >
-                      <option value="السرية الأولى ( ١ )">السرية الأولى</option>
-                      <option value="السرية الثانية ( ٢ )">السرية الثانية</option>
-                      <option value="السرية الثالثة ( ٣ )">السرية الثالثة</option>
-                      <option value="السرية الرابعة ( ٤ )">السرية الرابعة</option>
-                      <option value="السرية الخامسة ( ٥ )">السرية الخامسة</option>
-                      <option value="السرية السادسة ( ٦ )">السرية السادسة</option>
+                      <option value="السرية الأولى ( ١ )">السرية الأولى ( ١ )</option>
+                      <option value="السرية الثانية ( ٢ )">السرية الثانية ( ٢ )</option>
+                      <option value="السرية الثالثة ( ٣ )">السرية الثالثة ( ٣ )</option>
+                      <option value="السرية الرابعة ( ٤ )">السرية الرابعة ( ٤ )</option>
+                      <option value="السرية الخامسة ( ٥ )">السرية الخامسة ( ٥ )</option>
+                      <option value="السرية السادسة ( ٦ )">السرية السادسة ( ٦ )</option>
+                      <option value="سرية الأمن">سرية الأمن (خاصة)</option>
+                      <option value="القوة الأساسية">القوة الأساسية (المركز)</option>
                     </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1">اللياقة الطبية</label>
+                    <select
+                      value={editFormData.medical_status || 'لائق'}
+                      onChange={e => setEditFormData({ ...editFormData, medical_status: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs text-white outline-none"
+                    >
+                      <option value="لائق">لائق</option>
+                      <option value="لائق ب">لائق ب</option>
+                      <option value="غير لائق">غير لائق</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1">المهنة الحالية</label>
+                    <input 
+                      type="text"
+                      value={editFormData.current_job || ''}
+                      onChange={e => setEditFormData({ ...editFormData, current_job: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs text-white outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1">اسم الوالد</label>
+                    <input 
+                      type="text"
+                      value={editFormData.father_name || ''}
+                      onChange={e => setEditFormData({ ...editFormData, father_name: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs text-white outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-400 font-bold block mb-1">اسم الأم</label>
+                    <input 
+                      type="text"
+                      value={editFormData.mother_name || ''}
+                      onChange={e => setEditFormData({ ...editFormData, mother_name: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs text-white outline-none"
+                    />
                   </div>
                 </div>
 
@@ -2409,12 +2937,27 @@ export default function MobileApp({
         />
       )}
 
-      {/* 7. Activity Log Modal (سجل العمليات والرقابة) */}
+      {/* 7. Activity Log Modal (سجل المتابعات الطبية والوقائع) */}
       {activityRecruit && (
         <ActivityLogModal
           isOpen={!!activityRecruit}
+          recruit={activityRecruit}
           recruitId={activityRecruit.id === 'all' ? null : activityRecruit.id}
           onClose={() => setActivityRecruit(null)}
+          onRefreshRecruits={() => {
+            fetchMobileRecruits();
+            onRefresh();
+          }}
+          companyColors={companyColors}
+        />
+      )}
+
+      {/* 8. Recruit History Modal (سجل الحركات والتعديلات) */}
+      {historyRecruit && (
+        <RecruitHistoryModal
+          recruit={historyRecruit}
+          onClose={() => setHistoryRecruit(null)}
+          companyColors={companyColors}
         />
       )}
 

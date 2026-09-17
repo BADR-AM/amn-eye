@@ -8,7 +8,8 @@ import {
   FileText,
   Scan,
   ShieldAlert,
-  Edit3
+  Edit3,
+  Trash2
 } from 'lucide-react';
 
 export default function SideInvestigationPanel({ 
@@ -20,7 +21,9 @@ export default function SideInvestigationPanel({
   onOpenDocuments,
   onOpenTickets,
   onOpenPsychological,
-  onOpenEdit
+  onOpenEdit,
+  onDeleteRecruit,
+  currentUser
 }) {
   if (!recruit) return null;
 
@@ -223,6 +226,21 @@ export default function SideInvestigationPanel({
           <Eye className="w-4 h-4" />
           <span>عرض الملف الكامل (Dossier)</span>
         </button>
+
+        {(!currentUser || currentUser.role === 'admin') && onDeleteRecruit && (
+          <button
+            onClick={() => {
+              if (confirm(`هل أنت متأكد من حذف ملف المجند "${recruit.name}" نهائياً من المنظومة؟ هذا الإجراء لا يمكن التراجع عنه.`)) {
+                onDeleteRecruit(recruit.id);
+                onClose();
+              }
+            }}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white font-bold text-xs border border-rose-500/30 transition-all"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>حذف ملف المجند نهائياً</span>
+          </button>
+        )}
       </div>
 
     </div>

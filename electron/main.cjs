@@ -1,6 +1,12 @@
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, session, ipcMain } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
+
+// IPC Handlers for app lifecycle
+ipcMain.handle('app-quit', () => {
+  console.log('🛑 استلام أمر إغلاق المنظومة من واجهة المستخدم، جاري إنهاء Electron...');
+  app.quit();
+});
 
 let mainWindow = null;
 const PORT = process.env.PORT || 5000;

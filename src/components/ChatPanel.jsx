@@ -85,7 +85,6 @@ export default function ChatPanel({ isOpen, onClose, activeBatch }) {
     setMessages([...currentMessages, { role: 'model', content: '', thoughts: '', suggestions: [] }]);
 
     try {
-      // Stream via Server-Sent Events (SSE)
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -94,6 +93,11 @@ export default function ChatPanel({ isOpen, onClose, activeBatch }) {
           history: currentMessages.slice(0, -1)
         })
       });
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || 'تعذر الاتصال بالمساعد الذكي');
+      }
 
       if (!response.body) throw new Error('لا يوجد تدفق للردود');
 

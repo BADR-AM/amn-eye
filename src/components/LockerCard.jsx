@@ -41,9 +41,29 @@ const LockerCard = forwardRef(({
   const companyLabel = recruit.company?.trim() || 'السرية الثالثة ( ٣ )';
   const colorConfig = getCompanyColorConfig(companyLabel, companyColors);
   
-  const headerBg = customHeaderColor || colorConfig.color || '#f37021';
-  const headerText = customTextColor || colorConfig.textColor || (headerBg === '#ffffff' ? '#000000' : '#ffffff');
-  const dividerColor = headerText === '#ffffff' ? 'rgba(255,255,255,0.85)' : '#000000';
+  const isSecurityCompany = companyLabel.includes('أمن');
+  const isBaseForce = companyLabel.includes('أساسية') || companyLabel.includes('اساسية');
+  const isSpecialUnit = isSecurityCompany || isBaseForce;
+
+  const headerTitle = isSecurityCompany 
+    ? 'قطاع الأمن المركزي — سرية الأمن' 
+    : isBaseForce 
+    ? 'مركز تدريب المجندين — القوة الأساسية' 
+    : 'مركز تدريب المجندين';
+
+  const headerBg = customHeaderColor || (
+    isSecurityCompany ? '#090d16' :
+    isBaseForce ? '#1e1b4b' :
+    colorConfig.color || '#f37021'
+  );
+
+  const headerText = customTextColor || (
+    isSecurityCompany ? '#fef08a' :
+    isBaseForce ? '#fde047' :
+    colorConfig.textColor || (headerBg === '#ffffff' ? '#000000' : '#ffffff')
+  );
+
+  const dividerColor = isSpecialUnit ? '#eab308' : (headerText === '#ffffff' ? 'rgba(255,255,255,0.85)' : '#000000');
 
   const cardElement = (
     <div
@@ -59,20 +79,28 @@ const LockerCard = forwardRef(({
         letterSpacing: '0px',
         wordSpacing: '0px',
         direction: 'rtl',
+        border: isSpecialUnit ? '3px solid #b45309' : '2px solid #000000',
+        boxShadow: isSpecialUnit ? 'inset 0 0 0 2px #fef08a, 0 4px 12px rgba(0,0,0,0.15)' : undefined
       }}
-      className={`relative bg-white text-black select-none overflow-hidden border-2 border-black shadow-md flex flex-col ${className}`}
+      className={`relative bg-white text-black select-none overflow-hidden shadow-md flex flex-col ${className}`}
       dir="rtl"
     >
-      {/* 1. Header Bar: Color determined dynamically by company */}
+      {/* 1. Header Bar: Color determined dynamically by company or prestigious styling */}
       <div 
-        style={{ backgroundColor: headerBg, color: headerText }}
-        className="w-full border-b-2 border-black pt-2.5 pb-2 px-4 flex flex-col items-center justify-center transition-colors shrink-0"
+        style={{ 
+          backgroundColor: headerBg, 
+          color: headerText,
+          borderBottom: isSpecialUnit ? '3px solid #eab308' : '2px solid #000000'
+        }}
+        className="w-full pt-2.5 pb-2 px-4 flex flex-col items-center justify-center transition-colors shrink-0"
       >
         <h1 
-          className="font-black text-[27px] leading-tight m-0 text-center"
+          className="font-black text-[27px] leading-tight m-0 text-center flex items-center gap-2"
           style={{ fontFamily: "'Cairo', 'Segoe UI', Tahoma, sans-serif", color: headerText, letterSpacing: '0px' }}
         >
-          مركز تدريب المجندين
+          {isSpecialUnit && <span className="text-[20px] text-amber-300">★</span>}
+          <span>{headerTitle}</span>
+          {isSpecialUnit && <span className="text-[20px] text-amber-300">★</span>}
         </h1>
         <div 
           className="w-11/12 h-[2px] mt-1"
@@ -123,16 +151,22 @@ const LockerCard = forwardRef(({
             {restName || recruit.name}
           </div>
 
-          {/* Company Badge (Color-coded with company) */}
+          {/* Company Badge (Color-coded with company or prestigious military badge) */}
           <div 
-            style={{ backgroundColor: headerBg, borderColor: '#000000' }}
-            className="border-2 px-5 py-1 rounded-[2px] shadow-sm mb-2.5 transition-colors inline-block"
+            style={{ 
+              backgroundColor: isSpecialUnit ? (isSecurityCompany ? '#090d16' : '#1e1b4b') : headerBg, 
+              borderColor: isSpecialUnit ? '#eab308' : '#000000',
+              borderWidth: '2px'
+            }}
+            className="px-5 py-1 rounded-[3px] shadow-sm mb-2.5 transition-colors inline-block"
           >
             <span 
-              className="font-extrabold text-[14px]"
-              style={{ color: headerText, fontFamily: "'Cairo', 'Segoe UI', Tahoma, sans-serif", letterSpacing: '0px' }}
+              className="font-extrabold text-[14px] flex items-center justify-center gap-1.5"
+              style={{ color: isSpecialUnit ? '#fef08a' : headerText, fontFamily: "'Cairo', 'Segoe UI', Tahoma, sans-serif", letterSpacing: '0px' }}
             >
-              {companyLabel}
+              {isSpecialUnit && <span className="text-amber-400">★</span>}
+              <span>{companyLabel}</span>
+              {isSpecialUnit && <span className="text-amber-400">★</span>}
             </span>
           </div>
 

@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { get, query, run } from './db.js';
+import { logAudit } from './auditLogger.js';
 
 const DEFAULT_JWT_SECRET = '7e131eddafb06b08511e744666e8d2d34137b093a9e8e66ba0f1d194b4eda80ae326ed4d84ed35b6d54792892f4e7b4d';
 // Default hash for password '123456'
@@ -8,7 +9,7 @@ const DEFAULT_ADMIN_HASH = '$2b$10$bNpheeFBkTWNE1sDaCkmcuLCYEYzuHbmA/BVAvsHawdBr
 
 const getSecret = () => process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
 const getHash = () => process.env.ADMIN_PASSWORD_HASH || DEFAULT_ADMIN_HASH;
-const TOKEN_EXPIRY = '24h';
+const TOKEN_EXPIRY = '30d';
 
 export const generateToken = (payload) => {
   return jwt.sign(payload, getSecret(), { expiresIn: TOKEN_EXPIRY });
@@ -23,10 +24,6 @@ export const hashPassword = async (plain) => {
 };
 
 export const comparePassword = async (plain, hash) => {
-  // Always accept standard default passwords for instant setup
-  if (plain === '123456' || plain === 'admin123' || plain === 'admin') {
-    return true;
-  }
   if (!hash) return false;
   return bcrypt.compare(plain, hash);
 };
@@ -34,16 +31,20 @@ export const comparePassword = async (plain, hash) => {
 export const requireAuth = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'غير مصرح - يرجى تسجيل الدخول' });
+    return res.status(401).json({ error: 'انتهت صلاحية الجلسة - يرجى إعادة تسجيل الدخول' });
   }
 
   const token = authHeader.split(' ')[1];
+  if (!token || token === 'null' || token === 'undefined') {
+    return res.status(401).json({ error: 'انتهت صلاحية الجلسة - يرجى إعادة تسجيل الدخول' });
+  }
+
   try {
     const decoded = verifyToken(token);
     req.user = decoded;
     next();
   } catch (err) {
-    return res.status(401).json({ error: 'الجلسة منتهية الصلاحية - يرجى إعادة تسجيل الدخول' });
+    return res.status(401).json({ error: 'انتهت صلاحية الجلسة - يرجى إعادة تسجيل الدخول' });
   }
 };
 
@@ -77,6 +78,12 @@ export const handleLogin = async (req, res) => {
         match = await comparePassword(password, getHash());
       }
       if (!match) {
+        logAudit(req, {
+          action_type: 'LOGIN_FAILED',
+          entity_type: 'auth',
+          entity_name: targetUsername,
+          details: `محاولة تسجيل دخول فاشلة للمستخدم: ${targetUsername}`
+        });
         return res.status(401).json({ error: 'كلمة المرور أو اسم المستخدم غير صحيح' });
       }
 
@@ -86,6 +93,18 @@ export const handleLogin = async (req, res) => {
         full_name: userRow.full_name,
         role: userRow.role || 'officer'
       };
+
+      logAudit(req, {
+        action_type: 'LOGIN_SUCCESS',
+        entity_type: 'auth',
+        entity_id: userPayload.id,
+        entity_name: userPayload.username,
+        details: `تسجيل دخول ناجح للمستخدم: ${userPayload.full_name} (${userPayload.username})`,
+        user_id: userPayload.id,
+        username: userPayload.username,
+        user_fullname: userPayload.full_name,
+        user_role: userPayload.role
+      });
 
       const token = generateToken(userPayload);
       return res.json({
@@ -105,6 +124,17 @@ export const handleLogin = async (req, res) => {
           full_name: 'مدير المنظومة',
           role: 'admin'
         };
+        logAudit(req, {
+          action_type: 'LOGIN_SUCCESS',
+          entity_type: 'auth',
+          entity_id: adminPayload.id,
+          entity_name: adminPayload.username,
+          details: 'تسجيل دخول ناجح لمدير المنظومة الافتراضي (admin)',
+          user_id: adminPayload.id,
+          username: adminPayload.username,
+          user_fullname: adminPayload.full_name,
+          user_role: adminPayload.role
+        });
         const token = generateToken(adminPayload);
         return res.json({
           token,
@@ -114,6 +144,12 @@ export const handleLogin = async (req, res) => {
       }
     }
 
+    logAudit(req, {
+      action_type: 'LOGIN_FAILED',
+      entity_type: 'auth',
+      entity_name: targetUsername,
+      details: `محاولة تسجيل دخول فاشلة بحساب غير موجود: ${targetUsername}`
+    });
     return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
   } catch (err) {
     console.error('Login error:', err);

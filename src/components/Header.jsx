@@ -14,28 +14,13 @@ import {
   HardDrive,
   Users,
   KeyRound,
-  Smartphone
+  Smartphone,
+  Power
 } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
 import LiquidOrb from './LiquidOrb';
 
-export default function Header({ 
-  activeBatch, 
-  currentUser,
-  onOpenUsers,
-  onOpenChangePassword,
-  onOpenKiosk, 
-  onOpenBatches, 
-  onOpenNetwork, 
-  onOpenBackup,
-  onOpenAiChat,
-  onSwitchToMobile,
-  theme,
-  onToggleTheme,
-  networkInfo,
-  onRefresh,
-  onLogout
-}) {
+function LiveClock() {
   const [timeStr, setTimeStr] = useState('');
   const [dateStr, setDateStr] = useState('');
 
@@ -49,6 +34,37 @@ export default function Header({
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  return (
+    <div className="flex items-center gap-2 text-slate-300">
+      <Clock className="w-4 h-4 text-slate-400" />
+      <div className="text-xs">
+        <span className="font-bold text-white">{timeStr}</span>
+        <span className="text-[10px] text-slate-400 mr-2">{dateStr}</span>
+      </div>
+    </div>
+  );
+}
+
+export default function Header({ 
+  activeBatch, 
+  currentUser,
+  onOpenUsers,
+  onOpenChangePassword,
+  onOpenKiosk, 
+  onOpenBatches, 
+  onOpenNetwork, 
+  onOpenBackup,
+  onOpenAiChat,
+  onOpenAuditLogs,
+  onSwitchToMobile,
+  theme,
+  onToggleTheme,
+  networkInfo,
+  onRefresh,
+  onLogout
+}) {
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false);
 
   return (
     <header className="bg-darkslate-900 dark:bg-zinc-950 border-b border-slate-800 dark:border-zinc-800 px-6 py-3 sticky top-0 z-30 shadow-xl no-print">
@@ -71,7 +87,7 @@ export default function Header({
               <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
                 منظومة فحص وتسجيل المجندين
                 <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">
-                  VER 02.0
+                  VER 02.1
                 </span>
               </h1>
             </div>
@@ -110,13 +126,7 @@ export default function Header({
 
           <div className="h-6 w-[1px] bg-slate-700 dark:bg-zinc-700 mx-1"></div>
 
-          <div className="flex items-center gap-2 text-slate-300">
-            <Clock className="w-4 h-4 text-slate-400" />
-            <div className="text-xs">
-              <span className="font-bold text-white">{timeStr}</span>
-              <span className="text-[10px] text-slate-400 mr-2">{dateStr}</span>
-            </div>
-          </div>
+          <LiveClock />
         </div>
 
         {/* Quick Action Buttons */}
@@ -198,6 +208,18 @@ export default function Header({
             </button>
           )}
 
+          {/* Audit Logs Trigger (Admin & Officer) */}
+          {(!currentUser || currentUser.role === 'admin' || currentUser.role === 'officer') && (
+            <button
+              onClick={onOpenAuditLogs}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-all shadow-sm"
+              title="سجل العمليات والرقابة وتتبع التعديلات وهوية الحسابات"
+            >
+              <Shield className="w-4 h-4 text-amber-400" />
+              <span className="hidden xl:inline">سجل الرقابة</span>
+            </button>
+          )}
+
           {/* User Profile Badge & Quick Password Change */}
           <div className="flex items-center gap-2 bg-darkslate-850 dark:bg-zinc-900 px-3 py-1.5 rounded-xl border border-slate-700/60 dark:border-zinc-800">
             <div className="text-right">
@@ -235,15 +257,66 @@ export default function Header({
           {/* Logout */}
           <button
             onClick={onLogout}
-            className="p-2 rounded-xl bg-darkslate-850 dark:bg-zinc-900 hover:bg-rose-900/40 text-slate-400 hover:text-rose-300 border border-slate-700/60 dark:border-zinc-800 transition-colors"
-            title="تسجيل الخروج"
+            className="p-2 rounded-xl bg-darkslate-850 dark:bg-zinc-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-700/60 dark:border-zinc-800 transition-colors"
+            title="تسجيل الخروج من الجلسة"
           >
             <LogOut className="w-4 h-4" />
+          </button>
+
+          {/* Quit / Exit App Entirely */}
+          <button
+            onClick={() => setShowQuitConfirm(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/30 transition-all shadow-sm"
+            title="إغلاق المنظومة والخروج من البرنامج"
+          >
+            <Power className="w-4 h-4 text-rose-500" />
+            <span className="hidden xl:inline text-xs font-bold">إغلاق البرنامج</span>
           </button>
 
         </div>
 
       </div>
+
+      {/* Confirmation Modal for Quitting Application */}
+      {showQuitConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-rose-500/40 rounded-2xl max-w-md w-full p-6 shadow-2xl text-center space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="w-14 h-14 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center mx-auto shadow-inner">
+              <Power className="w-7 h-7" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white mb-1">إغلاق منظومة عين الأمن</h3>
+              <p className="text-sm text-slate-300 leading-relaxed">
+                هل أنت متأكد من رغبتك في إغلاق المنظومة والخروج التام من التطبيق؟
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowQuitConfirm(false)}
+                className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all"
+              >
+                إلغاء الأمر
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.electronAPI && typeof window.electronAPI.quitApp === 'function') {
+                    window.electronAPI.quitApp();
+                  } else {
+                    onLogout();
+                    setShowQuitConfirm(false);
+                  }
+                }}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-lg shadow-rose-900/40 flex items-center gap-2"
+              >
+                <Power className="w-4 h-4" />
+                <span>نعم، إغلاق المنظومة</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

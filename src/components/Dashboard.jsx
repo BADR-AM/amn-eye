@@ -52,12 +52,14 @@ export default function Dashboard({
   stats, 
   batches, 
   activeBatch, 
+  currentUser,
   onOpenKiosk, 
   onSelectRecruit, 
   onPrintRecruit, 
   onDeleteRecruit,
   onOpenAiChat,
-  onRefresh
+  onRefresh,
+  refreshTrigger
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBatchId, setSelectedBatchId] = useState('all');
@@ -162,6 +164,44 @@ export default function Dashboard({
     }
   };
 
+  // Bulk Delete Selected Recruits (Admin only)
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (currentUser?.role && currentUser.role !== 'admin') {
+      alert('حذف المجندين مقتصر حصرياً على رتبة المشرف العام (Admin)');
+      return;
+    }
+    const confirmMsg = `هل أنت متأكد تماماً من حذف عدد (${selectedIds.length}) مجند محدد نهائياً من قاعدة البيانات والمنظومة؟\n\nتحذير: هذا الإجراء لا يمكن التراجع عنه وسيتم مسح كافة ملفاتهم وسجلاتهم!`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const res = await fetch('/api/recruits/bulk-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders()
+        },
+        body: JSON.stringify({ ids: selectedIds })
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'فشل حذف المجندين المحددين');
+      }
+
+      alert(`تم حذف (${selectedIds.length}) مجند بنجاح`);
+      setSelectedIds([]);
+      if (sidePanelRecruit && selectedIds.includes(sidePanelRecruit.id)) {
+        setSidePanelRecruit(null);
+      }
+      fetchRecruits();
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      alert(err.message || 'خطأ أثناء الحذف الجماعي');
+    }
+  };
+
   const handleUpdateRecruit = async (id, fields) => {
     try {
       const res = await fetch(`/api/recruits/${id}`, {
@@ -189,7 +229,7 @@ export default function Dashboard({
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchTerm);
-    }, 200);
+    }, 280);
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
@@ -228,7 +268,7 @@ export default function Dashboard({
 
   useEffect(() => {
     fetchRecruits();
-  }, [debouncedSearch, selectedBatchId, selectedQualification, selectedCompanyFilter, selectedDateFilter, selectedCategoryFilter, page]);
+  }, [debouncedSearch, selectedBatchId, selectedQualification, selectedCompanyFilter, selectedDateFilter, selectedCategoryFilter, page, refreshTrigger]);
 
   return (
     <div className="max-w-[1700px] w-full mx-auto px-4 sm:px-6 py-6 space-y-5 text-gray-100 font-sans">
@@ -476,6 +516,60 @@ export default function Dashboard({
 
         </div>
       </div>
+
+      {/* Bulk Selection Actions Bar */}
+      {selectedIds.length > 0 && (
+        <div className="bg-gradient-to-r from-blue-950/90 via-[#1e232d] to-slate-900 border border-blue-500/50 p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-2xl animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-ping"></div>
+            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+              <span>تم تحديد</span>
+              <strong className="text-blue-300 font-mono text-sm px-2 py-0.5 bg-blue-900/60 border border-blue-500/50 rounded">
+                {selectedIds.length}
+              </strong>
+              <span>مجند</span>
+            </span>
+            <button
+              onClick={toggleSelectAll}
+              className="text-[11px] font-semibold text-gray-300 hover:text-white underline px-2 py-0.5"
+            >
+              {allVisibleSelected ? 'إلغاء تحديد المعروض' : 'تحديد كل المعروض بالصفحة'}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Export Locker Cards Button */}
+            <button
+              onClick={() => setShowExportModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-[#f59e0b] hover:bg-[#d97706] text-black text-xs font-bold transition-all shadow"
+              title="تصدير كروت الدواليب للمجندين المحددين"
+            >
+              <IdCard className="w-4 h-4" />
+              <span>تصدير كروت المحددين ({selectedIds.length})</span>
+            </button>
+
+            {/* Bulk Delete Button (Admin only) */}
+            {(!currentUser || currentUser.role === 'admin') && (
+              <button
+                onClick={handleBulkDelete}
+                className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold transition-all shadow-lg shadow-rose-950/60 border border-rose-400/40"
+                title="حذف جميع كروت وسجلات المجندين المحددين نهائياً من المنظومة"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>حذف المحدد ({selectedIds.length})</span>
+              </button>
+            )}
+
+            {/* Clear Selection Button */}
+            <button
+              onClick={() => setSelectedIds([])}
+              className="px-3 py-2 bg-[#2a2a2a] hover:bg-[#383838] text-gray-300 hover:text-white text-xs font-semibold border border-[#525252] transition-colors"
+            >
+              إلغاء التحديد
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 3. Master Content: Large Cards Grid vs Table View */}
       <div className="flex flex-col lg:flex-row gap-5 items-start">
@@ -752,6 +846,25 @@ export default function Dashboard({
                             >
                               <Printer className="w-3.5 h-3.5" />
                             </button>
+
+                            {/* Individual Delete Button (Admin only) */}
+                            {(!currentUser || currentUser.role === 'admin') && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (confirm(`هل أنت متأكد من حذف ملف المجند "${r.name}" نهائياً من المنظومة؟ هذا الإجراء لا يمكن التراجع عنه.`)) {
+                                    onDeleteRecruit(r.id);
+                                    if (sidePanelRecruit && sidePanelRecruit.id === r.id) {
+                                      setSidePanelRecruit(null);
+                                    }
+                                  }
+                                }}
+                                className="p-1.5 bg-[#2d2d2d] hover:bg-rose-700 text-gray-400 hover:text-white transition-colors"
+                                title="حذف المجند نهائياً (Admin)"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
 
                         </div>
@@ -957,20 +1070,22 @@ export default function Dashboard({
                               >
                                 <Printer className="w-3.5 h-3.5" />
                               </button>
-                              <button
-                                onClick={() => {
-                                  if (confirm(`هل أنت متأكد من حذف ملف المجند "${r.name}"؟`)) {
-                                    onDeleteRecruit(r.id);
-                                    if (sidePanelRecruit && sidePanelRecruit.id === r.id) {
-                                      setSidePanelRecruit(null);
+                              {(!currentUser || currentUser.role === 'admin') && (
+                                <button
+                                  onClick={() => {
+                                    if (confirm(`هل أنت متأكد من حذف ملف المجند "${r.name}"؟ هذا الإجراء نهائي.`)) {
+                                      onDeleteRecruit(r.id);
+                                      if (sidePanelRecruit && sidePanelRecruit.id === r.id) {
+                                        setSidePanelRecruit(null);
+                                      }
                                     }
-                                  }
-                                }}
-                                className="p-1 bg-[#262626] hover:bg-rose-950 text-gray-400 hover:text-rose-300 border border-[#444]"
-                                title="حذف المجند"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                                  }}
+                                  className="p-1 bg-[#262626] hover:bg-rose-950 text-gray-400 hover:text-rose-300 border border-[#444]"
+                                  title="حذف المجند (مدير فقط)"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1045,6 +1160,8 @@ export default function Dashboard({
               onOpenDocuments={(r) => setDocumentsRecruit(r)}
               onOpenTickets={(r) => setTicketRecruit(r)}
               onOpenPsychological={(r) => setPsychologicalRecruit(r)}
+              onDeleteRecruit={onDeleteRecruit}
+              currentUser={currentUser}
             />
           </div>
         )}

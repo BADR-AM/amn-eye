@@ -54,6 +54,28 @@ export const DEFAULT_COMPANY_COLORS = [
     color: '#38bdf8', // لبني
     textColor: '#000000',
     borderColor: '#0284c7'
+  },
+  { 
+    id: 'sec', 
+    match: 'أمن', 
+    number: 'أ',
+    name: 'سرية الأمن', 
+    color: '#090d16', // كحلي داكن ملكي
+    textColor: '#fef08a', // ذهبي فاتح
+    borderColor: '#eab308',
+    isSpecialUnit: true,
+    badgeText: 'سرية الأمن'
+  },
+  { 
+    id: 'base', 
+    match: 'أساسية', 
+    number: 'ق',
+    name: 'القوة الأساسية', 
+    color: '#1e1b4b', // أرجواني كحلي داكن
+    textColor: '#fde047', // ذهبي مميز
+    borderColor: '#f59e0b',
+    isSpecialUnit: true,
+    badgeText: 'القوة الأساسية'
   }
 ];
 

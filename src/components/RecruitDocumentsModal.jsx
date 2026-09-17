@@ -3,7 +3,7 @@ import {
   X, Upload, Camera, FileText, CheckCircle2, AlertTriangle, 
   Trash2, Printer, Download, Eye, ZoomIn, RefreshCw, Shield, Scan
 } from 'lucide-react';
-import { authHeaders } from '../utils/auth';
+import { authHeaders, getUser } from '../utils/auth';
 
 export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecruits }) {
   if (!recruit) return null;
@@ -20,6 +20,13 @@ export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecru
   
   // Preview / Zoom state
   const [previewDoc, setPreviewDoc] = useState(null);
+
+  // Subsequent additional documents state
+  const [showAddOtherDoc, setShowAddOtherDoc] = useState(false);
+  const [otherDocTitle, setOtherDocTitle] = useState('بطاقة شخصية - وجه');
+  const [otherDocCustomTitle, setOtherDocCustomTitle] = useState('');
+  const [otherDocNotes, setOtherDocNotes] = useState('');
+  const currentUser = getUser();
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -604,6 +611,156 @@ export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecru
               </div>
 
             </div>
+          </div>
+
+          {/* Section 3: Additional & Subsequent Documents (المستندات والوثائق الإضافية اللاحقة) */}
+          <div className="border-t border-[#333333] pt-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#333333] pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-cyan-400" />
+                <div>
+                  <h3 className="text-base font-bold text-white">المستندات والوثائق الإضافية اللاحقة</h3>
+                  <p className="text-xs text-gray-400">
+                    يمكن رفع أو مسح أو تصوير أي مستندات لاحقة (صورة البطاقة وجه/ظهر، فيش وتشبيه، شهادات ميلاد، تقارير طبية، إلخ)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddOtherDoc(!showAddOtherDoc)}
+                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-2 shadow transition-all"
+              >
+                <span>➕ إضافة مستند جديد</span>
+              </button>
+            </div>
+
+            {/* Add Other Document Form */}
+            {showAddOtherDoc && (
+              <div className="bg-[#1c1c1c] border border-cyan-500/40 p-4 mb-4 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-300 mb-1">نوع المستند:</label>
+                    <select
+                      value={otherDocTitle}
+                      onChange={(e) => setOtherDocTitle(e.target.value)}
+                      className="w-full bg-[#262626] border border-[#525252] text-white text-xs px-3 py-2 focus:border-cyan-500 focus:outline-none"
+                    >
+                      <option value="بطاقة شخصية - وجه">بطاقة شخصية - وجه</option>
+                      <option value="بطاقة شخصية - ظهر">بطاقة شخصية - ظهر</option>
+                      <option value="صحيفة الحالة الجنائية (فيش وتشبيه)">صحيفة الحالة الجنائية (فيش وتشبيه)</option>
+                      <option value="شهادة ميلاد كمبيوتر">شهادة ميلاد كمبيوتر</option>
+                      <option value="تقرير طبي معتمد">تقرير طبي معتمد</option>
+                      <option value="إقرار استلام مهمات">إقرار استلام مهمات</option>
+                      <option value="مستند آخر">مستند آخر</option>
+                    </select>
+                  </div>
+
+                  {otherDocTitle === 'مستند آخر' && (
+                    <div>
+                      <label className="block text-xs font-bold text-gray-300 mb-1">اسم / وصف المستند:</label>
+                      <input
+                        type="text"
+                        placeholder="مثال: شهادة تخرج / إقرار عائلي..."
+                        value={otherDocCustomTitle}
+                        onChange={(e) => setOtherDocCustomTitle(e.target.value)}
+                        className="w-full bg-[#262626] border border-[#525252] text-white text-xs px-3 py-2 focus:border-cyan-500 focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-gray-300 mb-1">ملاحظات على المستند (اختياري):</label>
+                    <input
+                      type="text"
+                      placeholder="أي ملاحظات حول المستند أو تاريخ استلامه..."
+                      value={otherDocNotes}
+                      onChange={(e) => setOtherDocNotes(e.target.value)}
+                      className="w-full bg-[#262626] border border-[#525252] text-white text-xs px-3 py-2 focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveUploadType('other');
+                      fileInputRef.current?.click();
+                    }}
+                    className="flex-1 py-2 px-4 bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>رفع ملف من الجهاز (صورة أو PDF)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => startCamera('other')}
+                    className="flex-1 py-2 px-4 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Camera className="w-4 h-4" />
+                    <span>تصوير بالكاميرا / الماسح</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Other Documents List / Grid */}
+            {otherDocs.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {otherDocs.map((doc) => (
+                  <div key={doc.id} className="bg-[#1e1e1e] border border-[#393939] p-3 flex flex-col justify-between group relative">
+                    <div className="flex items-start gap-3 mb-2">
+                      <div className="w-16 h-16 bg-[#141414] border border-[#333] flex items-center justify-center overflow-hidden shrink-0">
+                        {doc.file_path && doc.file_path.endsWith('.pdf') ? (
+                          <FileText className="w-8 h-8 text-rose-400" />
+                        ) : (
+                          <img src={doc.file_path} alt={doc.title} className="w-full h-full object-cover" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h5 className="text-xs font-bold text-white truncate" title={doc.title}>{doc.title}</h5>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{doc.created_at ? new Date(doc.created_at).toLocaleDateString('ar-EG') : 'ـ'}</p>
+                        {doc.notes && <p className="text-[10px] text-amber-300/80 truncate mt-0.5">{doc.notes}</p>}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-[#2a2a2a]">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewDoc(doc)}
+                        className="p-1.5 bg-[#2a2a2a] hover:bg-[#383838] text-gray-300 hover:text-white border border-[#444]"
+                        title="معاينة وتكبير"
+                      >
+                        <ZoomIn className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handlePrintDocument(doc.file_path, doc.title)}
+                        className="p-1.5 bg-[#2a2a2a] hover:bg-[#383838] text-gray-300 hover:text-white border border-[#444]"
+                        title="طباعة A4"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                      </button>
+                      {(!currentUser || currentUser.role === 'admin') && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDocument(doc.id)}
+                          className="p-1.5 bg-[#2a2a2a] hover:bg-rose-950 text-gray-400 hover:text-rose-300 border border-[#444]"
+                          title="حذف المستند (صلاحية المدير فقط)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-6 text-center text-xs text-gray-500 bg-[#191919] border border-[#262626]">
+                لا توجد مستندات إضافية ملحقة بهذا المجند حتى الآن. اضغط على "إضافة مستند جديد" بالأعلى لرفع صورة البطاقة، فيش وتشبيه، أو أي وثائق أخرى.
+              </div>
+            )}
           </div>
 
         </div>

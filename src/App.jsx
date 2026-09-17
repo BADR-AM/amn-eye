@@ -10,6 +10,7 @@ import NetworkModal from './components/NetworkModal';
 import BackupManagerModal from './components/BackupManagerModal';
 import UsersModal from './components/UsersModal';
 import ChangePasswordModal from './components/ChangePasswordModal';
+import SystemAuditLogModal from './components/SystemAuditLogModal';
 import ChatPanel from './components/ChatPanel';
 import LoginPage from './components/LoginPage';
 import SplashScreen from './components/SplashScreen';
@@ -54,7 +55,14 @@ export default function App() {
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [showAuditLogModal, setShowAuditLogModal] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [recruitsRefreshTrigger, setRecruitsRefreshTrigger] = useState(0);
+
+  const triggerRecruitsRefresh = () => {
+    setRecruitsRefreshTrigger(Date.now());
+    loadInitialData();
+  };
 
   // Backend state
   const [batches, setBatches] = useState([]);
@@ -87,6 +95,16 @@ export default function App() {
     setLoggedIn(false);
     setView('dashboard');
   };
+
+  // Handle automatic session expiration (401)
+  useEffect(() => {
+    const onSessionExpired = () => {
+      handleLogout();
+      showToast('انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً', 'error');
+    };
+    window.addEventListener('session-expired', onSessionExpired);
+    return () => window.removeEventListener('session-expired', onSessionExpired);
+  }, [showToast]);
 
   // Toggle Theme
   const handleToggleTheme = () => {
@@ -179,7 +197,7 @@ export default function App() {
   const handleSaveSuccess = (savedRecruit) => {
     setView('dashboard');
     setKioskFormData(null);
-    loadInitialData();
+    triggerRecruitsRefresh();
     setSelectedRecruit(savedRecruit);
     showToast('تم تسجيل المجند بنجاح');
   };
@@ -194,7 +212,7 @@ export default function App() {
       if (selectedRecruit && selectedRecruit.id === recruitId) {
         setSelectedRecruit(null);
       }
-      loadInitialData();
+      triggerRecruitsRefresh();
       showToast('تم حذف ملف المجند بنجاح');
     } catch (err) {
       showToast('خطأ أثناء الحذف: ' + err.message, 'error');
@@ -226,7 +244,7 @@ export default function App() {
   // Dedicated Mobile-Optimized Application
   if (isMobileMode) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
+      <div dir="rtl" className="min-h-screen bg-slate-950 text-slate-100 font-sans">
         {toast && (
           <Toast
             key={toast.key}
@@ -252,6 +270,7 @@ export default function App() {
           onOpenBackup={() => setShowBackupModal(true)}
           onOpenUsers={() => setShowUsersModal(true)}
           onOpenChangePassword={() => setShowChangePasswordModal(true)}
+          onOpenAuditLogs={() => setShowAuditLogModal(true)}
           showToast={showToast}
         />
 
@@ -300,12 +319,19 @@ export default function App() {
             onSuccess={(msg) => showToast(msg, 'success')}
           />
         )}
+
+        {/* System Audit Log Modal (if invoked from mobile) */}
+        {showAuditLogModal && (
+          <SystemAuditLogModal
+            onClose={() => setShowAuditLogModal(false)}
+          />
+        )}
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-darkslate-950 dark:bg-zinc-950 text-slate-100 dark:text-zinc-100 flex flex-col font-sans transition-colors duration-200">
+    <div dir="rtl" className="min-h-screen bg-darkslate-950 dark:bg-zinc-950 text-slate-100 dark:text-zinc-100 flex flex-col font-sans transition-colors duration-200">
       
       {/* Toast notification */}
       {toast && (
@@ -328,6 +354,7 @@ export default function App() {
           onOpenBatches={() => setShowBatchesModal(true)}
           onOpenNetwork={() => setShowNetworkModal(true)}
           onOpenBackup={() => setShowBackupModal(true)}
+          onOpenAuditLogs={() => setShowAuditLogModal(true)}
           onOpenAiChat={() => setIsChatOpen(true)}
           onSwitchToMobile={() => {
             localStorage.setItem('security_eye_view_mode', 'mobile');
@@ -347,6 +374,8 @@ export default function App() {
             stats={stats}
             batches={batches}
             activeBatch={activeBatch}
+            currentUser={currentUser}
+            refreshTrigger={recruitsRefreshTrigger}
             onOpenKiosk={() => setView('kiosk')}
             onSelectRecruit={(r, edit = false) => {
               setSelectedRecruit(r);
@@ -399,7 +428,7 @@ export default function App() {
           onDelete={handleDeleteRecruit}
           onUpdate={(updated) => {
             setSelectedRecruit(updated);
-            loadInitialData();
+            triggerRecruitsRefresh();
             showToast('تم حفظ تعديلات ملف المجند والوسائط بنجاح');
           }}
         />
@@ -459,6 +488,13 @@ export default function App() {
         />
       )}
 
+      {/* System Audit Log Modal (Desktop) */}
+      {showAuditLogModal && (
+        <SystemAuditLogModal
+          onClose={() => setShowAuditLogModal(false)}
+        />
+      )}
+
       {/* AI Data Assistant Sliding Chat Panel */}
       <ChatPanel
         isOpen={isChatOpen}
@@ -470,7 +506,7 @@ export default function App() {
       <footer className="w-full text-center py-2.5 bg-darkslate-950/90 dark:bg-zinc-950/90 border-t border-slate-850 dark:border-zinc-850 no-print text-[11px] text-slate-400 font-mono flex items-center justify-center gap-2 flex-wrap">
         <span className="font-bold text-white">SECURITY EYE</span>
         <span className="px-1.5 py-0.2 text-[9px] font-bold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-          VER 02.0
+          VER 02.1
         </span>
         <span>•</span>
         <span className="text-amber-400 font-bold">مركز تدريب المجندين</span>

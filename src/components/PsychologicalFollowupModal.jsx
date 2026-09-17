@@ -71,6 +71,42 @@ export default function PsychologicalFollowupModal({
     }
   };
 
+  // إلغاء الحالة النفسية فوراً وتبرئة موقف المجند
+  const handleClearPsychologicalCase = async () => {
+    if (!window.confirm('هل تريد إلغاء تصنيف المجند كحالة نفسية واعتباره سليماً ومستقراً بالخدمة العسكرية؟\n\nسيتم إزالة علامة المتابعة النفسية وتبرئة ملف المجند فوراً.')) return;
+
+    setLoading(true);
+    setSuccessMsg('');
+    try {
+      const res = await fetch(`/api/recruits/${recruit.id}/psychological-status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders()
+        },
+        body: JSON.stringify({
+          is_psychological_case: false,
+          psychological_notes: '',
+          followup_action: 'تم إلغاء الحالة النفسية - استقرار الحالة واعتباره لائقاً وسليماً تماماً'
+        })
+      });
+
+      if (!res.ok) throw new Error('فشل إلغاء الحالة النفسية');
+
+      setIsCase(false);
+      setNotes('');
+      setSuccessMsg('تم إلغاء تصنيف الحالة النفسية واعتبار المجند سليماً ومستقراً بنجاح');
+      if (onUpdated) onUpdated();
+      setTimeout(() => {
+        onClose();
+      }, 800);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto" dir="rtl">
       <div className="bg-[#12161f] border border-fuchsia-500/40 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col my-auto animate-in fade-in zoom-in-95 duration-200">
@@ -185,23 +221,40 @@ export default function PsychologicalFollowupModal({
           )}
 
           {/* Action buttons */}
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors"
-            >
-              إلغاء
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-800">
+            <div>
+              {(recruit.is_psychological_case === 1 || isCase) && (
+                <button
+                  type="button"
+                  onClick={handleClearPsychologicalCase}
+                  disabled={loading}
+                  className="px-3.5 py-2 rounded-xl bg-amber-600/20 hover:bg-amber-600/35 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all flex items-center gap-1.5 shadow"
+                  title="إلغاء تصنيف المجند كحالة نفسية واعتباره لائقاً وسليماً ومستقراً فوراً"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-amber-400" />
+                  <span>إلغاء الحالة النفسية (سليم ومستقر)</span>
+                </button>
+              )}
+            </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-5 py-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white text-xs font-bold shadow-lg shadow-fuchsia-950/40 flex items-center gap-1.5 transition-all disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              <span>حفظ وقيد المتابعة الدورية</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors"
+              >
+                إغلاق
+              </button>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white text-xs font-bold shadow-lg shadow-fuchsia-950/40 flex items-center gap-1.5 transition-all disabled:opacity-50"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>حفظ وقيد المتابعة</span>
+              </button>
+            </div>
           </div>
 
         </form>

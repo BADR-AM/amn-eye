@@ -1,0 +1,20 @@
+{
+  "short_name": "عين الأمن",
+  "name": "منظومة تسجيل وفحص المجندين - الأمن المركزي",
+  "description": "منظومة تسجيل وفحص المجندين وإدارة البيانات الأمنية والطبية - قطاع الأمن المركزي",
+  "icons": [
+    {
+      "src": "/central_security_logo.png",
+      "type": "image/png",
+      "sizes": "192x192 512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#030712",
+  "theme_color": "#0f172a",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "ar",
+  "dir": "rtl"
+}
