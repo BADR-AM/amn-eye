@@ -228,7 +228,7 @@ export default function UserBadgeCard({
                 {serialNumber}
               </span>
               <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                VER 2.1
+                VER 2.3
               </span>
             </div>
           </div>

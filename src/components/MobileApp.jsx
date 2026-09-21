@@ -790,7 +790,7 @@ export default function MobileApp({
                   MOBILE OPS
                 </span>
                 <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 rounded border border-emerald-500/30 font-mono">
-                  VER 02.0
+                  VER 02.3
                 </span>
               </div>
               <h1 className="text-sm font-black text-white leading-tight mt-0.5">
