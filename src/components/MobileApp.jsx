@@ -50,12 +50,14 @@ import {
   Printer,
   Copy,
   ExternalLink,
-  History
+  History,
+  Upload
 } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
 import LiquidOrb from './LiquidOrb';
 import MediaCapture from './MediaCapture';
 import ExportModal from './ExportModal';
+import ImportMarkdownModal from './ImportMarkdownModal';
 import CompanyColorsModal from './CompanyColorsModal';
 import ActivityLogModal from './ActivityLogModal';
 import RecruitDocumentsModal from './RecruitDocumentsModal';
@@ -141,6 +143,7 @@ export default function MobileApp({
   const [activityRecruit, setActivityRecruit] = useState(null);
   const [historyRecruit, setHistoryRecruit] = useState(null);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [showCompanyColorsModal, setShowCompanyColorsModal] = useState(false);
   const [showMobileQrScanner, setShowMobileQrScanner] = useState(false);
 
@@ -357,6 +360,7 @@ export default function MobileApp({
     activityRecruit ||
     historyRecruit ||
     showExportModal ||
+    showImportModal ||
     showCompanyColorsModal ||
     showMobileQrScanner ||
     isFilterSheetOpen
@@ -373,6 +377,7 @@ export default function MobileApp({
     activityRecruit,
     historyRecruit,
     showExportModal,
+    showImportModal,
     showCompanyColorsModal,
     showMobileQrScanner,
     isFilterSheetOpen,
@@ -402,6 +407,8 @@ export default function MobileApp({
         setHistoryRecruit(null);
       } else if (s.showExportModal) {
         setShowExportModal(false);
+      } else if (s.showImportModal) {
+        setShowImportModal(false);
       } else if (s.showCompanyColorsModal) {
         setShowCompanyColorsModal(false);
       } else if (s.showMobileQrScanner) {
@@ -2390,6 +2397,23 @@ export default function MobileApp({
                 <ChevronLeft className="w-4 h-4 text-slate-500" />
               </div>
 
+              {/* 2.1 Import Markdown Dossiers (.md) */}
+              <div 
+                onClick={() => setShowImportModal(true)}
+                className="p-3.5 flex items-center justify-between hover:bg-slate-850 cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
+                    <Upload className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">استيراد استمارات من ملفات (.md)</div>
+                    <div className="text-[11px] text-slate-400">استيراد ملفات تفريغ المقابلات وفحص التكرار تلقائياً</div>
+                  </div>
+                </div>
+                <ChevronLeft className="w-4 h-4 text-slate-500" />
+              </div>
+
               {/* 3. Company Colors */}
               <div 
                 onClick={() => setShowCompanyColorsModal(true)}
@@ -3409,6 +3433,20 @@ export default function MobileApp({
           activeBatch={activeBatch}
           onClose={() => setShowExportModal(false)}
           onUpdateRecruit={() => {
+            fetchMobileRecruits();
+            onRefresh();
+          }}
+        />
+      )}
+
+      {/* 5.1 Import Markdown Dossiers Modal */}
+      {showImportModal && (
+        <ImportMarkdownModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          activeBatch={activeBatch}
+          batches={batches}
+          onImportSuccess={() => {
             fetchMobileRecruits();
             onRefresh();
           }}

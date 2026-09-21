@@ -33,12 +33,14 @@ import {
   Scan,
   FileCheck,
   Brain,
-  AlertOctagon
+  AlertOctagon,
+  Upload
 } from 'lucide-react';
 import AnalyticsCharts from './AnalyticsCharts';
 import AnalyticsOverview from './AnalyticsOverview';
 import SideInvestigationPanel from './SideInvestigationPanel';
 import ExportModal from './ExportModal';
+import ImportMarkdownModal from './ImportMarkdownModal';
 import CompanyColorsModal from './CompanyColorsModal';
 import ActivityLogModal from './ActivityLogModal';
 import RecruitDocumentsModal from './RecruitDocumentsModal';
@@ -84,6 +86,7 @@ export default function Dashboard({
   const [sidePanelRecruit, setSidePanelRecruit] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [showCompanyColorsModal, setShowCompanyColorsModal] = useState(false);
   const [activityRecruit, setActivityRecruit] = useState(null);
   const [documentsRecruit, setDocumentsRecruit] = useState(null);
@@ -145,7 +148,7 @@ export default function Dashboard({
       if (onRefresh) onRefresh();
     },
     searchInputRef,
-    enabled: !showExportModal && !showCompanyColorsModal && !activityRecruit && !documentsRecruit && !ticketRecruit && !psychologicalRecruit
+    enabled: !showExportModal && !showImportModal && !showCompanyColorsModal && !activityRecruit && !documentsRecruit && !ticketRecruit && !psychologicalRecruit
   });
 
   const handleClosePanel = () => {
@@ -545,6 +548,16 @@ export default function Dashboard({
                 {selectedIds.length}
               </span>
             )}
+          </button>
+
+          {/* Import Recruits from Markdown (.md) */}
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+            title="استيراد استمارات المجندين من ملفات Markdown (.md)"
+          >
+            <Upload className="w-4 h-4" />
+            <span>استيراد (.md)</span>
           </button>
 
           {/* Company Colors Modal */}
@@ -1286,6 +1299,18 @@ export default function Dashboard({
         selectedRecruitIds={selectedIds}
         activeBatch={activeBatch}
         onUpdateRecruit={handleUpdateRecruit}
+      />
+
+      {/* Import Markdown Dossiers Modal */}
+      <ImportMarkdownModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        activeBatch={activeBatch}
+        batches={batches}
+        onImportSuccess={() => {
+          fetchRecruits();
+          if (onRefresh) onRefresh();
+        }}
       />
 
       {/* Settings Modal for Military Company Colors */}

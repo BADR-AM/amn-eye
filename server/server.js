@@ -12,6 +12,7 @@ import { requireAuth, requireRole, handleLogin, handleQrLogin, hashPassword, com
 import { createBackup, listBackups, deleteBackup, getAvailableDrives, startAutoBackupSchedule } from './backup.js';
 import { logAudit, computeRecruitDiff } from './auditLogger.js';
 import * as XLSX from 'xlsx';
+import { parseRecruitMarkdown } from './markdownParser.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1542,6 +1543,244 @@ app.post('/api/recruits', requireAuth, upload.fields([{ name: 'photo', maxCount:
     res.status(500).json({ error: 'خطأ في حفظ بيانات المجند' });
   }
 });
+
+// 6.1 Preview Recruits from Markdown (.md) Dossiers
+app.post('/api/recruits/preview-markdown', requireAuth, async (req, res) => {
+  try {
+    const { files, batch_id } = req.body;
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ error: 'لم يتم إرسال أي ملفات استمارات لمعاينتها' });
+    }
+
+    const items = [];
+    for (const f of files) {
+      const parsed = parseRecruitMarkdown(f.content, f.name || f.filename || 'recruit.md');
+      if (!parsed.success) {
+        items.push({
+          filename: f.name || f.filename || 'recruit.md',
+          status: 'invalid',
+          error: parsed.error || 'ملف غير صالح',
+          data: parsed.data || {}
+        });
+        continue;
+      }
+
+      const rec = parsed.data;
+      let existingRecruit = null;
+      if (rec.national_id) {
+        existingRecruit = await get('SELECT id, name, national_id, company, qualification, batch_id FROM recruits WHERE national_id = ?', [rec.national_id]);
+      }
+
+      if (existingRecruit) {
+        items.push({
+          filename: f.name || f.filename || 'recruit.md',
+          status: 'duplicate',
+          error: `المجند مسجل مسبقاً باسم: ${existingRecruit.name} (رقم هوية: ${existingRecruit.national_id})`,
+          existing_id: existingRecruit.id,
+          existing_name: existingRecruit.name,
+          data: rec
+        });
+      } else {
+        items.push({
+          filename: f.name || f.filename || 'recruit.md',
+          status: 'ready',
+          error: '',
+          data: rec
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      total: items.length,
+      ready_count: items.filter(i => i.status === 'ready').length,
+      duplicate_count: items.filter(i => i.status === 'duplicate').length,
+      invalid_count: items.filter(i => i.status === 'invalid').length,
+      items
+    });
+  } catch (error) {
+    console.error('Error previewing markdown recruits:', error);
+    res.status(500).json({ error: 'خطأ أثناء فحص ومعاينة ملفات الاستمارات' });
+  }
+});
+
+// 6.2 Commit / Import Recruits from Markdown (.md) Dossiers
+app.post('/api/recruits/import-markdown', requireAuth, requireRole('admin', 'officer'), async (req, res) => {
+  try {
+    const { batch_id, recruits, on_duplicate = 'skip' } = req.body;
+    if (!recruits || !Array.isArray(recruits) || recruits.length === 0) {
+      return res.status(400).json({ error: 'لم يتم تحديد أي مجندين للاستيراد' });
+    }
+
+    // Determine target batch: requested batch_id or current active batch
+    let targetBatchId = batch_id;
+    if (!targetBatchId) {
+      const activeBatch = await get('SELECT id FROM batches WHERE active = 1 ORDER BY id DESC LIMIT 1');
+      if (activeBatch) {
+        targetBatchId = activeBatch.id;
+      } else {
+        const firstBatch = await get('SELECT id FROM batches ORDER BY id ASC LIMIT 1');
+        targetBatchId = firstBatch ? firstBatch.id : 1;
+      }
+    }
+
+    let importedCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
+    const errors = [];
+    const createdRecruits = [];
+
+    for (const item of recruits) {
+      const rec = item.data || item;
+      const name = (rec.name || '').trim();
+      if (!name) {
+        skippedCount++;
+        errors.push({ name: 'مجهول', error: 'اسم المجند مفقود' });
+        continue;
+      }
+
+      const nationalId = rec.national_id ? String(rec.national_id).trim() : null;
+
+      // Check existing by national_id
+      let existing = null;
+      if (nationalId) {
+        existing = await get('SELECT id, name FROM recruits WHERE national_id = ?', [nationalId]);
+      }
+
+      if (existing) {
+        if (on_duplicate === 'update') {
+          // Update existing recruit
+          await run(`
+            UPDATE recruits SET
+              name = ?, religion = ?, qualification = ?, birth_date = ?, wife = ?,
+              address = ?, current_job = ?, other_jobs = ?, travel_abroad = ?,
+              literacy = ?, inspection = ?, medical_status = ?, father_name = ?,
+              father_job = ?, mother_name = ?, mother_job = ?, siblings_check = ?,
+              family_social_status = ?, family_security_status = ?, police_number = ?,
+              company = ?, is_psychological_case = ?, psychological_notes = ?,
+              notes = CASE WHEN ? != '' THEN notes || '\n\n' || ? ELSE notes END,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `, [
+            name,
+            rec.religion || 'مسلم',
+            rec.qualification || 'متوسط',
+            rec.birth_date || '',
+            rec.wife || 'أعزب',
+            rec.address || '',
+            rec.current_job || '',
+            rec.other_jobs || '',
+            rec.travel_abroad || 'لم يسافر',
+            rec.literacy || 'يجيد',
+            rec.inspection || 'سليم',
+            rec.medical_status || 'لائق طبياً وسليم',
+            rec.father_name || '',
+            rec.father_job || '',
+            rec.mother_name || '',
+            rec.mother_job || '',
+            rec.siblings_check || '',
+            rec.family_social_status || 'مستقرة',
+            rec.family_security_status || 'خالية من السوابق والشبهات',
+            rec.police_number || '',
+            rec.company || '',
+            rec.is_psychological_case ? 1 : 0,
+            rec.psychological_notes || '',
+            rec.notes || '',
+            rec.notes || '',
+            existing.id
+          ]);
+          updatedCount++;
+        } else {
+          skippedCount++;
+        }
+        continue;
+      }
+
+      // Insert new recruit
+      const attendanceDate = rec.attendance_date || new Date().toISOString().split('T')[0];
+      const insertSql = `
+        INSERT INTO recruits (
+          batch_id, attendance_date, name, religion, qualification,
+          birth_date, wife, national_id, address, current_job,
+          other_jobs, travel_abroad, literacy, inspection, medical_status,
+          father_name, father_job, mother_name, mother_job, siblings_check,
+          family_social_status, family_security_status, photo_path, video_path,
+          police_number, company, notes, is_psychological_case, psychological_notes
+        ) VALUES (
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?, ?
+        )
+      `;
+
+      const insertParams = [
+        targetBatchId,
+        attendanceDate,
+        name,
+        rec.religion || 'مسلم',
+        rec.qualification || 'متوسط',
+        rec.birth_date || '',
+        rec.wife || 'أعزب',
+        nationalId,
+        rec.address || '',
+        rec.current_job || '',
+        rec.other_jobs || '',
+        rec.travel_abroad || 'لم يسافر',
+        rec.literacy || 'يجيد',
+        rec.inspection || 'سليم',
+        rec.medical_status || 'لائق طبياً وسليم',
+        rec.father_name || '',
+        rec.father_job || '',
+        rec.mother_name || '',
+        rec.mother_job || '',
+        rec.siblings_check || '',
+        rec.family_social_status || 'مستقرة',
+        rec.family_security_status || 'خالية من السوابق والشبهات',
+        '', // photo_path
+        '', // video_path
+        rec.police_number || '',
+        rec.company || '',
+        rec.notes || '',
+        rec.is_psychological_case ? 1 : 0,
+        rec.psychological_notes || ''
+      ];
+
+      const resInsert = await run(insertSql, insertParams);
+      const permCode = 'REC-' + String(resInsert.lastID).padStart(7, '0');
+      await run('UPDATE recruits SET recruit_code = ? WHERE id = ?', [permCode, resInsert.lastID]);
+
+      importedCount++;
+      createdRecruits.push({ id: resInsert.lastID, name, recruit_code: permCode });
+    }
+
+    logAudit(req, {
+      action_type: 'IMPORT_MARKDOWN_RECRUITS',
+      entity_type: 'recruit',
+      entity_id: createdRecruits[0]?.id || 0,
+      entity_name: `استيراد استمارات .md (${importedCount} مجند)`,
+      details: `تم استيراد ${importedCount} مجند جديد، تحديث ${updatedCount}، تخطي ${skippedCount} مجند من ملفات Markdown`,
+    });
+
+    notifyDataChanged();
+
+    res.json({
+      success: true,
+      message: `تمت عملية الاستيراد بنجاح: ${importedCount} جديد، ${updatedCount} تم تحديثه، ${skippedCount} تم تخطيه`,
+      imported_count: importedCount,
+      updated_count: updatedCount,
+      skipped_count: skippedCount,
+      total_processed: recruits.length,
+      errors
+    });
+  } catch (error) {
+    console.error('Error importing markdown recruits:', error);
+    res.status(500).json({ error: 'خطأ أثناء استيراد وحفظ ملفات الاستمارات' });
+  }
+});
+
 
 // 7. Update Recruit Details (protected - Admin & Officer only)
 app.put('/api/recruits/:id', requireAuth, requireRole('admin', 'officer'), upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
