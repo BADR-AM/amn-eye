@@ -112,7 +112,7 @@ export default function OfficialReport({ recruit, currentUser: propCurrentUser, 
     <div className="official-report-overlay fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-start p-2 sm:p-6 overflow-y-auto" dir="rtl">
       
       {/* Top action bar - Hidden during print */}
-      <div className="w-full max-w-4xl flex items-center justify-between bg-darkslate-900 border border-slate-800 p-3 sm:p-4 rounded-2xl mb-4 shadow-2xl no-print">
+      <div className="w-[210mm] max-w-full flex items-center justify-between bg-darkslate-900 border border-slate-800 p-3 sm:p-4 rounded-2xl mb-4 shadow-2xl no-print">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
             <Printer className="w-5 h-5" />
@@ -145,8 +145,8 @@ export default function OfficialReport({ recruit, currentUser: propCurrentUser, 
         </div>
       </div>
 
-      {/* Official A4 Document Sheet - Exactly 280mm height to guarantee single page */}
-      <div className="official-report-sheet w-full max-w-[210mm] h-[280mm] max-h-[280mm] bg-white text-black p-[7mm] shadow-2xl rounded-sm border border-slate-300 font-sans flex flex-col justify-between overflow-hidden box-border">
+      {/* Official A4 Document Sheet - Standard A4 210mm x 297mm */}
+      <div className="official-report-sheet w-[210mm] max-w-full min-h-[297mm] bg-white text-black px-[12mm] py-[10mm] shadow-2xl rounded-sm border border-slate-300 font-sans flex flex-col justify-between box-border my-2">
         
         {/* 1. Official Header (Fixed Top) */}
         <div className="relative border-b-2 border-black pb-1.5 shrink-0">

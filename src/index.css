@@ -55,26 +55,31 @@
 /* Print styling specifically for Official Examination Report A4 */
 @media print {
   html, body {
-    background: white !important;
-    color: black !important;
+    background: #ffffff !important;
+    color: #000000 !important;
     margin: 0 !important;
     padding: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
+    width: 210mm !important;
+    height: 297mm !important;
     overflow: visible !important;
   }
 
-  /* Hide the entire background web application when printing */
-  #root > :not(.official-report-overlay),
+  /* 1. Hide background navigation, headers, footers, and dashboard tables */
   header,
   nav,
   aside,
   footer,
+  main,
   .no-print {
     display: none !important;
   }
 
-  /* Strip modal background and fixed positioning for printing */
+  /* 2. In report printing mode, hide all other direct children except the modal overlay */
+  .report-printing-mode > :not(.official-report-overlay) {
+    display: none !important;
+  }
+
+  /* 3. Strip modal background and fixed positioning for printing */
   .official-report-overlay {
     position: static !important;
     inset: auto !important;
@@ -84,30 +89,35 @@
     overflow: visible !important;
     display: block !important;
     width: 100% !important;
+    height: auto !important;
   }
 
-  /* Single-page guaranteed A4 sheet */
+  /* 4. Single-page guaranteed A4 sheet */
   .official-report-sheet {
     box-shadow: none !important;
     border: none !important;
     margin: 0 auto !important;
-    padding: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: 280mm !important;
-    max-height: 280mm !important;
+    padding: 8mm 10mm 6mm 10mm !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
     display: flex !important;
     flex-direction: column !important;
     justify-content: space-between !important;
     page-break-after: avoid !important;
     page-break-inside: avoid !important;
+    page-break-before: avoid !important;
     break-inside: avoid !important;
     break-after: avoid !important;
+    break-before: avoid !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
   }
 
   @page {
     size: A4 portrait;
-    margin: 6mm 8mm 6mm 8mm;
+    margin: 0;
   }
 }
 

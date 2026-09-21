@@ -344,7 +344,7 @@ export default function App() {
   }
 
   return (
-    <div dir="rtl" className="min-h-screen bg-slate-100 dark:bg-darkslate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
+    <div dir="rtl" className={`min-h-screen bg-slate-100 dark:bg-darkslate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 ${printRecruit ? 'report-printing-mode' : ''}`}>
       
       {/* Toast notification */}
       {toast && (

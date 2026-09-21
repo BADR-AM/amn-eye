@@ -769,7 +769,7 @@ export default function MobileApp({
   return (
     <div className={`flex flex-col min-h-screen font-sans pb-20 select-none ${
       theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-slate-900'
-    }`}>
+    } ${printRecruit ? 'report-printing-mode' : ''}`}>
       
       {/* ── TOP MOBILE APP BAR ── */}
       <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-3 shadow-lg">
