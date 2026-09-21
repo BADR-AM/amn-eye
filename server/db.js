@@ -396,6 +396,10 @@ export const initDb = async () => {
       await run(`ALTER TABLE users ADD COLUMN qr_login_token TEXT`);
       console.log('✅ تم تحديث المخطط: إضافة عمود qr_login_token للمستخدمين');
     }
+    if (!userColNames.includes('account_fingerprint')) {
+      await run(`ALTER TABLE users ADD COLUMN account_fingerprint TEXT DEFAULT ''`);
+      console.log('✅ تم تحديث المخطط: إضافة عمود account_fingerprint للمستخدمين');
+    }
     await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_qr_token ON users(qr_login_token) WHERE qr_login_token IS NOT NULL AND qr_login_token != ''`);
 
     // Generate tokens for existing users who do not have one
@@ -403,6 +407,15 @@ export const initDb = async () => {
     for (const u of usersWithoutToken) {
       const token = crypto.randomBytes(32).toString('hex');
       await run(`UPDATE users SET qr_login_token = ? WHERE id = ?`, [token, u.id]);
+    }
+
+    // Generate 6-character alphanumeric account fingerprints for users
+    const usersWithoutFp = await query(`SELECT id, username, role FROM users WHERE account_fingerprint IS NULL OR account_fingerprint = ''`);
+    for (const u of usersWithoutFp) {
+      const prefix = u.role === 'admin' ? 'AD' : (u.role === 'officer' ? 'OF' : 'OP');
+      const hashStr = crypto.createHash('sha256').update(`${u.username}-${u.id}-amn-eye`).digest('hex').substring(0, 4).toUpperCase();
+      const fp = `${prefix}${hashStr}`; // Exactly 6 alphanumeric characters e.g. "AD7F2B"
+      await run(`UPDATE users SET account_fingerprint = ? WHERE id = ?`, [fp, u.id]);
     }
   } catch (userMigErr) {
     console.warn('⚠️ خطأ هجرة جدول المستخدمين:', userMigErr.message);

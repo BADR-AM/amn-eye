@@ -130,7 +130,8 @@ export const handleLogin = async (req, res) => {
         id: userRow.id,
         username: userRow.username,
         full_name: userRow.full_name,
-        role: userRow.role || 'officer'
+        role: userRow.role || 'officer',
+        account_fingerprint: userRow.account_fingerprint || 'AD0001'
       };
 
       logAudit(req, {
@@ -221,7 +222,8 @@ export const handleQrLogin = async (req, res) => {
       id: userRow.id,
       username: userRow.username,
       full_name: userRow.full_name,
-      role: userRow.role || 'officer'
+      role: userRow.role || 'officer',
+      account_fingerprint: userRow.account_fingerprint || 'OP0001'
     };
 
     logAudit(req, {

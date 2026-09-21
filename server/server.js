@@ -162,10 +162,10 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
     let userRow = null;
     if (req.user && req.user.id) {
-      userRow = await get('SELECT id, username, full_name, role, created_at FROM users WHERE id = ?', [req.user.id]);
+      userRow = await get('SELECT id, username, full_name, role, qr_login_token, account_fingerprint, created_at FROM users WHERE id = ?', [req.user.id]);
     }
     if (!userRow && req.user && req.user.username) {
-      userRow = await get('SELECT id, username, full_name, role, created_at FROM users WHERE username = ? COLLATE NOCASE', [req.user.username]);
+      userRow = await get('SELECT id, username, full_name, role, qr_login_token, account_fingerprint, created_at FROM users WHERE username = ? COLLATE NOCASE', [req.user.username]);
     }
     if (userRow) {
       return res.json({ user: userRow });
@@ -228,7 +228,7 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
 // 0.3 Users Management (Admin Only)
 app.get('/api/users', requireAuth, requireRole('admin'), async (req, res) => {
   try {
-    const users = await query('SELECT id, username, full_name, role, qr_login_token, created_at, updated_at FROM users ORDER BY id ASC');
+    const users = await query('SELECT id, username, full_name, role, qr_login_token, account_fingerprint, created_at, updated_at FROM users ORDER BY id ASC');
     res.json(users);
   } catch (err) {
     console.error('Get users error:', err);
@@ -259,10 +259,13 @@ app.post('/api/users', requireAuth, requireRole('admin'), async (req, res) => {
     const assignedRole = allowedRoles.includes(role) ? role : 'officer';
     const pwdHash = await hashPassword(password.trim());
     const qrToken = crypto.randomBytes(32).toString('hex');
+    const prefix = assignedRole === 'admin' ? 'AD' : (assignedRole === 'officer' ? 'OF' : 'OP');
+    const hashStr = crypto.createHash('sha256').update(`${cleanUsername}-${Date.now()}`).digest('hex').substring(0, 4).toUpperCase();
+    const accountFingerprint = `${prefix}${hashStr}`;
 
     const result = await run(
-      'INSERT INTO users (username, password_hash, full_name, role, qr_login_token) VALUES (?, ?, ?, ?, ?)',
-      [cleanUsername, pwdHash, full_name.trim(), assignedRole, qrToken]
+      'INSERT INTO users (username, password_hash, full_name, role, qr_login_token, account_fingerprint) VALUES (?, ?, ?, ?, ?, ?)',
+      [cleanUsername, pwdHash, full_name.trim(), assignedRole, qrToken, accountFingerprint]
     );
 
     logAudit(req, {
@@ -270,7 +273,7 @@ app.post('/api/users', requireAuth, requireRole('admin'), async (req, res) => {
       entity_type: 'user',
       entity_id: result.lastID,
       entity_name: cleanUsername,
-      details: `إنشاء حساب مستخدم جديد: ${cleanUsername} (${full_name.trim()}) بصلاحية ${assignedRole}`,
+      details: `إنشاء حساب مستخدم جديد: ${cleanUsername} (${full_name.trim()}) بصلاحية ${assignedRole} وبصمة ${accountFingerprint}`,
     });
 
     res.status(201).json({
@@ -280,6 +283,7 @@ app.post('/api/users', requireAuth, requireRole('admin'), async (req, res) => {
         username: cleanUsername,
         full_name: full_name.trim(),
         role: assignedRole,
+        account_fingerprint: accountFingerprint,
         qr_login_token: qrToken
       }
     });

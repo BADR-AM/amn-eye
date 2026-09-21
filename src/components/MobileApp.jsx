@@ -3395,6 +3395,7 @@ export default function MobileApp({
       {printRecruit && (
         <OfficialReport
           recruit={printRecruit}
+          currentUser={currentUser}
           onClose={() => setPrintRecruit(null)}
         />
       )}

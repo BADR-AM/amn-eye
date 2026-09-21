@@ -453,6 +453,7 @@ export default function App() {
       {printRecruit && (
         <OfficialReport
           recruit={printRecruit}
+          currentUser={currentUser}
           onClose={() => setPrintRecruit(null)}
         />
       )}
