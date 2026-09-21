@@ -80,7 +80,7 @@ export default function RecruitModal({
 
   // Sync state if recruit changes
   useEffect(() => {
-    if (recruit) {
+    if (recruit && !isEditing) {
       setEditData({ ...recruit });
       setPhotoPreview(recruit.photo_path || null);
       setVideoPreview(recruit.video_path || null);
@@ -90,7 +90,7 @@ export default function RecruitModal({
       setRemoveVideo(false);
       setSaveError(null);
     }
-  }, [recruit]);
+  }, [recruit, isEditing]);
 
   // Handle ESC key
   useEffect(() => {
@@ -130,8 +130,9 @@ export default function RecruitModal({
   const handleFieldChange = (field, val) => {
     setEditData(prev => {
       const updated = { ...prev, [field]: val };
-      if (field === 'national_id' && val.trim().length === 14) {
-        const parsed = parseEgyptianNationalId(val);
+      const safeVal = val?.trim?.() ?? val ?? '';
+      if (field === 'national_id' && safeVal.length === 14) {
+        const parsed = parseEgyptianNationalId(safeVal);
         if (parsed && parsed.isValid) {
           updated.birth_date = parsed.birthDate;
           if (!updated.address || updated.address === '') {
@@ -168,10 +169,21 @@ export default function RecruitModal({
     if (file) {
       setNewVideoFile(file);
       setRemoveVideo(false);
+      if (videoPreview && typeof videoPreview === 'string' && videoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(videoPreview);
+      }
       setVideoPreview(URL.createObjectURL(file));
     }
     if (e.target) e.target.value = '';
   };
+
+  useEffect(() => {
+    return () => {
+      if (videoPreview && typeof videoPreview === 'string' && videoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(videoPreview);
+      }
+    };
+  }, [videoPreview]);
 
   const handleRemoveVideo = () => {
     setNewVideoFile(null);

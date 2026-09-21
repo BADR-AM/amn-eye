@@ -98,7 +98,7 @@ export default function Dashboard({
   useEffect(() => {
     fetchCompanyColors().then(data => {
       if (data && Array.isArray(data)) setCompanyColors(data);
-    });
+    }).catch(err => console.warn('Failed to load company colors:', err));
   }, []);
 
   // POS Keyboard navigation hook
@@ -224,6 +224,7 @@ export default function Dashboard({
       }
     } catch (e) {
       console.error('Failed to update recruit:', e);
+      alert('حدث خطأ أثناء تحديث بيانات المجند');
     }
   };
 
@@ -237,7 +238,7 @@ export default function Dashboard({
   }, [searchTerm]);
 
   // Fetch recruits with active filters
-  const fetchRecruits = async () => {
+  const fetchRecruits = async (signal) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -251,7 +252,10 @@ export default function Dashboard({
         limit: '24'
       });
 
-      const res = await fetch(`/api/recruits?${params.toString()}`, { headers: authHeaders() });
+      const res = await fetch(`/api/recruits?${params.toString()}`, { 
+        headers: authHeaders(),
+        signal 
+      });
       if (!res.ok) throw new Error('فشل جلب البيانات');
       const data = await res.json();
       setRecruits(data.recruits || []);
@@ -263,6 +267,7 @@ export default function Dashboard({
         setSidePanelRecruit(data.recruits[0]);
       }
     } catch (err) {
+      if (err.name === 'AbortError') return;
       console.error('Error fetching recruits:', err);
     } finally {
       setLoading(false);
@@ -270,7 +275,9 @@ export default function Dashboard({
   };
 
   useEffect(() => {
-    fetchRecruits();
+    const controller = new AbortController();
+    fetchRecruits(controller.signal);
+    return () => controller.abort();
   }, [debouncedSearch, selectedBatchId, selectedQualification, selectedCompanyFilter, selectedDateFilter, selectedCategoryFilter, page, refreshTrigger]);
 
   // Real-time live synchronization between Desktop, Mobile & other devices
@@ -312,7 +319,7 @@ export default function Dashboard({
       window.removeEventListener('focus', onFocusOrVisible);
       document.removeEventListener('visibilitychange', onFocusOrVisible);
     };
-  }, [debouncedSearch, selectedBatchId, selectedQualification, selectedCompanyFilter, selectedDateFilter, selectedCategoryFilter, page]);
+  }, []);
 
   return (
     <div className="max-w-[1700px] w-full mx-auto px-4 sm:px-6 py-6 space-y-5 text-gray-100 font-sans">
@@ -949,7 +956,7 @@ export default function Dashboard({
                 <span className="text-gray-400">صفحة {page} من {totalPages}</span>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="max-h-[70vh] overflow-y-auto overflow-x-auto">
                 <table className="w-full text-right text-xs">
                   <thead className="bg-[#212121] border-b border-[#393939] text-gray-300 font-bold sticky top-0 z-10">
                     <tr>

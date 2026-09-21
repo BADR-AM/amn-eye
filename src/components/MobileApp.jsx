@@ -93,6 +93,7 @@ export default function MobileApp({
   // Recruits & Directory state
   const [recruits, setRecruits] = useState([]);
   const [loadingRecruits, setLoadingRecruits] = useState(false);
+  const [recruitsError, setRecruitsError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'table'
   const [page, setPage] = useState(1);
@@ -143,13 +144,27 @@ export default function MobileApp({
   const [showCompanyColorsModal, setShowCompanyColorsModal] = useState(false);
   const [showMobileQrScanner, setShowMobileQrScanner] = useState(false);
 
+  // Theme Management
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('security_eye_theme') || 'dark';
+  });
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setTheme(localStorage.getItem('security_eye_theme') || 'dark');
+    };
+    window.addEventListener('storage', handleStorageChange);
+    // Also check on mount in case it changed before mount
+    handleStorageChange();
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
   // Company badge colors
   const [companyColors, setCompanyColors] = useState(DEFAULT_COMPANY_COLORS);
 
   useEffect(() => {
     fetchCompanyColors().then(data => {
       if (data && Array.isArray(data)) setCompanyColors(data);
-    });
+    }).catch(err => console.warn('Failed to load colors:', err));
   }, []);
 
   // Media capture workflow for New Recruit
@@ -235,6 +250,7 @@ export default function MobileApp({
   // Fetch Recruits with full filters
   const fetchMobileRecruits = async () => {
     setLoadingRecruits(true);
+    setRecruitsError(null);
     try {
       const params = new URLSearchParams({
         search: searchTerm,
@@ -261,9 +277,13 @@ export default function MobileApp({
         setRecruits(data.recruits || []);
         setTotalPages(data.totalPages || 1);
         setTotalCount(data.total || (data.recruits || []).length);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'فشل جلب بيانات المجندين');
       }
     } catch (err) {
       console.warn('Error fetching mobile recruits:', err);
+      setRecruitsError(err.message || 'تعذر جلب بيانات المجندين. يرجى التحقق من الشبكة.');
     } finally {
       setLoadingRecruits(false);
     }
@@ -505,9 +525,11 @@ export default function MobileApp({
   const cancelEditingRecruit = () => {
     setIsEditingRecruit(false);
     setEditNewPhotoFile(null);
+    if (editPhotoPreview) URL.revokeObjectURL(editPhotoPreview);
     setEditPhotoPreview(null);
     setEditRemovePhoto(false);
     setEditNewVideoFile(null);
+    if (editVideoPreview) URL.revokeObjectURL(editVideoPreview);
     setEditVideoPreview(null);
     setEditRemoveVideo(false);
   };
@@ -535,9 +557,11 @@ export default function MobileApp({
       notes: target.notes || ''
     });
     setEditNewPhotoFile(null);
+    if (editPhotoPreview) URL.revokeObjectURL(editPhotoPreview);
     setEditPhotoPreview(null);
     setEditRemovePhoto(false);
     setEditNewVideoFile(null);
+    if (editVideoPreview) URL.revokeObjectURL(editVideoPreview);
     setEditVideoPreview(null);
     setEditRemoveVideo(false);
     setIsEditingRecruit(true);
@@ -550,6 +574,7 @@ export default function MobileApp({
       showToast('يرجى اختيار ملف صورة صالح (JPG / PNG / WEBP)', 'error');
       return;
     }
+    if (editPhotoPreview) URL.revokeObjectURL(editPhotoPreview);
     setEditNewPhotoFile(file);
     setEditRemovePhoto(false);
     setEditPhotoPreview(URL.createObjectURL(file));
@@ -563,11 +588,19 @@ export default function MobileApp({
       showToast('يرجى اختيار ملف فيديو صالح (MP4 / WEBM / MOV)', 'error');
       return;
     }
+    if (editVideoPreview) URL.revokeObjectURL(editVideoPreview);
     setEditNewVideoFile(file);
     setEditRemoveVideo(false);
     setEditVideoPreview(URL.createObjectURL(file));
     showToast('تم تحديد مقطع الفيديو بنجاح', 'info');
   };
+
+  useEffect(() => {
+    return () => {
+      if (editPhotoPreview) URL.revokeObjectURL(editPhotoPreview);
+      if (editVideoPreview) URL.revokeObjectURL(editVideoPreview);
+    };
+  }, [editPhotoPreview, editVideoPreview]);
 
   // Save edits to recruit dossier with photo & video support
   const handleSaveEdit = async () => {
@@ -659,7 +692,9 @@ export default function MobileApp({
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-950 text-slate-100 font-sans pb-20 select-none">
+    <div className={`flex flex-col min-h-screen font-sans pb-20 select-none ${
+      theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-slate-900'
+    }`}>
       
       {/* ── TOP MOBILE APP BAR ── */}
       <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-3 shadow-lg">
@@ -983,6 +1018,14 @@ export default function MobileApp({
                 <div className="py-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
                   <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
                   <span>جاري تحميل أحدث السجلات...</span>
+                </div>
+              ) : recruitsError ? (
+                <div className="bg-rose-950/20 p-6 rounded-2xl border border-rose-800 text-center text-rose-400 text-xs flex flex-col items-center gap-2">
+                  <AlertTriangle className="w-6 h-6" />
+                  <span>{recruitsError}</span>
+                  <button onClick={fetchMobileRecruits} className="mt-2 text-[10px] bg-rose-900 hover:bg-rose-800 px-3 py-1.5 rounded-lg text-rose-200">
+                    إعادة المحاولة
+                  </button>
                 </div>
               ) : recruits.length === 0 ? (
                 <div className="bg-slate-900/60 p-6 rounded-2xl border border-slate-800 text-center text-slate-400 text-xs">
@@ -1755,6 +1798,14 @@ export default function MobileApp({
               <div className="py-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
                 <span>جاري تحميل السجل الميداني...</span>
+              </div>
+            ) : recruitsError ? (
+              <div className="bg-rose-950/20 p-6 rounded-2xl border border-rose-800 text-center text-rose-400 text-xs flex flex-col items-center gap-2">
+                <AlertTriangle className="w-8 h-8" />
+                <span>{recruitsError}</span>
+                <button onClick={fetchMobileRecruits} className="mt-2 text-[10px] bg-rose-900 hover:bg-rose-800 px-3 py-1.5 rounded-lg text-rose-200">
+                  إعادة المحاولة
+                </button>
               </div>
             ) : recruits.length === 0 ? (
               <div className="bg-slate-900/60 p-8 rounded-2xl border border-slate-800 text-center space-y-2">

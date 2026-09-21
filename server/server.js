@@ -73,7 +73,7 @@ app.use('/uploads', (req, res, next) => {
 });
 
 // Real-time synchronization heartbeat endpoint
-app.get('/api/sync/status', (req, res) => {
+app.get('/api/sync/status', requireAuth, (req, res) => {
   res.json({
     timestamp: lastDataUpdateTimestamp,
     server_time: Date.now()
@@ -1681,11 +1681,11 @@ app.delete('/api/recruits/:id', requireAuth, requireRole('admin'), async (req, r
 
     // Cleanup media files if exist
     if (existing.photo_path) {
-      const p = path.join(__dirname, '..', existing.photo_path);
+      const p = path.join(baseDir, existing.photo_path);
       if (fs.existsSync(p)) try { fs.unlinkSync(p); } catch (e) { }
     }
     if (existing.video_path) {
-      const v = path.join(__dirname, '..', existing.video_path);
+      const v = path.join(baseDir, existing.video_path);
       if (fs.existsSync(v)) try { fs.unlinkSync(v); } catch (e) { }
     }
 
@@ -1717,11 +1717,11 @@ app.post('/api/recruits/bulk-delete', requireAuth, requireRole('admin'), async (
     await run(`DELETE FROM recruits WHERE id IN (${placeholders})`, ids);
     for (const r of recruitsToDelete) {
       if (r.photo_path) {
-        const p = path.join(__dirname, '..', r.photo_path);
+        const p = path.join(baseDir, r.photo_path);
         if (fs.existsSync(p)) try { fs.unlinkSync(p); } catch (e) {}
       }
       if (r.video_path) {
-        const v = path.join(__dirname, '..', r.video_path);
+        const v = path.join(baseDir, r.video_path);
         if (fs.existsSync(v)) try { fs.unlinkSync(v); } catch (e) {}
       }
     }

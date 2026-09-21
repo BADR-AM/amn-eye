@@ -109,6 +109,7 @@ export default function App() {
     };
     window.addEventListener('session-expired', onSessionExpired);
     return () => window.removeEventListener('session-expired', onSessionExpired);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showToast]);
 
   // Toggle Theme
@@ -185,6 +186,7 @@ export default function App() {
     if (loggedIn) {
       loadInitialData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn]);
 
   // Global hotkeys (e.g. F2 to start registration)
@@ -255,7 +257,7 @@ export default function App() {
   // Dedicated Mobile-Optimized Application
   if (isMobileMode) {
     return (
-      <div dir="rtl" className="min-h-screen bg-slate-950 text-slate-100 font-sans">
+      <div dir="rtl" className={`min-h-screen ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-slate-900'} font-sans`}>
         {toast && (
           <Toast
             key={toast.key}

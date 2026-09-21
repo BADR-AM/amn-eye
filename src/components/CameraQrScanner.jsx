@@ -2,12 +2,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import jsQR from 'jsqr';
 import { Camera, RefreshCw, X, AlertCircle, Volume2, VolumeX, SwitchCamera, Upload, Image as ImageIcon } from 'lucide-react';
 
+let sharedAudioContext = null;
+
 // Play crisp tactical confirmation beep via Web Audio API
 const playScanChime = () => {
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return;
-    const ctx = new AudioContext();
+    if (!sharedAudioContext) {
+      sharedAudioContext = new AudioContext();
+    }
+    const ctx = sharedAudioContext;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
@@ -40,6 +45,17 @@ export default function CameraQrScanner({
   const animFrameId = useRef(null);
   const fileInputRef = useRef(null);
   const galleryInputRef = useRef(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (sharedAudioContext) {
+        sharedAudioContext.close();
+        sharedAudioContext = null;
+      }
+    };
+  }, []);
 
   const [devices, setDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -64,8 +80,10 @@ export default function CameraQrScanner({
 
         if (videoInputs.length > 0) {
           // Prefer back camera if mobile, or first device
-          const backCam = videoInputs.find(d => /back|rear|environment/i.test(d.label));
-          setSelectedDeviceId(backCam ? backCam.deviceId : videoInputs[0].deviceId);
+          const backCam = videoInputs.find(d => d.label && /back|rear|environment/i.test(d.label));
+          if (backCam) {
+            setSelectedDeviceId(backCam.deviceId);
+          }
         }
       } catch (err) {
         console.error('Error enumerating cameras:', err);
@@ -154,13 +172,25 @@ export default function CameraQrScanner({
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 800;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.floor(height * (maxDim / width));
+            width = maxDim;
+          } else {
+            width = Math.floor(width * (maxDim / height));
+            height = maxDim;
+          }
+        }
         const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(img, 0, 0);
+        ctx.drawImage(img, 0, 0, width, height);
 
-        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const imgData = ctx.getImageData(0, 0, width, height);
         const code = jsQR(imgData.data, imgData.width, imgData.height, {
           inversionAttempts: 'attemptBoth'
         });
@@ -171,6 +201,7 @@ export default function CameraQrScanner({
           if (soundEnabled) playScanChime();
           setScannedSuccess(true);
           setTimeout(() => {
+            if (!isMountedRef.current) return;
             stopCamera();
             onScan(code.data.trim());
           }, 350);
@@ -216,13 +247,33 @@ export default function CameraQrScanner({
       canvasRef.current = canvas;
 
       if (video.videoWidth > 0 && video.videoHeight > 0) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        if (!video.frameCount) video.frameCount = 0;
+        video.frameCount++;
+        if (video.frameCount % 6 !== 0) {
+          animFrameId.current = requestAnimationFrame(scanFrame);
+          return;
+        }
+
+        let width = video.videoWidth;
+        let height = video.videoHeight;
+        const maxDim = 400;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.floor(height * (maxDim / width));
+            width = maxDim;
+          } else {
+            width = Math.floor(width * (maxDim / height));
+            height = maxDim;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         
         if (ctx) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(video, 0, 0, width, height);
+          const imageData = ctx.getImageData(0, 0, width, height);
 
           // Fast QR decoding with jsQR
           const code = jsQR(imageData.data, imageData.width, imageData.height, {
@@ -237,6 +288,7 @@ export default function CameraQrScanner({
 
             // Small delay for tactical scan animation feedback
             setTimeout(() => {
+              if (!isMountedRef.current) return;
               stopCamera();
               if (onScan) {
                 onScan(code.data.trim());
