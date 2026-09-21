@@ -46,14 +46,14 @@ import TicketModal from './TicketModal';
 import PsychologicalFollowupModal from './PsychologicalFollowupModal';
 import CameraQrScanner from './CameraQrScanner';
 import { fetchCompanyColors, DEFAULT_COMPANY_COLORS, getCompanyStyle } from '../utils/companyColors';
-import { authHeaders } from '../utils/auth';
+import { authHeaders, getUser } from '../utils/auth';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
 export default function Dashboard({ 
   stats, 
   batches, 
   activeBatch, 
-  currentUser,
+  currentUser: propCurrentUser,
   onOpenKiosk, 
   onSelectRecruit, 
   onPrintRecruit, 
@@ -62,6 +62,7 @@ export default function Dashboard({
   onRefresh,
   refreshTrigger
 }) {
+  const currentUser = propCurrentUser || getUser();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBatchId, setSelectedBatchId] = useState('all');
   const [selectedQualification, setSelectedQualification] = useState('all');
@@ -271,6 +272,47 @@ export default function Dashboard({
   useEffect(() => {
     fetchRecruits();
   }, [debouncedSearch, selectedBatchId, selectedQualification, selectedCompanyFilter, selectedDateFilter, selectedCategoryFilter, page, refreshTrigger]);
+
+  // Real-time live synchronization between Desktop, Mobile & other devices
+  const lastSyncTimestampRef = useRef(Date.now());
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkSyncStatus = async () => {
+      try {
+        const res = await fetch('/api/sync/status', { headers: authHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.timestamp && data.timestamp > lastSyncTimestampRef.current) {
+          lastSyncTimestampRef.current = data.timestamp;
+          if (isMounted) {
+            fetchRecruits();
+            if (onRefresh) onRefresh();
+          }
+        }
+      } catch (e) {
+        // Silently ignore transient network sync blips
+      }
+    };
+
+    const intervalId = setInterval(checkSyncStatus, 3000);
+
+    const onFocusOrVisible = () => {
+      if (document.visibilityState === 'visible') {
+        checkSyncStatus();
+      }
+    };
+    window.addEventListener('focus', onFocusOrVisible);
+    document.addEventListener('visibilitychange', onFocusOrVisible);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      window.removeEventListener('focus', onFocusOrVisible);
+      document.removeEventListener('visibilitychange', onFocusOrVisible);
+    };
+  }, [debouncedSearch, selectedBatchId, selectedQualification, selectedCompanyFilter, selectedDateFilter, selectedCategoryFilter, page]);
 
   return (
     <div className="max-w-[1700px] w-full mx-auto px-4 sm:px-6 py-6 space-y-5 text-gray-100 font-sans">

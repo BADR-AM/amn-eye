@@ -36,11 +36,11 @@ function LiveClock() {
   }, []);
 
   return (
-    <div className="flex items-center gap-2 text-slate-300">
-      <Clock className="w-4 h-4 text-slate-400" />
+    <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+      <Clock className="w-4 h-4 text-slate-500 dark:text-slate-400" />
       <div className="text-xs">
-        <span className="font-bold text-white">{timeStr}</span>
-        <span className="text-[10px] text-slate-400 mr-2">{dateStr}</span>
+        <span className="font-bold text-slate-900 dark:text-white">{timeStr}</span>
+        <span className="text-[10px] text-slate-500 dark:text-slate-400 mr-2">{dateStr}</span>
       </div>
     </div>
   );
@@ -58,10 +58,8 @@ export default function Header({
   onOpenAiChat,
   onOpenAuditLogs,
   onSwitchToMobile,
-  theme,
   onToggleTheme,
-  networkInfo,
-  onRefresh,
+  theme,
   onLogout
 }) {
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
@@ -81,50 +79,50 @@ export default function Header({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono font-black tracking-widest uppercase px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
+              <span className="text-[10px] font-mono font-black tracking-widest uppercase px-2 py-0.5 rounded bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30">
                 SECURITY EYE
               </span>
-              <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
                 منظومة فحص وتسجيل المجندين
-                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">
+                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-mono">
                   VER 02.1
                 </span>
               </h1>
             </div>
-            <p className="text-xs text-slate-300 font-medium flex items-center gap-1.5 flex-wrap">
+            <p className="text-xs text-slate-600 dark:text-slate-300 font-medium flex items-center gap-1.5 flex-wrap">
               <span>قطاع الأمن المركزي</span>
               <span>•</span>
               <span>منطقة وسط الدلتا</span>
               <span>•</span>
-              <span className="text-amber-400 font-bold">مركز تدريب المجندين</span>
+              <span className="text-amber-600 dark:text-amber-400 font-bold">مركز تدريب المجندين</span>
               <span>•</span>
-              <span className="text-blue-400 font-bold">وحدة الأمن والتحريات</span>
+              <span className="text-blue-600 dark:text-blue-400 font-bold">وحدة الأمن والتحريات</span>
             </p>
           </div>
         </div>
 
         {/* Live Active Batch & Current Date */}
-        <div className="hidden lg:flex items-center gap-4 bg-darkslate-850 dark:bg-zinc-900 px-4 py-2 rounded-xl border border-slate-800 dark:border-zinc-800">
+        <div className="hidden lg:flex items-center gap-4 bg-slate-100 dark:bg-zinc-900 px-4 py-2 rounded-xl border border-slate-300 dark:border-zinc-800">
           <button 
             onClick={onOpenBatches}
-            className="flex items-center gap-2.5 text-right hover:text-emerald-400 transition-colors group"
+            className="flex items-center gap-2.5 text-right hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors group"
             title="انقر لتغيير أو إدارة الدفوع التجنيدية"
           >
-            <div className="w-8 h-8 rounded-lg bg-slate-800 dark:bg-zinc-800 flex items-center justify-center text-emerald-400 group-hover:bg-emerald-500/20">
+            <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-zinc-800 flex items-center justify-center text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-500/20">
               <Layers className="w-4 h-4" />
             </div>
             <div>
-              <div className="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
+              <div className="text-[10px] text-slate-600 dark:text-slate-400 font-semibold flex items-center gap-1">
                 الدفع التجنيدي المعتمد
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse"></span>
               </div>
-              <div className="text-xs font-bold text-white group-hover:text-emerald-300">
+              <div className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-300">
                 {activeBatch ? activeBatch.name : 'جاري التحميل...'}
               </div>
             </div>
           </button>
 
-          <div className="h-6 w-[1px] bg-slate-700 dark:bg-zinc-700 mx-1"></div>
+          <div className="h-6 w-[1px] bg-slate-300 dark:bg-zinc-700 mx-1"></div>
 
           <LiveClock />
         </div>
@@ -221,24 +219,24 @@ export default function Header({
           )}
 
           {/* User Profile Badge & Quick Password Change */}
-          <div className="flex items-center gap-2 bg-darkslate-850 dark:bg-zinc-900 px-3 py-1.5 rounded-xl border border-slate-700/60 dark:border-zinc-800">
+          <div className="flex items-center gap-2 bg-slate-100 dark:bg-zinc-900 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-zinc-800">
             <div className="text-right">
-              <div className="text-xs font-bold text-white leading-tight flex items-center gap-1.5">
+              <div className="text-xs font-bold text-slate-900 dark:text-white leading-tight flex items-center gap-1.5">
                 <span>{currentUser?.full_name || 'مدير المنظومة'}</span>
                 {currentUser?.role === 'admin' || !currentUser ? (
-                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">مدير</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-600 dark:text-rose-300 font-bold border border-rose-500/30">مدير</span>
                 ) : currentUser?.role === 'operator' ? (
-                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">كشك</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 font-bold border border-emerald-500/30">كشك</span>
                 ) : (
-                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 font-bold border border-blue-500/30">ضابط</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-600 dark:text-blue-300 font-bold border border-blue-500/30">ضابط</span>
                 )}
               </div>
-              <div className="text-[10px] text-slate-400 font-mono">@{currentUser?.username || 'admin'}</div>
+              <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">@{currentUser?.username || 'admin'}</div>
             </div>
 
             <button
               onClick={onOpenChangePassword}
-              className="p-1 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
+              className="p-1 rounded-lg text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
               title="تغيير كلمة المرور الخاصة بحسابك"
             >
               <KeyRound className="w-3.5 h-3.5" />
@@ -248,10 +246,10 @@ export default function Header({
           {/* Light / Dark Mode Toggle */}
           <button
             onClick={onToggleTheme}
-            className="p-2 rounded-xl bg-darkslate-850 dark:bg-zinc-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 dark:border-zinc-800 transition-colors"
+            className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white border border-slate-300 dark:border-zinc-800 transition-colors"
             title="تبديل المظهر (ليلي / نهاري)"
           >
-            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-400" />}
+            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-600" />}
           </button>
 
           {/* Logout */}
@@ -259,7 +257,7 @@ export default function Header({
             onClick={() => {
               if (typeof onLogout === 'function') onLogout();
             }}
-            className="p-2 rounded-xl bg-darkslate-850 dark:bg-zinc-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-700/60 dark:border-zinc-800 transition-colors"
+            className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-900 hover:bg-rose-100 dark:hover:bg-rose-950/40 text-slate-600 hover:text-rose-600 dark:text-slate-400 dark:hover:text-white border border-slate-300 dark:border-zinc-800 transition-colors"
             title="تسجيل الخروج من الجلسة"
           >
             <LogOut className="w-4 h-4" />
@@ -268,7 +266,7 @@ export default function Header({
           {/* Quit / Exit App Entirely */}
           <button
             onClick={() => setShowQuitConfirm(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/30 transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 border border-rose-500/30 transition-all shadow-sm"
             title="إغلاق المنظومة والخروج من البرنامج"
           >
             <Power className="w-4 h-4 text-rose-500" />

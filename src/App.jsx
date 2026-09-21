@@ -428,6 +428,7 @@ export default function App() {
       {selectedRecruit && (
         <RecruitModal
           recruit={selectedRecruit}
+          currentUser={currentUser}
           initialEditMode={editModeForSelected}
           onClose={() => {
             setSelectedRecruit(null);

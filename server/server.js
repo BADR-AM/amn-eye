@@ -42,13 +42,42 @@ app.use(cors({
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-// Serve uploaded media files statically with security headers
+// Real-time sync heartbeat state
+let lastDataUpdateTimestamp = Date.now();
+export function notifyDataChanged() {
+  lastDataUpdateTimestamp = Date.now();
+}
+
+// Serve uploaded media files statically with security headers & smart subfolder fallback
 app.use('/uploads', (req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'");
   next();
 }, express.static(uploadsDir), (req, res) => {
+  try {
+    const rawName = path.basename(req.path);
+    if (rawName) {
+      const candidates = [
+        path.join(photosDir, rawName),
+        path.join(videosDir, rawName),
+        path.join(docsDir, rawName)
+      ];
+      for (const cand of candidates) {
+        if (fs.existsSync(cand)) {
+          return res.sendFile(cand);
+        }
+      }
+    }
+  } catch (e) {}
   res.status(404).json({ error: 'الملف المطلوب غير موجود في مجلد المرفقات' });
+});
+
+// Real-time synchronization heartbeat endpoint
+app.get('/api/sync/status', (req, res) => {
+  res.json({
+    timestamp: lastDataUpdateTimestamp,
+    server_time: Date.now()
+  });
 });
 
 // Multer config — type allowlist + random filenames + 100MB limit for mobile HD videos
@@ -1495,6 +1524,7 @@ app.post('/api/recruits', requireAuth, upload.fields([{ name: 'photo', maxCount:
     });
 
     console.log(`✅ تم تسجيل مجند جديد بنجاح: ${created.name} (ID: ${created.id})`);
+    notifyDataChanged();
     res.status(201).json(created);
   } catch (error) {
     console.error('Error saving recruit:', error);
@@ -1627,6 +1657,7 @@ app.put('/api/recruits/:id', requireAuth, requireRole('admin', 'officer'), uploa
       });
     }
 
+    notifyDataChanged();
     res.json(updated);
   } catch (error) {
     console.error('Error updating recruit:', error);
@@ -1666,6 +1697,7 @@ app.delete('/api/recruits/:id', requireAuth, requireRole('admin'), async (req, r
       details: `حذف ملف المجند نهائياً: ${existing.name} (رقم عسكري: ${existing.military_number || 'ـ'})`,
     });
 
+    notifyDataChanged();
     res.json({ message: 'تم حذف ملف المجند بنجاح' });
   } catch (error) {
     console.error('Error deleting recruit:', error);
@@ -1702,6 +1734,7 @@ app.post('/api/recruits/bulk-delete', requireAuth, requireRole('admin'), async (
       details: `حذف جماعي لعدد ${ids.length} مجندين (${recruitsToDelete.map(r => r.name).slice(0, 5).join('، ')}${recruitsToDelete.length > 5 ? '...' : ''})`,
     });
 
+    notifyDataChanged();
     res.json({ message: `تم حذف ${ids.length} مجند بنجاح`, count: ids.length });
   } catch (error) {
     console.error('Error bulk deleting recruits:', error);

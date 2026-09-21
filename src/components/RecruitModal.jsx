@@ -44,8 +44,10 @@ export default function RecruitModal({
   onPrint, 
   onDelete, 
   onUpdate,
-  initialEditMode = false 
+  initialEditMode = false,
+  currentUser: propCurrentUser
 }) {
+  const currentUser = propCurrentUser || getUser();
   const [showCardPreview, setShowCardPreview] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);

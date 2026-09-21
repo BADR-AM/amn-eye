@@ -65,11 +65,11 @@ import OfficialReport from './OfficialReport';
 import RecruitHistoryModal from './RecruitHistoryModal';
 import CameraQrScanner from './CameraQrScanner';
 import { fetchCompanyColors, DEFAULT_COMPANY_COLORS, getCompanyStyle } from '../utils/companyColors';
-import { authHeaders } from '../utils/auth';
+import { authHeaders, getUser } from '../utils/auth';
 import { parseEgyptianNationalId } from '../utils/nationalId';
 
 export default function MobileApp({
-  currentUser,
+  currentUser: propCurrentUser,
   activeBatch,
   batches,
   stats,
@@ -85,6 +85,7 @@ export default function MobileApp({
   onOpenAuditLogs,
   showToast
 }) {
+  const currentUser = propCurrentUser || getUser();
   // Active Navigation Tab
   // 'home' | 'new' | 'directory' | 'analytics' | 'ai' | 'tools'
   const [activeTab, setActiveTab] = useState('home');
@@ -268,8 +269,59 @@ export default function MobileApp({
     }
   };
 
+  // Helper to reliably format media URLs across devices
+  const formatMediaSrc = (p) => {
+    if (!p) return '';
+    const clean = p.replace(/\\/g, '/');
+    if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('blob:') || clean.startsWith('data:')) {
+      return clean;
+    }
+    if (clean.startsWith('/uploads/')) return clean;
+    if (clean.startsWith('uploads/')) return '/' + clean;
+    return `/uploads/${clean}`;
+  };
+
+  // Real-time live synchronization with Desktop and server
+  const mobileLastSyncTimestampRef = useRef(Date.now());
+
   useEffect(() => {
     fetchMobileRecruits();
+  }, [searchTerm, page, filterBatch, filterCompany, filterQualification, filterSecurity, filterMedical, filterVideo, filterPhoto, activeBatch]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkSyncStatus = async () => {
+      try {
+        const res = await fetch('/api/sync/status', { headers: authHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.timestamp && data.timestamp > mobileLastSyncTimestampRef.current) {
+          mobileLastSyncTimestampRef.current = data.timestamp;
+          if (isMounted) {
+            fetchMobileRecruits();
+            if (typeof onRefresh === 'function') onRefresh();
+          }
+        }
+      } catch (e) {
+        // Silently ignore network blips
+      }
+    };
+
+    const intervalId = setInterval(checkSyncStatus, 3500);
+    const onVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        checkSyncStatus();
+      }
+    };
+    window.addEventListener('focus', onVisibilityOrFocus);
+    document.addEventListener('visibilitychange', onVisibilityOrFocus);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      window.removeEventListener('focus', onVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', onVisibilityOrFocus);
+    };
   }, [searchTerm, page, filterBatch, filterCompany, filterQualification, filterSecurity, filterMedical, filterVideo, filterPhoto, activeBatch]);
 
   // AI chat auto-scroll
@@ -951,7 +1003,7 @@ export default function MobileApp({
                           <div className="w-11 h-11 rounded-lg bg-slate-800 border border-slate-700/80 overflow-hidden shrink-0 flex items-center justify-center">
                             {recruit.photo_path ? (
                               <img 
-                                src={`/uploads/${recruit.photo_path.replace(/\\/g, '/').split('/').pop()}`} 
+                                src={formatMediaSrc(recruit.photo_path)} 
                                 alt={recruit.name} 
                                 className="w-full h-full object-cover" 
                               />
@@ -1750,7 +1802,7 @@ export default function MobileApp({
                           >
                             {recruit.photo_path ? (
                               <img 
-                                src={`/uploads/${recruit.photo_path.replace(/\\/g, '/').split('/').pop()}`} 
+                                src={formatMediaSrc(recruit.photo_path)} 
                                 alt={recruit.name} 
                                 className="w-full h-full object-cover" 
                               />
@@ -2567,7 +2619,7 @@ export default function MobileApp({
                     </div>
                   ) : selectedRecruit.photo_path ? (
                     <img 
-                      src={`/uploads/${selectedRecruit.photo_path.replace(/\\/g, '/').split('/').pop()}`} 
+                      src={formatMediaSrc(selectedRecruit.photo_path)} 
                       alt={selectedRecruit.name} 
                       className="w-full h-full object-cover" 
                     />
@@ -2671,7 +2723,7 @@ export default function MobileApp({
                     <video 
                       controls
                       playsInline
-                      src={`/uploads/${selectedRecruit.video_path.replace(/\\/g, '/').split('/').pop()}`}
+                      src={formatMediaSrc(selectedRecruit.video_path)}
                       className="w-full h-full object-contain bg-black"
                     />
                   ) : (
