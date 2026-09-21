@@ -97,9 +97,8 @@ export default function RecruitModal({
     const handleEsc = (e) => { 
       if (e.key === 'Escape') {
         if (isEditing) {
-          if (confirm('هل تريد إلغاء التعديلات والخروج من وضع التعديل؟')) {
-            setIsEditing(false);
-          }
+          setIsEditing(false);
+          setSaveError(null);
         } else {
           onClose(); 
         }
@@ -194,11 +193,11 @@ export default function RecruitModal({
   // Save changes
   const handleSave = async () => {
     if (!editData.name || !editData.name.trim()) {
-      alert('اسم المجند مطلوب');
+      setSaveError('اسم المجند مطلوب');
       return;
     }
     if (editData.national_id && editData.national_id.trim().length > 0 && !/^\d{14}$/.test(editData.national_id.trim())) {
-      alert('الرقم القومي يجب أن يتكون من 14 رقماً');
+      setSaveError('الرقم القومي يجب أن يتكون من 14 رقماً');
       return;
     }
 
@@ -426,6 +425,7 @@ export default function RecruitModal({
                     }}
                     className="p-2 rounded-xl bg-slate-800 hover:bg-rose-900/40 text-slate-400 hover:text-rose-300 border border-slate-700 transition-colors"
                     title="حذف الملف (صلاحية المدير فقط)"
+                    aria-label="حذف ملف المجند"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -438,6 +438,7 @@ export default function RecruitModal({
                   onClick={handleSave}
                   disabled={saving}
                   className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg transition-all"
+                  aria-label="حفظ التعديلات"
                 >
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   <span>{saving ? 'جاري الحفظ...' : 'حفظ التعديلات'}</span>
@@ -457,6 +458,7 @@ export default function RecruitModal({
                   }}
                   disabled={saving}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors"
+                  aria-label="إلغاء التعديل"
                 >
                   <RotateCcw className="w-4 h-4" />
                   <span>إلغاء</span>
@@ -469,6 +471,7 @@ export default function RecruitModal({
               onClick={onClose}
               className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
               title="إغلاق (Esc)"
+              aria-label="إغلاق النافذة"
             >
               <X className="w-5 h-5" />
             </button>

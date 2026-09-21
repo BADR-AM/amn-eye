@@ -13,6 +13,9 @@ const playScanChime = () => {
       sharedAudioContext = new AudioContext();
     }
     const ctx = sharedAudioContext;
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 

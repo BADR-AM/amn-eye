@@ -1681,11 +1681,11 @@ app.delete('/api/recruits/:id', requireAuth, requireRole('admin'), async (req, r
 
     // Cleanup media files if exist
     if (existing.photo_path) {
-      const p = path.join(baseDir, existing.photo_path);
+      const p = path.join(baseDir, existing.photo_path.replace(/^\/+/, ''));
       if (fs.existsSync(p)) try { fs.unlinkSync(p); } catch (e) { }
     }
     if (existing.video_path) {
-      const v = path.join(baseDir, existing.video_path);
+      const v = path.join(baseDir, existing.video_path.replace(/^\/+/, ''));
       if (fs.existsSync(v)) try { fs.unlinkSync(v); } catch (e) { }
     }
 
@@ -1717,11 +1717,11 @@ app.post('/api/recruits/bulk-delete', requireAuth, requireRole('admin'), async (
     await run(`DELETE FROM recruits WHERE id IN (${placeholders})`, ids);
     for (const r of recruitsToDelete) {
       if (r.photo_path) {
-        const p = path.join(baseDir, r.photo_path);
+        const p = path.join(baseDir, r.photo_path.replace(/^\/+/, ''));
         if (fs.existsSync(p)) try { fs.unlinkSync(p); } catch (e) {}
       }
       if (r.video_path) {
-        const v = path.join(baseDir, r.video_path);
+        const v = path.join(baseDir, r.video_path.replace(/^\/+/, ''));
         if (fs.existsSync(v)) try { fs.unlinkSync(v); } catch (e) {}
       }
     }
@@ -2412,7 +2412,7 @@ app.delete('/api/documents/:id', requireAuth, requireRole('admin'), async (req, 
 
     // Clean up physical file
     if (doc.file_path) {
-      const fullPath = path.join(__dirname, '..', doc.file_path);
+      const fullPath = path.join(baseDir, doc.file_path.replace(/^\/+/, ''));
       if (fs.existsSync(fullPath)) {
         try { fs.unlinkSync(fullPath); } catch (e) {}
       }

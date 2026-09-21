@@ -238,6 +238,7 @@ export default function Header({
               onClick={onOpenChangePassword}
               className="p-1 rounded-lg text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
               title="تغيير كلمة المرور الخاصة بحسابك"
+              aria-label="تغيير كلمة المرور الخاصة بحسابك"
             >
               <KeyRound className="w-3.5 h-3.5" />
             </button>
@@ -248,6 +249,7 @@ export default function Header({
             onClick={onToggleTheme}
             className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white border border-slate-300 dark:border-zinc-800 transition-colors"
             title="تبديل المظهر (ليلي / نهاري)"
+            aria-label="تبديل المظهر (ليلي / نهاري)"
           >
             {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-600" />}
           </button>
@@ -259,6 +261,7 @@ export default function Header({
             }}
             className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-900 hover:bg-rose-100 dark:hover:bg-rose-950/40 text-slate-600 hover:text-rose-600 dark:text-slate-400 dark:hover:text-white border border-slate-300 dark:border-zinc-800 transition-colors"
             title="تسجيل الخروج من الجلسة"
+            aria-label="تسجيل الخروج من الجلسة"
           >
             <LogOut className="w-4 h-4" />
           </button>
@@ -268,6 +271,7 @@ export default function Header({
             onClick={() => setShowQuitConfirm(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 border border-rose-500/30 transition-all shadow-sm"
             title="إغلاق المنظومة والخروج من البرنامج"
+            aria-label="إغلاق المنظومة والخروج من البرنامج"
           >
             <Power className="w-4 h-4 text-rose-500" />
             <span className="hidden xl:inline text-xs font-bold">إغلاق البرنامج</span>

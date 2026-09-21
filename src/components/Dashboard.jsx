@@ -281,6 +281,8 @@ export default function Dashboard({
   }, [debouncedSearch, selectedBatchId, selectedQualification, selectedCompanyFilter, selectedDateFilter, selectedCategoryFilter, page, refreshTrigger]);
 
   // Real-time live synchronization between Desktop, Mobile & other devices
+  const fetchRecruitsRef = useRef(fetchRecruits);
+  fetchRecruitsRef.current = fetchRecruits;
   const lastSyncTimestampRef = useRef(Date.now());
 
   useEffect(() => {
@@ -294,7 +296,7 @@ export default function Dashboard({
         if (data && data.timestamp && data.timestamp > lastSyncTimestampRef.current) {
           lastSyncTimestampRef.current = data.timestamp;
           if (isMounted) {
-            fetchRecruits();
+            fetchRecruitsRef.current?.();
             if (onRefresh) onRefresh();
           }
         }

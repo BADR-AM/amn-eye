@@ -302,6 +302,8 @@ export default function MobileApp({
   };
 
   // Real-time live synchronization with Desktop and server
+  const fetchMobileRecruitsRef = useRef(fetchMobileRecruits);
+  fetchMobileRecruitsRef.current = fetchMobileRecruits;
   const mobileLastSyncTimestampRef = useRef(Date.now());
 
   useEffect(() => {
@@ -318,7 +320,7 @@ export default function MobileApp({
         if (data && data.timestamp && data.timestamp > mobileLastSyncTimestampRef.current) {
           mobileLastSyncTimestampRef.current = data.timestamp;
           if (isMounted) {
-            fetchMobileRecruits();
+            fetchMobileRecruitsRef.current?.();
             if (typeof onRefresh === 'function') onRefresh();
           }
         }
@@ -342,7 +344,80 @@ export default function MobileApp({
       window.removeEventListener('focus', onVisibilityOrFocus);
       document.removeEventListener('visibilitychange', onVisibilityOrFocus);
     };
-  }, [searchTerm, page, filterBatch, filterCompany, filterQualification, filterSecurity, filterMedical, filterVideo, filterPhoto, activeBatch]);
+  }, []);
+
+  // Hardware / Browser Back Button handling on mobile (Bug #10)
+  const isAnyModalOrSheetOpen = Boolean(
+    isEditingRecruit ||
+    selectedRecruit ||
+    ticketRecruit ||
+    documentsRecruit ||
+    psychologicalRecruit ||
+    printRecruit ||
+    activityRecruit ||
+    historyRecruit ||
+    showExportModal ||
+    showCompanyColorsModal ||
+    showMobileQrScanner ||
+    isFilterSheetOpen
+  );
+
+  const backStateRef = useRef({});
+  backStateRef.current = {
+    isEditingRecruit,
+    selectedRecruit,
+    ticketRecruit,
+    documentsRecruit,
+    psychologicalRecruit,
+    printRecruit,
+    activityRecruit,
+    historyRecruit,
+    showExportModal,
+    showCompanyColorsModal,
+    showMobileQrScanner,
+    isFilterSheetOpen,
+    activeTab
+  };
+
+  useEffect(() => {
+    if (isAnyModalOrSheetOpen || activeTab !== 'home') {
+      window.history.pushState({ mobileNav: true }, '');
+    }
+
+    const handlePopState = () => {
+      const s = backStateRef.current;
+      if (s.isEditingRecruit) {
+        cancelEditingRecruit();
+      } else if (s.ticketRecruit) {
+        setTicketRecruit(null);
+      } else if (s.documentsRecruit) {
+        setDocumentsRecruit(null);
+      } else if (s.psychologicalRecruit) {
+        setPsychologicalRecruit(null);
+      } else if (s.printRecruit) {
+        setPrintRecruit(null);
+      } else if (s.activityRecruit) {
+        setActivityRecruit(null);
+      } else if (s.historyRecruit) {
+        setHistoryRecruit(null);
+      } else if (s.showExportModal) {
+        setShowExportModal(false);
+      } else if (s.showCompanyColorsModal) {
+        setShowCompanyColorsModal(false);
+      } else if (s.showMobileQrScanner) {
+        setShowMobileQrScanner(false);
+      } else if (s.isFilterSheetOpen) {
+        setIsFilterSheetOpen(false);
+      } else if (s.selectedRecruit) {
+        setSelectedRecruit(null);
+      } else if (s.activeTab !== 'home') {
+        setActiveTab('home');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isAnyModalOrSheetOpen, activeTab]);
 
   // AI chat auto-scroll
   useEffect(() => {
