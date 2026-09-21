@@ -26,16 +26,17 @@ export default function OfficialReport({ recruit, onClose }) {
 
   // Generate official digital verification QR Code for recruit report
   useEffect(() => {
-    const payload = recruit.national_id 
-      ? `SEC-EYE:REC:${recruit.national_id}` 
-      : `SEC-EYE:REC:${recruit.police_number || recruit.id}`;
+    const permanentCode = recruit.national_id 
+      ? recruit.national_id 
+      : (recruit.recruit_code || `REC-${String(recruit.id).padStart(7, '0')}`);
+    const payload = `SEC-EYE:REC:${permanentCode}`;
     QRCode.toDataURL(payload, {
       width: 160,
       margin: 1,
       errorCorrectionLevel: 'M',
       color: { dark: '#000000', light: '#ffffff' }
     }).then(url => setQrCodeUrl(url)).catch(() => {});
-  }, [recruit?.national_id, recruit?.police_number, recruit?.id]);
+  }, [recruit?.national_id, recruit?.recruit_code, recruit?.id]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-start p-4 sm:p-8 overflow-y-auto">

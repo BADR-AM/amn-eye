@@ -207,6 +207,10 @@ export const initDb = async () => {
     await run(`ALTER TABLE recruits ADD COLUMN last_psychological_followup TEXT DEFAULT ''`);
     console.log('✅ تم تحديث المخطط: إضافة عمود last_psychological_followup');
   }
+  if (!colNames.includes('recruit_code')) {
+    await run(`ALTER TABLE recruits ADD COLUMN recruit_code TEXT DEFAULT ''`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود recruit_code الموحد والدائم للمجند');
+  }
 
   // 3. System Settings table (إعدادات المنظومة وألوان السرايا)
   await run(`
@@ -335,6 +339,18 @@ export const initDb = async () => {
   await run(`DROP INDEX IF EXISTS idx_recruits_national_id_unique`);
   await run(`DROP INDEX IF EXISTS idx_recruits_national_id`);
   await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_recruits_national_id_unique ON recruits(national_id) WHERE national_id IS NOT NULL AND national_id != ''`);
+  await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_recruits_recruit_code ON recruits(recruit_code) WHERE recruit_code IS NOT NULL AND recruit_code != ''`);
+
+  // Backfill recruit_code for any existing recruits without a permanent code
+  try {
+    const recruitsWithoutCode = await query(`SELECT id FROM recruits WHERE recruit_code IS NULL OR recruit_code = ''`);
+    for (const r of recruitsWithoutCode) {
+      const code = 'REC-' + String(r.id).padStart(7, '0');
+      await run(`UPDATE recruits SET recruit_code = ? WHERE id = ?`, [code, r.id]);
+    }
+  } catch (backfillErr) {
+    console.warn('⚠️ تنبيه خلال تهيئة أكواد المجندين:', backfillErr.message);
+  }
 
   // Seed default 4 batches for 2026 if empty
   const existingBatches = await query(`SELECT COUNT(*) as count FROM batches`);

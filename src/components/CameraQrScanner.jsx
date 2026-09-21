@@ -66,6 +66,18 @@ export default function CameraQrScanner({
   const [error, setError] = useState('');
   const [scannedSuccess, setScannedSuccess] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const barcodeDetectorRef = useRef(null);
+
+  // Initialize native hardware BarcodeDetector (Chrome/Android)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+      try {
+        barcodeDetectorRef.current = new window.BarcodeDetector({ formats: ['qr_code'] });
+      } catch (e) {
+        barcodeDetectorRef.current = null;
+      }
+    }
+  }, []);
 
   // Enumerate cameras
   useEffect(() => {
@@ -174,39 +186,57 @@ export default function CameraQrScanner({
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-        const maxDim = 800;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.floor(height * (maxDim / width));
-            width = maxDim;
-          } else {
-            width = Math.floor(width * (maxDim / height));
-            height = maxDim;
+      img.onload = async () => {
+        let detectedText = null;
+
+        // Try BarcodeDetector on image element directly first
+        if (barcodeDetectorRef.current) {
+          try {
+            const barcodes = await barcodeDetectorRef.current.detect(img);
+            if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+              detectedText = barcodes[0].rawValue.trim();
+            }
+          } catch (e) {}
+        }
+
+        // Fallback to high-res canvas with jsQR
+        if (!detectedText) {
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 1200;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.floor(height * (maxDim / width));
+              width = maxDim;
+            } else {
+              width = Math.floor(width * (maxDim / height));
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const imgData = ctx.getImageData(0, 0, width, height);
+          const code = jsQR(imgData.data, imgData.width, imgData.height, {
+            inversionAttempts: 'attemptBoth'
+          });
+          if (code && code.data && code.data.trim()) {
+            detectedText = code.data.trim();
           }
         }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(img, 0, 0, width, height);
-
-        const imgData = ctx.getImageData(0, 0, width, height);
-        const code = jsQR(imgData.data, imgData.width, imgData.height, {
-          inversionAttempts: 'attemptBoth'
-        });
 
         setLoading(false);
 
-        if (code && code.data && code.data.trim()) {
+        if (detectedText) {
           if (soundEnabled) playScanChime();
           setScannedSuccess(true);
           setTimeout(() => {
             if (!isMountedRef.current) return;
             stopCamera();
-            onScan(code.data.trim());
+            onScan(detectedText);
           }, 350);
         } else {
           setError('لم يتم العثور على كود QR واضح في الصورة الملتقطة. يرجى التقاط صورة قريبة وواضحة للكود وإعادة المحاولة.');
@@ -237,72 +267,107 @@ export default function CameraQrScanner({
     }
   };
 
-  // Frame processing loop
+  // High-performance adaptive QR decoding loop
   const startScanning = () => {
-    const scanFrame = () => {
-      if (!videoRef.current || videoRef.current.readyState < 2) {
-        animFrameId.current = requestAnimationFrame(scanFrame);
-        return;
-      }
+    let isProcessing = false;
+    let lastScanTime = 0;
 
+    const scanFrame = async () => {
+      if (!isMountedRef.current || !videoRef.current) return;
       const video = videoRef.current;
-      const canvas = canvasRef.current || document.createElement('canvas');
-      canvasRef.current = canvas;
 
-      if (video.videoWidth > 0 && video.videoHeight > 0) {
-        if (!video.frameCount) video.frameCount = 0;
-        video.frameCount++;
-        if (video.frameCount % 6 !== 0) {
-          animFrameId.current = requestAnimationFrame(scanFrame);
-          return;
-        }
+      // Ensure video is actively playing with valid dimensions
+      if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+        const now = performance.now();
+        // Run scan check every 75ms (~13 checks/sec) for instant detection with zero lag
+        if (!isProcessing && (now - lastScanTime >= 75)) {
+          isProcessing = true;
+          lastScanTime = now;
+          let detectedText = null;
 
-        let width = video.videoWidth;
-        let height = video.videoHeight;
-        const maxDim = 400;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.floor(height * (maxDim / width));
-            width = maxDim;
-          } else {
-            width = Math.floor(width * (maxDim / height));
-            height = maxDim;
+          // Strategy 1: Hardware-Accelerated Native BarcodeDetector (Chrome/Android)
+          if (barcodeDetectorRef.current) {
+            try {
+              const barcodes = await barcodeDetectorRef.current.detect(video);
+              if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                detectedText = barcodes[0].rawValue.trim();
+              }
+            } catch (detectorErr) {
+              // Fallback to jsQR
+            }
           }
-        }
 
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        
-        if (ctx) {
-          ctx.drawImage(video, 0, 0, width, height);
-          const imageData = ctx.getImageData(0, 0, width, height);
+          // Strategy 2: High-Resolution Central Crop with jsQR (Targeting the central reticle box)
+          if (!detectedText) {
+            const canvas = canvasRef.current || document.createElement('canvas');
+            canvasRef.current = canvas;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-          // Fast QR decoding with jsQR
-          const code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: 'attemptBoth'
-          });
+            if (ctx) {
+              const vw = video.videoWidth;
+              const vh = video.videoHeight;
 
-          if (code && code.data && code.data.trim()) {
+              // Pass 1: Crisp crop of the center 70% where the user aligns the card
+              const cropDim = Math.floor(Math.min(vw, vh) * 0.70);
+              const cropX = Math.floor((vw - cropDim) / 2);
+              const cropY = Math.floor((vh - cropDim) / 2);
+
+              const targetCropDim = Math.min(cropDim, 650);
+              canvas.width = targetCropDim;
+              canvas.height = targetCropDim;
+
+              ctx.drawImage(video, cropX, cropY, cropDim, cropDim, 0, 0, targetCropDim, targetCropDim);
+              let imgData = ctx.getImageData(0, 0, targetCropDim, targetCropDim);
+              let code = jsQR(imgData.data, targetCropDim, targetCropDim, {
+                inversionAttempts: 'attemptBoth'
+              });
+
+              if (code && code.data && code.data.trim()) {
+                detectedText = code.data.trim();
+              } else {
+                // Pass 2: Full-frame scan fallback if card is held near edges
+                const fullScale = Math.min(800 / Math.max(vw, vh), 1);
+                const fullW = Math.floor(vw * fullScale);
+                const fullH = Math.floor(vh * fullScale);
+
+                canvas.width = fullW;
+                canvas.height = fullH;
+                ctx.drawImage(video, 0, 0, fullW, fullH);
+                imgData = ctx.getImageData(0, 0, fullW, fullH);
+                code = jsQR(imgData.data, fullW, fullH, {
+                  inversionAttempts: 'attemptBoth'
+                });
+
+                if (code && code.data && code.data.trim()) {
+                  detectedText = code.data.trim();
+                }
+              }
+            }
+          }
+
+          isProcessing = false;
+
+          if (detectedText) {
             setScannedSuccess(true);
             if (soundEnabled) {
               playScanChime();
             }
 
-            // Small delay for tactical scan animation feedback
             setTimeout(() => {
               if (!isMountedRef.current) return;
               stopCamera();
               if (onScan) {
-                onScan(code.data.trim());
+                onScan(detectedText);
               }
             }, 300);
-            return; // Stop scan loop
+            return; // Exit scan loop
           }
         }
       }
 
-      animFrameId.current = requestAnimationFrame(scanFrame);
+      if (isMountedRef.current) {
+        animFrameId.current = requestAnimationFrame(scanFrame);
+      }
     };
 
     animFrameId.current = requestAnimationFrame(scanFrame);

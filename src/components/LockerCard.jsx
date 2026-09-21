@@ -27,18 +27,19 @@ const LockerCard = forwardRef(({
 
   const [qrCodeUrl, setQrCodeUrl] = useState('');
 
-  // Generate official QR code for recruit (national_id or police_number)
+  // Generate official permanent QR code for recruit (national_id or permanent recruit_code)
   useEffect(() => {
-    const payload = recruit.national_id 
-      ? `SEC-EYE:REC:${recruit.national_id}` 
-      : `SEC-EYE:REC:${recruit.police_number || recruit.id}`;
+    const permanentCode = recruit.national_id 
+      ? recruit.national_id 
+      : (recruit.recruit_code || `REC-${String(recruit.id).padStart(7, '0')}`);
+    const payload = `SEC-EYE:REC:${permanentCode}`;
     QRCode.toDataURL(payload, {
       width: 140,
       margin: 1,
       errorCorrectionLevel: 'M',
       color: { dark: '#000000', light: '#ffffff' }
     }).then(url => setQrCodeUrl(url)).catch(() => {});
-  }, [recruit?.national_id, recruit?.police_number, recruit?.id]);
+  }, [recruit?.national_id, recruit?.recruit_code, recruit?.id]);
 
   // Extract first name (large emphasis on card) and full remaining name
   const names = (recruit.name || '').trim().split(/\s+/);

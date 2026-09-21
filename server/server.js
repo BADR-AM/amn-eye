@@ -1280,8 +1280,10 @@ app.get('/api/recruits', requireAuth, async (req, res) => {
 
     if (search && search.trim()) {
       const s = `%${search.trim()}%`;
-      whereClauses.push(`(r.name LIKE ? OR r.national_id LIKE ? OR r.address LIKE ? OR r.current_job LIKE ? OR r.police_number LIKE ?)`);
-      params.push(s, s, s, s, s);
+      const raw = search.trim();
+      const num = parseInt(raw, 10);
+      whereClauses.push(`(r.name LIKE ? OR r.national_id LIKE ? OR r.recruit_code LIKE ? OR r.address LIKE ? OR r.current_job LIKE ? OR r.police_number LIKE ? OR r.id = ?)`);
+      params.push(s, s, s, s, s, s, isNaN(num) ? -1 : num);
     }
 
     if (batch_id && batch_id !== 'all') {
@@ -1513,6 +1515,8 @@ app.post('/api/recruits', requireAuth, upload.fields([{ name: 'photo', maxCount:
     ];
 
     const result = await run(sql, params);
+    const permanentCode = 'REC-' + String(result.lastID).padStart(7, '0');
+    await run(`UPDATE recruits SET recruit_code = ? WHERE id = ?`, [permanentCode, result.lastID]);
     const created = await get(`SELECT * FROM recruits WHERE id = ?`, [result.lastID]);
 
     logAudit(req, {
