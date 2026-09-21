@@ -149,7 +149,7 @@ export default function OfficialReport({ recruit, currentUser: propCurrentUser, 
       <div className="official-report-sheet w-[210mm] max-w-full min-h-[297mm] bg-white text-black px-[12mm] py-[10mm] shadow-2xl rounded-sm border border-slate-300 font-sans flex flex-col justify-between box-border my-2">
         
         {/* 1. Official Header (Fixed Top) */}
-        <div className="relative border-b-2 border-black pb-2 shrink-0 min-h-[38mm]">
+        <div className="relative border-b-2 border-black pb-2.5 shrink-0">
           
           {/* Central Security Shield Logo in Right Corner */}
           <div className="absolute right-0 top-0 w-20 h-28 flex flex-col items-center justify-center">
@@ -161,20 +161,20 @@ export default function OfficialReport({ recruit, currentUser: propCurrentUser, 
           </div>
 
           {/* Right/Center Hierarchy */}
-          <div className="text-center font-bold space-y-0 leading-tight pr-24 pl-32">
+          <div className="text-center font-bold space-y-0 leading-tight pr-24 pl-30">
             <h2 className="text-base tracking-wider font-extrabold">وزارة الداخليـــــة</h2>
             <h3 className="text-sm font-bold">الإدارة العامة للأمن المركزي</h3>
             <h4 className="text-xs font-bold">منطقة وسط الدلتا • مركز تدريب المجندين</h4>
             <h5 className="text-[11px] font-semibold underline underline-offset-2">وحدة الأمن والتحريات</h5>
           </div>
 
-          {/* Photo Box in Left Corner - Maximized space, standard 4x6 / 3.5x4.5 portrait ratio */}
-          <div className="absolute left-0 top-0 w-[30mm] h-[38mm] border-2 border-black rounded-sm flex flex-col items-center justify-center overflow-hidden bg-slate-50 shadow-sm">
+          {/* Photo Box in Left Corner - Separated from bottom separator line with softly rounded corners */}
+          <div className="absolute left-0 top-0.5 w-[26mm] h-[33mm] border-2 border-black rounded-lg flex flex-col items-center justify-center overflow-hidden bg-slate-50 shadow-sm">
             {recruit.photo_path ? (
               <img
                 src={recruit.photo_path}
                 alt="صورة المجند"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover rounded-lg"
               />
             ) : (
               <div className="text-center p-1 text-[10px] text-slate-500 font-bold flex flex-col items-center justify-center h-full">
@@ -184,7 +184,7 @@ export default function OfficialReport({ recruit, currentUser: propCurrentUser, 
           </div>
 
           {/* Report Title Banner */}
-          <div className="text-center mt-2 pr-24 pl-32">
+          <div className="text-center mt-2 pr-24 pl-30">
             <span className="inline-block border-2 border-black px-5 py-0.5 text-[13px] font-black bg-slate-100/60 shadow-xs">
               ,, تقرير فحص مجند مستجد حضور &nbsp;&nbsp; {attendanceDate} &nbsp;&nbsp; ,,
             </span>
