@@ -34,6 +34,7 @@ import ActivityLogModal from './ActivityLogModal';
 import RecruitDocumentsModal from './RecruitDocumentsModal';
 import TicketModal from './TicketModal';
 import PsychologicalFollowupModal from './PsychologicalFollowupModal';
+import WebcamCaptureModal from './WebcamCaptureModal';
 import { toPng } from 'html-to-image';
 import { parseEgyptianNationalId } from '../utils/nationalId';
 import { authHeaders, getUser } from '../utils/auth';
@@ -77,6 +78,12 @@ export default function RecruitModal({
   const [removeVideo, setRemoveVideo] = useState(false);
   const videoInputRef = useRef(null);
   const mobileVideoInputRef = useRef(null);
+
+  // Webcam Capture Modal (Live camera snapshot / 30s video recording)
+  const [webcamModalConfig, setWebcamModalConfig] = useState({
+    isOpen: false,
+    mode: 'photo' // 'photo' | 'video'
+  });
 
   // Sync state if recruit changes
   useEffect(() => {
@@ -188,6 +195,30 @@ export default function RecruitModal({
     setNewVideoFile(null);
     setVideoPreview(null);
     setRemoveVideo(true);
+  };
+
+  // Webcam Capture Handlers
+  const handleOpenWebcamPhoto = () => {
+    setWebcamModalConfig({ isOpen: true, mode: 'photo' });
+  };
+
+  const handleOpenWebcamVideo = () => {
+    setWebcamModalConfig({ isOpen: true, mode: 'video' });
+  };
+
+  const handleWebcamCapture = (file, previewUrl) => {
+    if (webcamModalConfig.mode === 'photo') {
+      setNewPhotoFile(file);
+      setPhotoPreview(previewUrl);
+      setRemovePhoto(false);
+    } else {
+      setNewVideoFile(file);
+      if (videoPreview && typeof videoPreview === 'string' && videoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(videoPreview);
+      }
+      setVideoPreview(previewUrl);
+      setRemoveVideo(false);
+    }
   };
 
   // Save changes
@@ -557,21 +588,35 @@ export default function RecruitModal({
                 <div className="w-full mt-3 flex flex-col gap-2">
                   <button
                     type="button"
-                    onClick={() => mobilePhotoInputRef.current?.click()}
-                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-all"
+                    onClick={handleOpenWebcamPhoto}
+                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-all active:scale-95"
+                    title="تشغيل كاميرا الويب المباشرة لالتقاط صورة شخصية"
                   >
-                    <Smartphone className="w-4 h-4 text-cyan-200" />
-                    <span>التقاط فوري بكاميرا الهاتف / الويب</span>
+                    <Camera className="w-4 h-4 text-cyan-200" />
+                    <span>التقاط مباشر بكاميرا الويب</span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => photoInputRef.current?.click()}
-                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs border border-slate-700 transition-colors"
-                  >
-                    <Upload className="w-4 h-4 text-slate-400" />
-                    <span>رفع صورة من الكمبيوتر</span>
-                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => photoInputRef.current?.click()}
+                      className="flex items-center justify-center gap-1.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-[11px] border border-slate-700 transition-colors"
+                      title="اختيار صورة من ملفات الكمبيوتر"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-slate-400" />
+                      <span>رفع من الجهاز</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => mobilePhotoInputRef.current?.click()}
+                      className="flex items-center justify-center gap-1.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-[11px] border border-slate-700 transition-colors"
+                      title="فتح كاميرا الموبايل عبر المتصفح"
+                    >
+                      <Smartphone className="w-3.5 h-3.5 text-slate-400" />
+                      <span>كاميرا الهاتف</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -619,21 +664,35 @@ export default function RecruitModal({
                 <div className="w-full mt-3 flex flex-col gap-2">
                   <button
                     type="button"
-                    onClick={() => mobileVideoInputRef.current?.click()}
-                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-md transition-all"
+                    onClick={handleOpenWebcamVideo}
+                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-md transition-all active:scale-95"
+                    title="تشغيل كاميرا الويب المباشرة لتسجيل مقطع فيديو للمجند (30 ثانية)"
                   >
-                    <Smartphone className="w-4 h-4 text-purple-200" />
-                    <span>تسجيل فيديو بكاميرا الهاتف / الويب</span>
+                    <Video className="w-4 h-4 text-purple-200" />
+                    <span>تسجيل فيديو بكاميرا الويب (30 ثانية)</span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => videoInputRef.current?.click()}
-                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs border border-slate-700 transition-colors"
-                  >
-                    <Upload className="w-4 h-4 text-slate-400" />
-                    <span>رفع فيديو من الكمبيوتر</span>
-                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => videoInputRef.current?.click()}
+                      className="flex items-center justify-center gap-1.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-[11px] border border-slate-700 transition-colors"
+                      title="اختيار مقطع فيديو من ملفات الكمبيوتر"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-slate-400" />
+                      <span>رفع من الجهاز</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => mobileVideoInputRef.current?.click()}
+                      className="flex items-center justify-center gap-1.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-[11px] border border-slate-700 transition-colors"
+                      title="تسجيل فيديو بكاميرا الموبايل عبر المتصفح"
+                    >
+                      <Smartphone className="w-3.5 h-3.5 text-slate-400" />
+                      <span>كاميرا الهاتف</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1137,6 +1196,14 @@ export default function RecruitModal({
           onUpdated={() => onUpdate?.(recruit)}
         />
       )}
+
+      {/* Webcam Capture Modal (التقاط الصور وتسجيل الفيديو المباشر بكاميرا الويب) */}
+      <WebcamCaptureModal
+        isOpen={webcamModalConfig.isOpen}
+        mode={webcamModalConfig.mode}
+        onCapture={handleWebcamCapture}
+        onClose={() => setWebcamModalConfig((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }
