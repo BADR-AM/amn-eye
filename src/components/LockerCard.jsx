@@ -64,9 +64,9 @@ const LockerCard = forwardRef(({
   const isSpecialUnit = isSecurityCompany || isBaseForce;
 
   const headerTitle = isSecurityCompany 
-    ? 'قطاع الأمن المركزي — سرية الأمن' 
+    ? 'مركز التدريب — سرية الأمن' 
     : isBaseForce 
-    ? 'مركز تدريب المجندين — القوة الأساسية' 
+    ? 'مركز التدريب — القوة الأساسية' 
     : 'مركز تدريب المجندين';
 
   const headerBg = customHeaderColor || (colorConfig && colorConfig.color) || (

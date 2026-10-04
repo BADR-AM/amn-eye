@@ -198,17 +198,19 @@ export default function OfficialReport({ recruit, currentUser: propCurrentUser, 
             <h5 className="text-[11px] font-semibold underline underline-offset-2">وحدة الأمن والتحريات</h5>
           </div>
 
-          {/* Photo Box in Left Corner - Official Sharp Rectangular Frame (Zero margin, fills frame completely) */}
+          {/* Photo Box in Left Corner - Elegant Rounded Frame */}
           <div 
             onClick={() => setPhotoFit(prev => prev === 'cover' ? 'contain' : 'cover')}
-            className="absolute left-0 top-0.5 w-[27mm] h-[35mm] border-2 border-black flex items-center justify-center overflow-hidden bg-white cursor-pointer select-none"
+            style={{ borderRadius: '14px' }}
+            className="absolute left-0 top-0.5 w-[27mm] h-[35mm] border-2 border-black rounded-[14px] flex items-center justify-center overflow-hidden bg-white cursor-pointer select-none shadow-xs"
             title="انقر لتبديل طريقة ملاءمة الصورة داخل الإطار (ملء كامل أو احتواء)"
           >
             {recruit.photo_path ? (
               <img
                 src={recruit.photo_path}
                 alt="صورة المجند"
-                className={`w-full h-full ${photoFit === 'cover' ? 'object-cover' : 'object-contain'} object-center block m-0 p-0`}
+                style={{ borderRadius: '12px' }}
+                className={`w-full h-full ${photoFit === 'cover' ? 'object-cover' : 'object-contain'} object-center block m-0 p-0 rounded-[12px]`}
               />
             ) : (
               <div className="text-center p-1 text-[10px] text-slate-500 font-bold flex flex-col items-center justify-center h-full">
