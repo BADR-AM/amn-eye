@@ -93,6 +93,7 @@ export default function OfficialReport({ recruit, currentUser: propCurrentUser, 
   const attendanceDate = recruit.attendance_date || '  /  / 2026';
 
   const [qrCodeUrl, setQrCodeUrl] = useState('');
+  const [photoFit, setPhotoFit] = useState('cover'); // 'cover' fills the entire frame edge-to-edge without borders
 
   // Generate official permanent QR Code for recruit report
   useEffect(() => {
@@ -120,12 +121,41 @@ export default function OfficialReport({ recruit, currentUser: propCurrentUser, 
           <div>
             <h3 className="text-base font-bold text-white">معاينة طباعة استمارة الفحص الرسمية (A4)</h3>
             <p className="text-xs text-slate-400">
-              طباعة صفحة واحدة مؤمنة A4 • إصدار <span className="font-mono text-emerald-400 font-bold">VER 02.3</span> • بصمة الحساب: <span className="font-mono text-amber-300 font-bold">{accountFingerprint}</span>
+              طباعة صفحة واحدة مؤمنة A4 • إصدار <span className="font-mono text-emerald-400 font-bold">VER 02.3.1</span> • بصمة الحساب: <span className="font-mono text-amber-300 font-bold">{accountFingerprint}</span>
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Photo Fit Mode Selector */}
+          <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs">
+            <span className="text-slate-400 text-[11px] px-2 font-bold">نمط الصورة:</span>
+            <button
+              type="button"
+              onClick={() => setPhotoFit('cover')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all text-xs ${
+                photoFit === 'cover' 
+                  ? 'bg-emerald-600 text-white shadow-xs' 
+                  : 'text-slate-300 hover:text-white'
+              }`}
+              title="ملء الإطار بالكامل من الحافة للحافة بدون حواف بيضاء"
+            >
+              ملء الإطار
+            </button>
+            <button
+              type="button"
+              onClick={() => setPhotoFit('contain')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all text-xs ${
+                photoFit === 'contain' 
+                  ? 'bg-emerald-600 text-white shadow-xs' 
+                  : 'text-slate-300 hover:text-white'
+              }`}
+              title="عرض كامل أبعاد الصورة دون اقتطاع"
+            >
+              احتواء كامل
+            </button>
+          </div>
+
           <button
             onClick={handlePrint}
             className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold shadow-lg shadow-emerald-950/60 transition-all"
@@ -168,13 +198,17 @@ export default function OfficialReport({ recruit, currentUser: propCurrentUser, 
             <h5 className="text-[11px] font-semibold underline underline-offset-2">وحدة الأمن والتحريات</h5>
           </div>
 
-          {/* Photo Box in Left Corner - Separated from bottom separator line with softly rounded corners */}
-          <div className="absolute left-0 top-0.5 w-[26mm] h-[33mm] border-2 border-black rounded-lg flex flex-col items-center justify-center overflow-hidden bg-slate-50 shadow-sm">
+          {/* Photo Box in Left Corner - Official Sharp Rectangular Frame (Zero margin, fills frame completely) */}
+          <div 
+            onClick={() => setPhotoFit(prev => prev === 'cover' ? 'contain' : 'cover')}
+            className="absolute left-0 top-0.5 w-[27mm] h-[35mm] border-2 border-black flex items-center justify-center overflow-hidden bg-white cursor-pointer select-none"
+            title="انقر لتبديل طريقة ملاءمة الصورة داخل الإطار (ملء كامل أو احتواء)"
+          >
             {recruit.photo_path ? (
               <img
                 src={recruit.photo_path}
                 alt="صورة المجند"
-                className="w-full h-full object-cover rounded-lg"
+                className={`w-full h-full ${photoFit === 'cover' ? 'object-cover' : 'object-contain'} object-center block m-0 p-0`}
               />
             ) : (
               <div className="text-center p-1 text-[10px] text-slate-500 font-bold flex flex-col items-center justify-center h-full">

@@ -1,6 +1,6 @@
 import React, { forwardRef, useState, useEffect } from 'react';
 import QRCode from 'qrcode';
-import { getCompanyColorConfig } from '../utils/companyColors';
+import { getCompanyColorConfig, normalizeArabic } from '../utils/companyColors';
 import centralSecurityLogo from '../assets/central_security_logo.png';
 
 // Helper to convert Western digits to Eastern Arabic numerals (١٢٣٤٥٦٧٨٩٠)
@@ -58,8 +58,9 @@ const LockerCard = forwardRef(({
   const companyLabel = recruit.company?.trim() || 'السرية الثالثة ( ٣ )';
   const colorConfig = getCompanyColorConfig(companyLabel, companyColors);
   
-  const isSecurityCompany = companyLabel.includes('أمن');
-  const isBaseForce = companyLabel.includes('أساسية') || companyLabel.includes('اساسية');
+  const normCompany = normalizeArabic(companyLabel);
+  const isSecurityCompany = normCompany.includes('امن');
+  const isBaseForce = normCompany.includes('اساس');
   const isSpecialUnit = isSecurityCompany || isBaseForce;
 
   const headerTitle = isSecurityCompany 
@@ -68,19 +69,21 @@ const LockerCard = forwardRef(({
     ? 'مركز تدريب المجندين — القوة الأساسية' 
     : 'مركز تدريب المجندين';
 
-  const headerBg = customHeaderColor || (
+  const headerBg = customHeaderColor || (colorConfig && colorConfig.color) || (
     isSecurityCompany ? '#090d16' :
     isBaseForce ? '#1e1b4b' :
-    colorConfig.color || '#f37021'
+    '#f37021'
   );
 
-  const headerText = customTextColor || (
+  const headerText = customTextColor || (colorConfig && colorConfig.textColor) || (
     isSecurityCompany ? '#fef08a' :
     isBaseForce ? '#fde047' :
-    colorConfig.textColor || (headerBg === '#ffffff' ? '#000000' : '#ffffff')
+    (headerBg === '#ffffff' ? '#000000' : '#ffffff')
   );
 
-  const dividerColor = isSpecialUnit ? '#eab308' : (headerText === '#ffffff' ? 'rgba(255,255,255,0.85)' : '#000000');
+  const dividerColor = isSpecialUnit 
+    ? (colorConfig.borderColor || '#eab308') 
+    : (headerText === '#ffffff' ? 'rgba(255,255,255,0.85)' : '#000000');
 
   const cardElement = (
     <div
@@ -171,20 +174,28 @@ const LockerCard = forwardRef(({
           {/* Company Badge (Color-coded with company or prestigious military badge) */}
           <div 
             style={{ 
-              backgroundColor: isSpecialUnit ? (isSecurityCompany ? '#090d16' : '#1e1b4b') : headerBg, 
-              borderColor: isSpecialUnit ? '#eab308' : '#000000',
-              borderWidth: '2px'
+              backgroundColor: isSpecialUnit 
+                ? (colorConfig.color || (isSecurityCompany ? '#090d16' : '#1e1b4b')) 
+                : headerBg, 
+              borderColor: isSpecialUnit 
+                ? (colorConfig.borderColor || '#eab308') 
+                : (colorConfig.borderColor || '#000000'),
+              borderWidth: '2px',
             }}
-            className="px-5 py-1 rounded-[3px] shadow-sm mb-2.5 transition-colors inline-block"
+            className="px-4 py-1 rounded-[4px] shadow-sm mb-2.5 inline-flex items-center justify-center gap-1.5 whitespace-nowrap select-none"
           >
+            {isSpecialUnit && <span className="text-amber-400 text-xs shrink-0 select-none">★</span>}
             <span 
-              className="font-extrabold text-[14px] flex items-center justify-center gap-1.5"
-              style={{ color: isSpecialUnit ? '#fef08a' : headerText, fontFamily: "'Cairo', 'Segoe UI', Tahoma, sans-serif", letterSpacing: '0px' }}
+              className="font-black text-[13.5px] leading-tight whitespace-nowrap shrink-0 text-center"
+              style={{ 
+                color: isSpecialUnit ? (colorConfig.textColor || '#fef08a') : headerText, 
+                fontFamily: "'Cairo', 'Segoe UI', Tahoma, sans-serif", 
+                letterSpacing: '0px' 
+              }}
             >
-              {isSpecialUnit && <span className="text-amber-400">★</span>}
-              <span>{companyLabel}</span>
-              {isSpecialUnit && <span className="text-amber-400">★</span>}
+              {companyLabel}
             </span>
+            {isSpecialUnit && <span className="text-amber-400 text-xs shrink-0 select-none">★</span>}
           </div>
 
           {/* Identification Details */}
