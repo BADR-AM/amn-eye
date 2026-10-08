@@ -34,10 +34,11 @@ export function getOrInitJwtSecret() {
         return savedSecret;
       }
     }
-    // Write stable default secret so tokens remain valid permanently across reboots
-    fs.writeFileSync(secretFilePath, DEFAULT_JWT_SECRET, 'utf8');
-    process.env.JWT_SECRET = DEFAULT_JWT_SECRET;
-    return DEFAULT_JWT_SECRET;
+    // Generate secure random secret if not present
+    const randomSecret = crypto.randomBytes(48).toString('hex');
+    fs.writeFileSync(secretFilePath, randomSecret, 'utf8');
+    process.env.JWT_SECRET = randomSecret;
+    return randomSecret;
   } catch (err) {
     process.env.JWT_SECRET = DEFAULT_JWT_SECRET;
     return DEFAULT_JWT_SECRET;
@@ -67,14 +68,32 @@ export const comparePassword = async (plain, hash) => {
   return bcrypt.compare(plain, hash);
 };
 
-export const requireAuth = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'انتهت صلاحية الجلسة - يرجى إعادة تسجيل الدخول' });
+export const extractToken = (req) => {
+  if (!req) return null;
+  const authHeader = req.headers?.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const t = authHeader.split(' ')[1];
+    if (t && t !== 'null' && t !== 'undefined') return t;
   }
+  if (req.query?.token && typeof req.query.token === 'string') {
+    return req.query.token;
+  }
+  if (req.headers?.cookie) {
+    const match = req.headers.cookie.match(/(?:^|;\s*)(?:auth_token|token)=([^;]+)/);
+    if (match) {
+      try {
+        return decodeURIComponent(match[1]);
+      } catch (e) {
+        return match[1];
+      }
+    }
+  }
+  return null;
+};
 
-  const token = authHeader.split(' ')[1];
-  if (!token || token === 'null' || token === 'undefined') {
+export const requireAuth = (req, res, next) => {
+  const token = extractToken(req);
+  if (!token) {
     return res.status(401).json({ error: 'انتهت صلاحية الجلسة - يرجى إعادة تسجيل الدخول' });
   }
 
@@ -84,6 +103,21 @@ export const requireAuth = (req, res, next) => {
     next();
   } catch (err) {
     return res.status(401).json({ error: 'انتهت صلاحية الجلسة - يرجى إعادة تسجيل الدخول' });
+  }
+};
+
+export const requireMediaAuth = (req, res, next) => {
+  const token = extractToken(req);
+  if (!token) {
+    return res.status(401).json({ error: 'غير مصرح بالوصول إلى المرفقات بدون تصريح أمني' });
+  }
+
+  try {
+    const decoded = verifyToken(token);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'صلاحية تصريح المرفقات منتهية أو غير صالحة' });
   }
 };
 
@@ -147,6 +181,9 @@ export const handleLogin = async (req, res) => {
       });
 
       const token = generateToken(userPayload);
+      if (typeof res.setHeader === 'function') {
+        res.setHeader('Set-Cookie', `auth_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
+      }
       return res.json({
         token,
         role: userPayload.role,
@@ -176,6 +213,9 @@ export const handleLogin = async (req, res) => {
           user_role: adminPayload.role
         });
         const token = generateToken(adminPayload);
+        if (typeof res.setHeader === 'function') {
+          res.setHeader('Set-Cookie', `auth_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
+        }
         return res.json({
           token,
           role: 'admin',
@@ -239,6 +279,9 @@ export const handleQrLogin = async (req, res) => {
     });
 
     const token = generateToken(userPayload);
+    if (typeof res.setHeader === 'function') {
+      res.setHeader('Set-Cookie', `auth_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
+    }
     return res.json({
       token,
       role: userPayload.role,

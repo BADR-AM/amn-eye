@@ -21,5 +21,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true
+  },
+  test: {
+    exclude: ['dist/**', 'dist-electron/**', 'node_modules/**'],
+    hookTimeout: 30000
   }
 });

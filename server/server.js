@@ -8,11 +8,16 @@ import multer from 'multer';
 import { fileURLToPath } from 'url';
 import { initDb, query, get, run } from './db.js';
 import { getLocalIpAddresses } from './network.js';
-import { requireAuth, requireRole, handleLogin, handleQrLogin, hashPassword, comparePassword, getOrInitJwtSecret } from './auth.js';
+import { requireAuth, requireRole, requireMediaAuth, handleLogin, handleQrLogin, hashPassword, comparePassword, getOrInitJwtSecret, isDefaultAdminPassword } from './auth.js';
 import { createBackup, listBackups, deleteBackup, getAvailableDrives, startAutoBackupSchedule } from './backup.js';
 import { logAudit, computeRecruitDiff } from './auditLogger.js';
 import * as XLSX from 'xlsx';
 import { parseRecruitMarkdown } from './markdownParser.js';
+import { ensureFtsTable } from './search/ftsMigration.js';
+import { searchRecruits } from './search/ftsQueries.js';
+import { SQL_MEDICAL_FIT, SQL_MEDICAL_UNFIT, SQL_MEDICAL_UNDETERMINED, classifyMedicalStatus } from './search/medicalStatus.js';
+import { QUERY_CATALOG, executeQuery } from './ai/queryCatalog.js';
+import { buildFts5Query, normalizeArabic } from './ai/arabicNormalize.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,9 +38,32 @@ const docsDir = path.join(uploadsDir, 'documents');
   }
 });
 
+// Origin validation: allow same-origin, loopback, Electron, and private LAN subnets
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true; // Direct, file://, curl, mobile native
+  try {
+    const url = new URL(origin);
+    const host = url.hostname;
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+    if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+    if (host.endsWith('.local')) return true;
+    return false;
+  } catch (e) {
+    return false;
+  }
+};
+
 // Middlewares
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS: غير مسموح بالوصول من هذا النطاق الخارجي'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
@@ -49,14 +77,28 @@ export function notifyDataChanged() {
   lastDataUpdateTimestamp = Date.now();
 }
 
-// Serve uploaded media files statically with security headers & smart subfolder fallback
-app.use('/uploads', (req, res, next) => {
+// Serve uploaded media files with authentication and strict path traversal protection
+app.use('/uploads', requireMediaAuth, (req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'");
-  next();
-}, express.static(uploadsDir), (req, res) => {
+
   try {
-    const rawName = path.basename(req.path);
+    const rawPath = req.path || '';
+    const safePath = path.normalize(rawPath).replace(/^(\.\.[\/\\])+/, '');
+    const resolvedBase = path.resolve(uploadsDir);
+    const targetCandidate = path.resolve(path.join(uploadsDir, safePath));
+
+    // Guard against path traversal outside uploadsDir
+    if (!targetCandidate.startsWith(resolvedBase)) {
+      return res.status(403).json({ error: 'غير مسموح بالوصول خارج مجلد المرفقات' });
+    }
+
+    if (fs.existsSync(targetCandidate) && fs.statSync(targetCandidate).isFile()) {
+      return res.sendFile(targetCandidate);
+    }
+
+    // Smart subfolder fallback for legacy flat paths
+    const rawName = path.basename(rawPath);
     if (rawName) {
       const candidates = [
         path.join(photosDir, rawName),
@@ -64,12 +106,14 @@ app.use('/uploads', (req, res, next) => {
         path.join(docsDir, rawName)
       ];
       for (const cand of candidates) {
-        if (fs.existsSync(cand)) {
-          return res.sendFile(cand);
+        const resolvedCand = path.resolve(cand);
+        if (resolvedCand.startsWith(resolvedBase) && fs.existsSync(resolvedCand) && fs.statSync(resolvedCand).isFile()) {
+          return res.sendFile(resolvedCand);
         }
       }
     }
   } catch (e) {}
+
   res.status(404).json({ error: 'الملف المطلوب غير موجود في مجلد المرفقات' });
 });
 
@@ -141,13 +185,17 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 } // 100MB for mobile 4K/1080p video
 });
 
-// Initialize database
+// Initialize database and full-text search index
 await initDb();
+await ensureFtsTable();
 
 // Initialize persistent JWT secret and environment defaults
 getOrInitJwtSecret();
 if (!process.env.ADMIN_PASSWORD_HASH) {
   process.env.ADMIN_PASSWORD_HASH = '$2b$10$bNpheeFBkTWNE1sDaCkmcuLCYEYzuHbmA/BVAvsHawdBrLTlhOgcG';
+}
+if (process.env.NODE_ENV === 'production' && isDefaultAdminPassword()) {
+  console.warn('⚠️ تحذير أمني: المنظومة تعمل بكلمة المرور الافتراضية للمدير (123456). يُرجى تغييرها فوراً.');
 }
 
 // -------------------------------------------------------------
@@ -554,7 +602,7 @@ app.get('/api/analytics', requireAuth, async (req, res) => {
     const healthyCount = await get(`
       SELECT COUNT(*) as count 
       FROM recruits 
-      WHERE medical_status LIKE '%لائق%' OR medical_status LIKE '%سليم%'
+      WHERE ${SQL_MEDICAL_FIT}
     `);
 
     const jobsRows = await query(`
@@ -1051,13 +1099,16 @@ app.post('/api/chat', requireAuth, async (req, res) => {
       await new Promise(r => setTimeout(r, 200));
 
       const totalRec = await get(`SELECT COUNT(*) as count FROM recruits`);
-      const healthyRec = await get(`SELECT COUNT(*) as count FROM recruits WHERE medical_status LIKE '%لائق%' OR medical_status LIKE '%سليم%'`);
+      const healthyRec = await get(`SELECT COUNT(*) as count FROM recruits WHERE ${SQL_MEDICAL_FIT}`);
+      const unfitRec = await get(`SELECT COUNT(*) as count FROM recruits WHERE ${SQL_MEDICAL_UNFIT}`);
+      const undeterminedRec = await get(`SELECT COUNT(*) as count FROM recruits WHERE ${SQL_MEDICAL_UNDETERMINED}`);
 
       responseText = `### 🩺 تقرير المناظرة الأمنية واللياقة الطبية للمجندين\n\n`;
       responseText += `* **إجمالي المجندين الذين خضعوا للفحص:** ${totalRec.count} مجند\n`;
       responseText += `* **اللائقون طبياً وسليمو المظهر:** ${healthyRec.count} مجند\n`;
-      responseText += `* **ملاحظات طبية أو عمليات مسجلة:** ${Math.max(0, totalRec.count - healthyRec.count)} مجند\n\n`;
-      responseText += `> [!NOTE]\n> كافة النتائج مستخرجة مباشرة من واقع مناظرة وحدة الأمن والتحريات بمركز تدريب المجندين.\n`;
+      responseText += `* **غير لائقين طبياً (قرارات طبية أو استبعاد):** ${unfitRec.count} مجند\n`;
+      responseText += `* **حالات قيد الفحص والمناظرة الطبية:** ${undeterminedRec.count} مجند\n\n`;
+      responseText += `> [!NOTE]\n> كافة النتائج مستخرجة مباشرة من واقع مناظرة وحدة الأمن والتحريات بمركز تدريب المجندين دون أي تداخل في التصنيفات.\n`;
 
       suggestions = ['استخراج قائمة المؤهلات العليا', 'حصر الدفوع التجنيدية', 'من هم أصحاب الحرف والمهن؟'];
     }
@@ -1322,7 +1373,7 @@ app.get('/api/recruits', requireAuth, async (req, res) => {
       } else if (category === 'political_suspicion') {
         whereClauses.push(`(EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'political_suspicion' AND t.status = 'open') OR r.family_security_status LIKE '%سياسي%' OR r.inspection LIKE '%سياسي%')`);
       } else if (category === 'medical') {
-        whereClauses.push(`(r.medical_status NOT LIKE '%لائق%' OR EXISTS (SELECT 1 FROM recruit_activities a WHERE a.recruit_id = r.id AND a.activity_type = 'medical_referral' AND (a.return_date IS NULL OR a.return_date = '')) OR EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'medical_condition' AND t.status = 'open'))`);
+        whereClauses.push(`((${SQL_MEDICAL_UNFIT}) OR EXISTS (SELECT 1 FROM recruit_activities a WHERE a.recruit_id = r.id AND a.activity_type = 'medical_referral' AND (a.return_date IS NULL OR a.return_date = '')) OR EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'medical_condition' AND t.status = 'open'))`);
       }
     }
 
