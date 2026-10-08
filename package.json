@@ -17,7 +17,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "hashpass": "node scripts/hashpass.js",
-    "gensecret": "node -e \"console.log(require('crypto').randomBytes(48).toString('hex'))\""
+    "gensecret": "node -e \"console.log(require('crypto').randomBytes(48).toString('hex'))\"",
+    "verify:ai": "node scripts/verify-ai-assets.js",
+    "benchmark:ai": "node scripts/benchmark-ai.js"
   },
   "keywords": [],
   "author": "Security and Investigation Unit",
@@ -93,6 +95,13 @@
       "data/recruits.db",
       "package.json",
       "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets",
+        "filter": ["**/*"]
+      }
     ]
   },
   "allowScripts": {
