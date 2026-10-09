@@ -49,6 +49,7 @@ export function getOrInitJwtSecret() {
 const PERSISTENT_SECRET = getOrInitJwtSecret();
 const getSecret = () => process.env.JWT_SECRET || PERSISTENT_SECRET;
 const getHash = () => process.env.ADMIN_PASSWORD_HASH || DEFAULT_ADMIN_HASH;
+export const isDefaultAdminPassword = () => getHash() === DEFAULT_ADMIN_HASH;
 const TOKEN_EXPIRY = '30d';
 
 export const generateToken = (payload) => {
