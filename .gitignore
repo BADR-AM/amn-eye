@@ -12,3 +12,5 @@ uploads/
 *.dll
 backups/
 docs/presentation/
+*.gguf
+assets/

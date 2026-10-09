@@ -31,10 +31,32 @@ export const AI_CONFIG = {
   },
 
   // Active Model ID
-  activeModelId: process.env.AI_MODEL_ID || 'qwen3-1.7b-instruct-q4km',
+  activeModelId: process.env.AI_MODEL_ID || 'qwen2.5-0.5b-instruct-q4km',
 
   // Supported model profiles
   models: {
+    'qwen2.5-0.5b-instruct-q4km': {
+      id: 'qwen2.5-0.5b-instruct-q4km',
+      name: 'Qwen 2.5 0.5B Instruct (Q4_K_M)',
+      filename: 'qwen2.5-0.5b-instruct-q4_k_m.gguf',
+      approxSizeBytes: 491400032,
+      sha256: '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db',
+      license: 'Apache-2.0',
+      minRamGb: 4,
+      recommendedRamGb: 8,
+      chatTemplate: 'chatml'
+    },
+    'qwen2.5-1.5b-instruct-q4km': {
+      id: 'qwen2.5-1.5b-instruct-q4km',
+      name: 'Qwen 2.5 1.5B Instruct (Q4_K_M)',
+      filename: 'qwen2.5-1.5b-instruct-q4_k_m.gguf',
+      approxSizeBytes: 1117320736,
+      sha256: '6ca5463cf24c16cd56d7ad7461524d813b07b3f29889b2fbdbb8286a7e97a14a',
+      license: 'Apache-2.0',
+      minRamGb: 8,
+      recommendedRamGb: 8,
+      chatTemplate: 'chatml'
+    },
     'qwen3-1.7b-instruct-q4km': {
       id: 'qwen3-1.7b-instruct-q4km',
       name: 'Qwen3 1.7B Instruct (Q4_K_M)',

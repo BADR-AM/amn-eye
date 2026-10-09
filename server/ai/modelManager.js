@@ -33,10 +33,13 @@ class ModelManager {
     const { paths, activeModelId, models } = AI_CONFIG;
     const modelProfile = models[activeModelId] || models['qwen3-1.7b-instruct-q4km'];
 
-    // Support both development path and packaged Electron extraResources path
+    // Support development path, Electron extraResources path, and userData path
     const appDataDir = process.env.APP_DATA_DIR;
+    const resourcesPath = process.resourcesPath;
+
     const candidateBinaries = [
       path.join(paths.runtimesDir, paths.binaryName),
+      resourcesPath ? path.join(resourcesPath, 'assets', 'runtimes', paths.binaryName) : null,
       path.join(paths.projectRoot, paths.binaryName),
       appDataDir ? path.join(appDataDir, 'runtimes', paths.binaryName) : null
     ].filter(Boolean);
@@ -50,6 +53,7 @@ class ModelManager {
 
     const candidateModels = [
       path.join(paths.modelsDir, modelProfile.filename),
+      resourcesPath ? path.join(resourcesPath, 'assets', 'ai', modelProfile.filename) : null,
       path.join(paths.projectRoot, modelProfile.filename),
       appDataDir ? path.join(appDataDir, 'models', modelProfile.filename) : null
     ].filter(Boolean);
@@ -58,6 +62,28 @@ class ModelManager {
       if (fs.existsSync(m)) {
         this.modelPath = m;
         break;
+      }
+    }
+
+    // Dynamic fallback: if exact model profile filename is not found, discover any valid .gguf in modelsDir
+    if (!this.modelPath) {
+      const searchDirs = [
+        paths.modelsDir,
+        resourcesPath ? path.join(resourcesPath, 'assets', 'ai') : null,
+        appDataDir ? path.join(appDataDir, 'models') : null
+      ].filter(Boolean);
+
+      for (const d of searchDirs) {
+        if (fs.existsSync(d)) {
+          try {
+            const files = fs.readdirSync(d);
+            const ggufFile = files.find(f => f.toLowerCase().endsWith('.gguf'));
+            if (ggufFile) {
+              this.modelPath = path.join(d, ggufFile);
+              break;
+            }
+          } catch (e) {}
+        }
       }
     }
 
