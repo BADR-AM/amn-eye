@@ -12,7 +12,7 @@ import {
   X
 } from 'lucide-react';
 import { authHeaders } from '../utils/auth';
-import LiquidOrb from './LiquidOrb';
+import Orb from './Orb';
 
 // ErrorBoundary to catch ReactMarkdown parsing errors
 class ErrorBoundary extends Component {
@@ -174,7 +174,7 @@ export default function ChatPanel({ isOpen, onClose, activeBatch }) {
       <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-darkslate-850 dark:bg-zinc-900 shadow-md">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <LiquidOrb size={38} state={isLoading ? 'thinking' : 'idle'} />
+            <Orb size={38} state={isLoading ? 'thinking' : 'idle'} />
             {isLoading && (
               <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
@@ -212,6 +212,24 @@ export default function ChatPanel({ isOpen, onClose, activeBatch }) {
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
             
+            {/* Featured Greeting Hero Card on first message */}
+            {idx === 0 && (
+              <div className="w-full mb-3 p-3.5 rounded-2xl bg-gradient-to-r from-blue-950/40 via-purple-950/30 to-slate-900 border border-purple-500/25 shadow-lg flex items-center gap-3">
+                <div className="relative shrink-0 p-1 rounded-full bg-slate-950/70 border border-purple-500/30 shadow-inner flex items-center justify-center">
+                  <Orb size={44} state={isLoading ? 'thinking' : 'idle'} />
+                </div>
+                <div>
+                  <div className="text-xs font-black text-white flex items-center gap-1.5">
+                    <span>عين الأمن — الذكاء الاصطناعي المحلي</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">100% Offline</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 leading-snug mt-0.5">
+                    متصل مباشرة بقاعدة البيانات ويفهم الأسئلة والمهن بالعامية المصرية
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Role Header */}
             <div className="flex items-center gap-1.5 mb-1 text-[10px] font-bold text-slate-400 px-1">
               {msg.role === 'user' ? (
@@ -221,7 +239,7 @@ export default function ChatPanel({ isOpen, onClose, activeBatch }) {
                 </>
               ) : (
                 <>
-                  <LiquidOrb size={18} state={isLoading && idx === messages.length - 1 ? 'thinking' : 'idle'} />
+                  <div className="rounded-full overflow-hidden border border-purple-500/30 shadow-xs"><Orb size={20} state={isLoading && idx === messages.length - 1 ? 'thinking' : 'idle'} /></div>
                   <span className="text-indigo-300 font-bold">وكيل التحريات الذكي</span>
                 </>
               )}

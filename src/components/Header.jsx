@@ -18,7 +18,7 @@ import {
   Power
 } from 'lucide-react';
 import centralSecurityLogo from '../assets/central_security_logo.png';
-import LiquidOrb from './LiquidOrb';
+import Orb from './Orb';
 
 function LiveClock() {
   const [timeStr, setTimeStr] = useState('');
@@ -136,7 +136,7 @@ export default function Header({
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-extrabold bg-gradient-to-r from-slate-900 via-purple-950/40 to-slate-900 hover:from-slate-850 hover:to-purple-900/60 text-white shadow-lg shadow-purple-950/40 border border-purple-500/40 transition-all hover:scale-[1.02] active:scale-[0.98]"
             title="فتح مساعد التحريات الذكي (وكيل الذكاء الاصطناعي)"
           >
-            <LiquidOrb size={22} state="idle" />
+            <div className="relative shrink-0 flex items-center justify-center rounded-full overflow-hidden p-0.5 bg-slate-950/80 border border-purple-500/30 shadow-inner group-hover:border-purple-400/60 transition-colors"><Orb size={22} state="idle" /></div>
             <span className="hidden sm:inline bg-gradient-to-r from-white via-indigo-100 to-purple-200 bg-clip-text text-transparent font-black">
               المساعد الذكي (AI)
             </span>
