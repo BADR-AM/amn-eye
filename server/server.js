@@ -668,6 +668,11 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
   }
 
+  // Lazily ensure local AI engine is starting if assets are available
+  if (modelManager.hasAssets && modelManager.state !== 'ready' && modelManager.state !== 'loading') {
+    modelManager.start().catch(() => {});
+  }
+
   const sendEvent = (type, content) => {
     if (!wantsJson && !res.writableEnded) {
       res.write(`data: ${JSON.stringify({ type, content })}\n\n`);
@@ -675,7 +680,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   };
 
   try {
-    sendEvent('THOUGHT', 'تحليل الاستفسار واستخراج الكيانات والمحددات الأمنية...');
+    sendEvent('THOUGHT', 'تحليل الاستفسار بالعامية المصرية واستخراج الكيانات والمحددات...');
 
     // Route query through hybrid deterministic + AI router
     const result = await routeUserQuery(message);
@@ -727,6 +732,17 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 // 2.3 AI Status Endpoint (protected)
 app.get('/api/ai/status', requireAuth, (req, res) => {
   res.json(modelManager.getStatus());
+});
+
+// 2.4 Seed Sample Recruits Endpoint (protected admin)
+app.post('/api/ai/seed-sample-data', requireAuth, requireRole(['admin']), async (req, res) => {
+  try {
+    const { seedSampleRecruitsIfEmpty } = await import('./ai/sampleData.js');
+    const result = await seedSampleRecruitsIfEmpty(true);
+    res.json({ success: true, message: 'تم إدراج البيانات النموذجية للمجندين بنجاح', ...result });
+  } catch (err) {
+    res.status(500).json({ error: `فشل إدراج البيانات النموذجية: ${err.message}` });
+  }
 });
 
 // 3. Batches Management (public GET for kiosk, protected POST/PUT)
@@ -2669,4 +2685,11 @@ app.listen(PORT, '0.0.0.0', () => {
     } catch (e) {}
     return null;
   });
+
+  // Start embedded local AI sidecar asynchronously (loopback only)
+  if (process.env.NODE_ENV !== 'test' && modelManager.hasAssets) {
+    modelManager.start().catch((aiErr) => {
+      console.warn('AI sidecar auto-start notice:', aiErr.message);
+    });
+  }
 });

@@ -119,4 +119,37 @@ describe('Hybrid AI & Search Intent Routing (Synthetic Queries)', () => {
     expect(status.hardwareLimits.threads).toBeGreaterThanOrEqual(1);
     expect(status.hardwareLimits.contextTokens).toBeGreaterThanOrEqual(1024);
   });
+
+  it('should handle Egyptian officer greetings and chit-chat courteously', async () => {
+    const res = await routeUserQuery('ازيك يا باشا عامل ايه');
+    expect(res.intent).toBe('egyptian_chit_chat');
+    expect(res.mode).toBeDefined();
+    expect(res.responseText).toContain('تمام يا فندم');
+    expect(res.responseText).toContain('تحت أمر');
+  });
+
+  it('should handle Egyptian identity inquiry about assistant capabilities', async () => {
+    const res = await routeUserQuery('عرفني بيك بتعمل ايه');
+    expect(res.intent).toBe('egyptian_chit_chat');
+    expect(res.responseText).toContain('المساعد الذكي لمنظومة أمن ومتابعة المجندين');
+    expect(res.responseText).toContain('Security Eye');
+  });
+
+  it('should extract specific trade in Egyptian dialect (e.g. مين هنا نجار)', async () => {
+    const res = await routeUserQuery('مين هنا نجار؟');
+    expect(res.intent).toBe('list_trades_and_crafts');
+    expect(res.responseText).toContain('نجار');
+  });
+
+  it('should extract Egyptian governorate and city inquiries (e.g. مين من طنطا)', async () => {
+    const res = await routeUserQuery('مين من طنطا؟');
+    expect(res.intent).toBe('list_recruits_by_location');
+    expect(res.responseText).toContain('طنطا');
+  });
+
+  it('should list married recruits in Egyptian dialect (e.g. مين متجوز)', async () => {
+    const res = await routeUserQuery('مين متجوز هنا؟');
+    expect(res.intent).toBe('list_married_recruits');
+    expect(res.responseText).toContain('المتزوجين');
+  });
 });

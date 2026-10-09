@@ -115,6 +115,61 @@ Do not output markdown codeblocks. Output pure JSON.`;
       req.end();
     });
   }
+
+  async generateConversationalResponse(userPrompt, factualContext = '') {
+    if (this.queue.length >= AI_CONFIG.hardware.queueLimit) {
+      return null;
+    }
+
+    const systemPrompt = `أنت المساعد الذكي لمنظومة أمن وتسجيل المجندين (Security Eye).
+تحدث بالعامية المصرية العسكرية المحترمة والمهذبة (يا فندم، يا باشا، تمام يا فندم، كله تمام).
+أجب باختصار وأدب، واستند بدقة فقط إلى الحقائق والإحصائيات المذكورة تالياً دون اختلاق:
+${factualContext}`;
+
+    const payload = JSON.stringify({
+      prompt: `<|im_start|>system\n${systemPrompt}<|im_end|>\n<|im_start|>user\n${userPrompt}<|im_end|>\n<|im_start|>assistant\n`,
+      n_predict: 180,
+      temperature: 0.3,
+      stop: ['<|im_end|>', '\n\n\n\n']
+    });
+
+    return new Promise((resolve) => {
+      const req = http.request(
+        {
+          hostname: AI_CONFIG.host,
+          port: AI_CONFIG.port,
+          path: '/completion',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload)
+          },
+          timeout: 4000
+        },
+        (res) => {
+          let body = '';
+          res.on('data', (chunk) => { body += chunk; });
+          res.on('end', () => {
+            try {
+              const parsed = JSON.parse(body);
+              const text = (parsed.content || '').trim();
+              resolve(text || null);
+            } catch (e) {
+              resolve(null);
+            }
+          });
+        }
+      );
+
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(null);
+      });
+      req.on('error', () => resolve(null));
+      req.write(payload);
+      req.end();
+    });
+  }
 }
 
 export const modelAdapter = new ModelAdapter();

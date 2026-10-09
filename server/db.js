@@ -457,6 +457,14 @@ export const initDb = async () => {
   await run(`CREATE INDEX IF NOT EXISTS idx_audit_action_type ON audit_logs(action_type)`);
   await run(`CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity_type, entity_id)`);
   await run(`CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_logs(created_at)`);
+
+  // Auto-seed sample recruits if database is empty (for out-of-the-box readiness)
+  try {
+    const { seedSampleRecruitsIfEmpty } = await import('./ai/sampleData.js');
+    await seedSampleRecruitsIfEmpty(false);
+  } catch (seedErr) {
+    console.warn('Sample seed notice:', seedErr.message);
+  }
 };
 
 export default db;

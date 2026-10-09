@@ -154,8 +154,7 @@ class ModelManager {
       '--port', String(AI_CONFIG.port),
       '-c', String(AI_CONFIG.hardware.maxContextTokens),
       '-t', String(AI_CONFIG.hardware.cpuThreads),
-      '--n-predict', String(AI_CONFIG.hardware.maxOutputTokens),
-      '--nobrowser'
+      '--n-predict', String(AI_CONFIG.hardware.maxOutputTokens)
     ];
 
     try {
@@ -164,18 +163,17 @@ class ModelManager {
         stdio: ['ignore', 'pipe', 'pipe']
       });
 
-      this.process.stdout.on('data', (data) => {
+      const onOutput = (data) => {
         const text = data.toString();
-        if (text.includes('HTTP server listening')) {
+        if (text.includes('listening on') || text.includes('model loaded') || text.includes('HTTP server listening')) {
           this.state = 'ready';
           this.restartAttempts = 0;
           console.log(`✅ محرك الذكاء الاصطناعي جاهز للعمل على 127.0.0.1:${AI_CONFIG.port}`);
         }
-      });
+      };
 
-      this.process.stderr.on('data', (data) => {
-        // llama.cpp outputs info and loading progress on stderr
-      });
+      this.process.stdout.on('data', onOutput);
+      this.process.stderr.on('data', onOutput);
 
       this.process.on('close', (code) => {
         console.log(`🛑 توقف محرك الذكاء الاصطناعي (كود الخروج: ${code})`);

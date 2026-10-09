@@ -197,8 +197,27 @@ export const QUERY_CATALOG = {
       const sqlParams = [];
 
       if (params.trade) {
-        filter += ` AND (current_job LIKE ? OR other_jobs LIKE ?)`;
-        sqlParams.push(`%${params.trade}%`, `%${params.trade}%`);
+        const rawT = params.trade.trim();
+        const synonyms = [rawT];
+        if (rawT === 'سواق' || rawT === 'سائق') synonyms.push('سواق', 'سائق', 'قيادة');
+        if (rawT === 'كهربائي') synonyms.push('كهرباء', 'سلسيون');
+        if (rawT === 'نجار') synonyms.push('نجارة', 'موبليا', 'خشب');
+        if (rawT === 'نقاش') synonyms.push('نقاشة', 'دهان', 'ديكور');
+        if (rawT === 'سباك') synonyms.push('سباكة', 'صحي');
+        if (rawT === 'حداد') synonyms.push('حدادة', 'كريتال', 'لحام');
+        if (rawT === 'ميكانيكي') synonyms.push('ميكانيك', 'سيارات', 'ديزل');
+        if (rawT === 'تكييف') synonyms.push('تبريد', 'صيانة');
+        if (rawT === 'مبلط') synonyms.push('سيراميك', 'بلاط', 'رخام');
+        if (rawT === 'حلاق') synonyms.push('كوافير', 'حلاقة');
+        if (rawT === 'ترزي') synonyms.push('تفصيل', 'خياط');
+        if (rawT === 'طباخ') synonyms.push('شيف', 'مطابخ', 'طعام');
+
+        const uniqueSyns = [...new Set(synonyms)];
+        const clauses = uniqueSyns.map(() => `(current_job LIKE ? OR other_jobs LIKE ?)`).join(' OR ');
+        filter += ` AND (${clauses})`;
+        for (const s of uniqueSyns) {
+          sqlParams.push(`%${s}%`, `%${s}%`);
+        }
       }
 
       sqlParams.push(MAX_ROWS);
@@ -305,6 +324,59 @@ export const QUERY_CATALOG = {
         LIMIT 1
       `, [String(nid).trim()]);
       return rows[0] || null;
+    }
+  },
+
+  // 15. Recruits by Location / Governorate
+  list_recruits_by_location: {
+    id: 'list_recruits_by_location',
+    title: 'حصر المجندين حسب المحافظة ومحل الإقامة',
+    description: 'استعلام عن المجندين من محافظة أو مركز أو مدينة معينة',
+    execute: async (params = {}) => {
+      const loc = (params.location || params.query || '').trim();
+      const rows = await query(`
+        SELECT id, name, national_id, company, address, current_job, qualification
+        FROM recruits
+        WHERE address LIKE ?
+        ORDER BY id DESC
+        LIMIT ?
+      `, [`%${loc}%`, MAX_ROWS]);
+      return rows;
+    }
+  },
+
+  // 16. Recruits by Specific Company
+  list_recruits_by_company: {
+    id: 'list_recruits_by_company',
+    title: 'كشف أفراد وسرايا المجندين',
+    description: 'بيان أسماء وبيانات المجندين في سرية محددة (سرية الأمن، القوة الأساسية، السرية الأولى...)',
+    execute: async (params = {}) => {
+      const comp = (params.company || '').trim();
+      const rows = await query(`
+        SELECT id, name, national_id, company, qualification, current_job, medical_status, police_number
+        FROM recruits
+        WHERE company LIKE ?
+        ORDER BY id DESC
+        LIMIT ?
+      `, [`%${comp}%`, MAX_ROWS]);
+      return rows;
+    }
+  },
+
+  // 17. Married Recruits List
+  list_married_recruits: {
+    id: 'list_married_recruits',
+    title: 'بيان المجندين المتزوجين',
+    description: 'كشف تفصيلي بأسماء المجندين المتزوجين وبيانات الزوجة',
+    execute: async () => {
+      const rows = await query(`
+        SELECT id, name, national_id, company, wife, address, qualification
+        FROM recruits
+        WHERE wife IS NOT NULL AND wife != '' AND wife NOT LIKE '%أعزب%' AND wife NOT LIKE '%اعزب%' AND wife NOT LIKE '%لا يوجد%'
+        ORDER BY id DESC
+        LIMIT ?
+      `, [MAX_ROWS]);
+      return rows;
     }
   }
 };
