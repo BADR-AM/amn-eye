@@ -12,7 +12,7 @@ import {
   X
 } from 'lucide-react';
 import { authHeaders } from '../utils/auth';
-import Orb from './Orb';
+import Orb, { Orb as LiquidOrb } from './Orb';
 
 // ErrorBoundary to catch ReactMarkdown parsing errors
 class ErrorBoundary extends Component {
@@ -285,7 +285,7 @@ export default function ChatPanel({ isOpen, onClose, activeBatch }) {
                 </ErrorBoundary>
               ) : (
                 <div className="py-1">
-                  <LiquidOrb
+                  <Orb
                     size={28}
                     state="thinking"
                     showPill={true}

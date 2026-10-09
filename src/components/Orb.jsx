@@ -579,3 +579,5 @@ export default function Orb({
 
   return orbCanvas;
 }
+
+export { Orb, Orb as LiquidOrb };
