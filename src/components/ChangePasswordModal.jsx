@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { KeyRound, Lock, CheckCircle2, AlertCircle, Loader2, X } from 'lucide-react';
 import { authHeaders } from '../utils/auth';
 
