@@ -80,6 +80,18 @@ export const DEFAULT_COMPANY_COLORS = [
 ];
 
 /**
+ * Normalizes Arabic text by standardizing alifs and taa marbuta.
+ */
+export const normalizeArabic = (str) => {
+  if (!str && str !== 0) return '';
+  return String(str)
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+/**
  * Returns matching color configuration for a recruit's company.
  */
 export const getCompanyColorConfig = (companyName, customColors = null) => {
@@ -89,18 +101,23 @@ export const getCompanyColorConfig = (companyName, customColors = null) => {
     return list[2] || list[0] || DEFAULT_COMPANY_COLORS[2];
   }
 
-  const str = String(companyName).trim();
+  const rawStr = String(companyName).trim();
+  const normStr = normalizeArabic(rawStr);
 
-  // Try exact match or match keyword
+  // 1. Try exact match (raw or normalized)
   for (const item of list) {
-    if (item.name && str === item.name) return item;
-    if (item.match && str.includes(item.match)) return item;
-    if (item.number && (str.includes(`(${item.number})`) || str.includes(`( ${item.number} )`))) return item;
+    if (item.name && (rawStr === item.name || normStr === normalizeArabic(item.name))) return item;
+  }
+
+  // 2. Try keyword match (raw or normalized)
+  for (const item of list) {
+    if (item.match && (rawStr.includes(item.match) || normStr.includes(normalizeArabic(item.match)))) return item;
+    if (item.number && (rawStr.includes(`(${item.number})`) || rawStr.includes(`( ${item.number} )`))) return item;
   }
 
   // Fallback default
   return {
-    name: str,
+    name: rawStr,
     color: '#2563eb',
     textColor: '#ffffff',
     borderColor: '#000000'

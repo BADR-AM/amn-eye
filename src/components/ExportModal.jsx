@@ -121,6 +121,8 @@ export default function ExportModal({
   }, [scope, selectedCompany, selectedDate, isOpen, activeBatch?.id]);
 
   const cardRef = useRef(null);
+  const exportCardRef = useRef(null);
+  const [exportRecruit, setExportRecruit] = useState(null);
   const batchContainerRef = useRef(null);
 
   // Filter target recruits based on selected scope
@@ -181,15 +183,32 @@ export default function ExportModal({
     setEditingCard(false);
   };
 
-  // 1. Export Current Card as PNG
+  // Apply chosen company to all target recruits in batch
+  const handleApplyCompanyToAll = () => {
+    if (!tempCompany || targetRecruits.length === 0) return;
+    targetRecruits.forEach(r => {
+      r.company = tempCompany;
+      if (onUpdateRecruit) {
+        onUpdateRecruit(r.id, { company: tempCompany });
+      }
+    });
+    setEditingCard(false);
+  };
+
+  // 1. Export Current Card as PNG (lossless, unscaled)
   const handleExportSinglePNG = async () => {
-    if (!cardRef.current || !currentRecruit) return;
+    if (!currentRecruit) return;
     setIsProcessing(true);
     setProgressMsg('جاري إنشاء صورة الكارت عالية الدقة...');
 
     try {
-      const dataUrl = await toPng(cardRef.current, {
-        pixelRatio: 2.5,
+      setExportRecruit(currentRecruit);
+      await new Promise(r => setTimeout(r, 60));
+      const targetNode = exportCardRef.current || cardRef.current;
+      if (!targetNode) return;
+
+      const dataUrl = await toPng(targetNode, {
+        pixelRatio: 3,
         backgroundColor: '#ffffff',
         cacheBust: true,
       });
@@ -202,12 +221,13 @@ export default function ExportModal({
       console.error('Failed to export PNG:', err);
       alert('حدث خطأ أثناء تصدير الصورة.');
     } finally {
+      setExportRecruit(null);
       setIsProcessing(false);
       setProgressMsg('');
     }
   };
 
-  // 2. Export All / Selected Cards as PDF (A4 Sheet ready for printing)
+  // 2. Export All / Selected Cards as PDF (A4 Sheet ready for printing, lossless PNG embedding)
   const handleExportCardsPDF = async () => {
     if (targetRecruits.length === 0) {
       alert('لا يوجد مجندين محددين للتصدير');
@@ -225,7 +245,7 @@ export default function ExportModal({
       });
 
       // A4 dimensions: 210mm x 297mm
-      // Card aspect ratio: 640 x 380 (~1.68). Card size in mm: 92mm x 55mm (fits 4 per page: 2 rows x 2 cols)
+      // Card aspect ratio: 640 x 380 (~1.68). Card size in mm: 95mm x 56mm (fits 4 per page: 2 rows x 2 cols)
       const cardWidth = 95;
       const cardHeight = 56;
       const marginX = 8;
@@ -237,16 +257,16 @@ export default function ExportModal({
         const rec = targetRecruits[i];
         setProgressMsg(`جاري إنشاء كارت ${i + 1} من ${targetRecruits.length}: ${rec.name}...`);
 
-        // Render card offscreen or sequentially in preview
-        setPreviewIndex(i);
-        // Short delay to allow React DOM update
-        await new Promise(r => setTimeout(r, 120));
+        setExportRecruit(rec);
+        // Short delay to allow React DOM update for the unscaled card
+        await new Promise(r => setTimeout(r, 90));
 
-        if (!cardRef.current) continue;
+        const targetNode = exportCardRef.current || cardRef.current;
+        if (!targetNode) continue;
 
-        const imgData = await toJpeg(cardRef.current, {
-          quality: 0.95,
-          pixelRatio: 2.5,
+        // Lossless PNG with high pixelRatio ensures exact colors and sharp borders
+        const imgData = await toPng(targetNode, {
+          pixelRatio: 2.2,
           backgroundColor: '#ffffff',
           cacheBust: true,
         });
@@ -259,9 +279,9 @@ export default function ExportModal({
             pdf.deletePage(1);
             pdf.addPage('a6', 'landscape');
           }
-          pdf.addImage(imgData, 'JPEG', 5, 5, 138, 82);
+          pdf.addImage(imgData, 'PNG', 5, 5, 138, 82, undefined, 'FAST');
         } else {
-          // A4 Grid: 4 cards per page (2 columns x 2 rows, or up to 6)
+          // A4 Grid: 4 cards per page (2 columns x 2 rows)
           const indexOnPage = i % 4;
           if (i > 0 && indexOnPage === 0) {
             pdf.addPage('a4', 'portrait');
@@ -273,7 +293,7 @@ export default function ExportModal({
           const x = marginX + col * (cardWidth + gapX);
           const y = marginY + row * (cardHeight + gapY);
 
-          pdf.addImage(imgData, 'JPEG', x, y, cardWidth, cardHeight);
+          pdf.addImage(imgData, 'PNG', x, y, cardWidth, cardHeight, undefined, 'FAST');
 
           // Cutting guides (light gray dashed border)
           pdf.setDrawColor(200, 200, 200);
@@ -287,6 +307,7 @@ export default function ExportModal({
       console.error('Failed to export PDF:', err);
       alert('حدث خطأ أثناء تصدير ملف PDF');
     } finally {
+      setExportRecruit(null);
       setIsProcessing(false);
       setProgressMsg('');
     }
@@ -716,8 +737,18 @@ export default function ExportModal({
                             onClick={handleSaveCardEdits}
                             className="w-full mt-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1 rounded text-xs transition-colors"
                           >
-                            حفظ على الكارت
+                            حفظ على هذا الكارت
                           </button>
+                          {targetRecruits.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={handleApplyCompanyToAll}
+                              className="w-full mt-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-1 rounded text-xs transition-colors flex items-center justify-center gap-1"
+                              title="تطبيق هذه السرية على جميع المجندين المحددين في التصدير"
+                            >
+                              <span>تطبيق السرية على جميع الكروت ({targetRecruits.length})</span>
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="text-[11px] text-slate-400 space-y-1">
@@ -868,6 +899,29 @@ export default function ExportModal({
 
         </div>
 
+      </div>
+
+      {/* Offscreen Unscaled Card (Scale 1:1) for Crisp Color-Perfect PDF Export */}
+      <div 
+        style={{ 
+          position: 'fixed', 
+          left: '-9999px', 
+          top: 0, 
+          zIndex: -9999, 
+          pointerEvents: 'none', 
+          opacity: 0,
+          width: '640px',
+          height: '380px',
+          overflow: 'hidden'
+        }}
+        aria-hidden="true"
+      >
+        <LockerCard 
+          ref={exportCardRef} 
+          recruit={exportRecruit || currentRecruit} 
+          scale={1}
+          companyColors={companyColors}
+        />
       </div>
 
       {/* Settings Modal for Company Colors */}
