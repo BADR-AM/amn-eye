@@ -283,7 +283,38 @@ export async function routeUserQuery(message, options = {}) {
     };
   }
 
-  // 11. Travel abroad
+  // 11. Physical Inspection, Surgeries, Tattoos, and Scars (توثيق أول يوم والمناظرة)
+  if (norm.includes('وشم') || norm.includes('تاتو') || norm.includes('رسومات')) {
+    const data = await executeQuery('list_physical_injuries_and_tattoos', { type: 'tattoo' });
+    return {
+      intent: 'list_physical_injuries_and_tattoos',
+      mode: 'deterministic',
+      statusLabel: 'حصر أصحاب الوشوم والعلامات المميزة',
+      ...formatQueryResult('list_physical_injuries_and_tattoos', data, { type: 'tattoo' })
+    };
+  }
+
+  if (norm.includes('عملي') || norm.includes('جراح') || norm.includes('فتق') || norm.includes('خياط') || norm.includes('زائده') || norm.includes('زائدة')) {
+    const data = await executeQuery('list_physical_injuries_and_tattoos', { type: 'surgery' });
+    return {
+      intent: 'list_physical_injuries_and_tattoos',
+      mode: 'deterministic',
+      statusLabel: 'حصر أصحاب العمليات الجراحية والندبات',
+      ...formatQueryResult('list_physical_injuries_and_tattoos', data, { type: 'surgery' })
+    };
+  }
+
+  if (norm.includes('كسر') || norm.includes('جرح') || norm.includes('اصاب') || norm.includes('إصاب') || norm.includes('كدم')) {
+    const data = await executeQuery('list_physical_injuries_and_tattoos', { type: 'fracture_injury' });
+    return {
+      intent: 'list_physical_injuries_and_tattoos',
+      mode: 'deterministic',
+      statusLabel: 'حصر الإصابات والكسور القديمة',
+      ...formatQueryResult('list_physical_injuries_and_tattoos', data, { type: 'fracture_injury' })
+    };
+  }
+
+  // 12. Travel abroad
   if (norm.includes('سفر') || norm.includes('خارج') || norm.includes('جواز') || norm.includes('سافر')) {
     const data = await executeQuery('list_travel_cases');
     return {
@@ -294,7 +325,68 @@ export async function routeUserQuery(message, options = {}) {
     };
   }
 
-  // 12. Qualifications
+  // 13. System Audit Log / Tracking movements (مين سجل - مين عدل)
+  if (norm.includes('مين دخل') || norm.includes('مين عدل') || norm.includes('مين سجل') || norm.includes('مين طبع') || norm.includes('سجل الحركات') || norm.includes('سجل النشاط') || norm.includes('تدقيق') || norm.includes('audit')) {
+    const data = await executeQuery('list_recent_system_audits');
+    return {
+      intent: 'list_recent_system_audits',
+      mode: 'deterministic',
+      statusLabel: 'استعلام سجل حركات المنظومة وتدقيق الأمان',
+      ...formatQueryResult('list_recent_system_audits', data)
+    };
+  }
+
+  // 14. Qualifications (by specific level or full stats)
+  if (norm.includes('مؤهل عالي') || norm.includes('مؤهلات عليا') || norm.includes('المؤهل العالي') || norm.includes('جامعي') || norm.includes('كليات')) {
+    const data = await executeQuery('list_recruits_by_qualification_level', { level: 'عالي' });
+    return {
+      intent: 'list_recruits_by_qualification_level',
+      mode: 'deterministic',
+      statusLabel: 'كشف أسماء أصحاب المؤهلات العليا',
+      ...formatQueryResult('list_recruits_by_qualification_level', data, { level: 'المؤهل العالي' })
+    };
+  }
+
+  if (norm.includes('فوق متوسط')) {
+    const data = await executeQuery('list_recruits_by_qualification_level', { level: 'فوق متوسط' });
+    return {
+      intent: 'list_recruits_by_qualification_level',
+      mode: 'deterministic',
+      statusLabel: 'كشف أسماء أصحاب المؤهل فوق المتوسط',
+      ...formatQueryResult('list_recruits_by_qualification_level', data, { level: 'فوق متوسط' })
+    };
+  }
+
+  if (norm.includes('متوسط') && !norm.includes('فوق متوسط') && (norm.includes('مين') || norm.includes('كشف') || norm.includes('اسماء') || norm.includes('أسماء'))) {
+    const data = await executeQuery('list_recruits_by_qualification_level', { level: 'متوسط' });
+    return {
+      intent: 'list_recruits_by_qualification_level',
+      mode: 'deterministic',
+      statusLabel: 'كشف أسماء أصحاب المؤهل المتوسط',
+      ...formatQueryResult('list_recruits_by_qualification_level', data, { level: 'متوسط' })
+    };
+  }
+
+  if (norm.includes('محو امية') || norm.includes('محو أمية')) {
+    const data = await executeQuery('list_recruits_by_qualification_level', { level: 'محو أمية' });
+    return {
+      intent: 'list_recruits_by_qualification_level',
+      mode: 'deterministic',
+      statusLabel: 'كشف أسماء مجندي محو الأمية',
+      ...formatQueryResult('list_recruits_by_qualification_level', data, { level: 'محو أمية' })
+    };
+  }
+
+  if (norm.includes('عادة') || norm.includes('بدون مؤهل')) {
+    const data = await executeQuery('list_recruits_by_qualification_level', { level: 'عادة' });
+    return {
+      intent: 'list_recruits_by_qualification_level',
+      mode: 'deterministic',
+      statusLabel: 'كشف أسماء مجندي العادة (بدون مؤهل)',
+      ...formatQueryResult('list_recruits_by_qualification_level', data, { level: 'عادة بدون مؤهل' })
+    };
+  }
+
   if (norm.includes('مؤهل') || norm.includes('شهاده') || norm.includes('عالي') || norm.includes('متوسط') || norm.includes('جامع') || norm.includes('دبلوم') || norm.includes('اميه')) {
     const data = await executeQuery('stats_by_qualification');
     return {
@@ -305,7 +397,7 @@ export async function routeUserQuery(message, options = {}) {
     };
   }
 
-  // 13. Batches
+  // 15. Batches
   if (norm.includes('دفع') || norm.includes('يناير') || norm.includes('ابريل') || norm.includes('يوليو') || norm.includes('اكتوبر') || norm.includes('دفعه')) {
     const data = await executeQuery('stats_by_batch');
     return {

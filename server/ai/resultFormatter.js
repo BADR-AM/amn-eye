@@ -375,6 +375,69 @@ export function formatQueryResult(intent, data, context = {}) {
       }
       break;
     }
+
+    // 18. Physical Inspection, Surgeries, Tattoos, and Scars
+    case 'list_physical_injuries_and_tattoos': {
+      const type = context.type || 'all';
+      let titleLabel = 'العمليات الجراحية، الإصابات والوشوم';
+      if (type === 'tattoo') titleLabel = 'الوشوم والعلامات المميزة (Tattoos)';
+      else if (type === 'surgery') titleLabel = 'العمليات الجراحية والندبات';
+      else if (type === 'fracture_injury') titleLabel = 'الكسور والإصابات القديمة';
+
+      responseText = `### 🩺 بيان توثيق ${titleLabel}\n\n`;
+      if (Array.isArray(data) && data.length > 0) {
+        responseText += `تمام يا فندم، تم حصر **${data.length} حالة** مسجل لها ملاحظات هيئة ومناظرة طبية:\n\n`;
+        responseText += `| اسم المجند | السرية | ملاحظات المناظرة والهيئة | الموقف الطبي |\n`;
+        responseText += `| :--- | :---: | :--- | :--- |\n`;
+        for (const item of data) {
+          responseText += `| **${item.name}** | \`${item.company || 'ـ'}\` | ${item.inspection || 'ـ'} | ${item.medical_status || 'ـ'} |\n`;
+        }
+        matchCount = data.length;
+        suggestions = ['الحالات غير المتزنة نفسياً', 'بيان اللياقة الطبية', 'تيكتات الاشتباه الأمني'];
+      } else {
+        responseText += `تمام يا فندم، لا توجد أي حالات مسجلة بـ (${titleLabel}) في كشوف القوة الحالية. الهيئة تمام وسليمة ظاهرياً. 🫡\n`;
+        suggestions = ['عرض تمام القوة', 'بيان اللياقة الطبية', 'الحالات غير المتزنة نفسياً'];
+      }
+      break;
+    }
+
+    // 19. Qualification by Level
+    case 'list_recruits_by_qualification_level': {
+      const level = context.level || 'المؤهل المطلوب';
+      responseText = `### 🎓 كشف المجندين حملة مؤهل (${level})\n\n`;
+      if (Array.isArray(data) && data.length > 0) {
+        responseText += `تمام يا باشا، مسجل بالقوة **${data.length} مجند** بمؤهل (${level}):\n\n`;
+        responseText += `| اسم المجند | المؤهل الدراسي | السرية | المهنة الحالية | محل الإقامة |\n`;
+        responseText += `| :--- | :--- | :---: | :--- | :--- |\n`;
+        for (const q of data) {
+          responseText += `| **${q.name}** | ${q.qualification || 'ـ'} | \`${q.company || 'ـ'}\` | ${q.current_job || 'ـ'} | ${q.address || 'ـ'} |\n`;
+        }
+        matchCount = data.length;
+        suggestions = ['إحصائية كل المؤهلات', 'أصحاب المهن والحرف', 'مين في سرية الأمن؟'];
+      } else {
+        responseText += `تمام يا فندم، لا يوجد مجندين مقيدين حالياً بمؤهل (${level}).\n`;
+        suggestions = ['إحصائية كل المؤهلات', 'عرض تمام القوة'];
+      }
+      break;
+    }
+
+    // 20. System Audit Log
+    case 'list_recent_system_audits': {
+      responseText = `### 📋 سجل حركات وتدقيق المنظومة (System Audit Log)\n\n`;
+      if (Array.isArray(data) && data.length > 0) {
+        responseText += `تمام يا فندم، بيان آخر الحركات والإجراءات المسجلة بالمنظومة بالثانية:\n\n`;
+        for (const log of data) {
+          const time = log.created_at ? log.created_at.replace('T', ' ').slice(0, 19) : 'ـ';
+          const userDisp = log.user_fullname ? `${log.user_fullname} (${log.username})` : (log.username || 'النظام');
+          responseText += `* **[${time}]** المستخدم: **${userDisp}** — الإجراء: \`${log.action_type || 'تعديل'}\` — التفاصيل: *${log.details || 'ـ'}* \`(IP: ${log.ip_address || '127.0.0.1'})\`\n`;
+        }
+        matchCount = data.length;
+      } else {
+        responseText += `لا توجد حركات مسجلة في سجل التدقيق حالياً.\n`;
+      }
+      suggestions = ['عرض تمام القوة', 'تيكتات الاشتباه الأمني'];
+      break;
+    }
   }
 
   return {

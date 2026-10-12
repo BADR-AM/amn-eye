@@ -26,6 +26,8 @@ export function validateIntent(parsed) {
     if (typeof params.trade === 'string') cleanParams.trade = params.trade.slice(0, 50).trim();
     if (typeof params.location === 'string') cleanParams.location = params.location.slice(0, 50).trim();
     if (typeof params.hospital === 'string') cleanParams.hospital = params.hospital.slice(0, 50).trim();
+    if (typeof params.type === 'string') cleanParams.type = params.type.slice(0, 30).trim();
+    if (typeof params.level === 'string') cleanParams.level = params.level.slice(0, 30).trim();
     if (params.batchId) cleanParams.batchId = parseInt(params.batchId, 10) || undefined;
     if (params.status === 'open' || params.status === 'closed') cleanParams.status = params.status;
   }

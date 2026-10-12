@@ -152,4 +152,29 @@ describe('Hybrid AI & Search Intent Routing (Synthetic Queries)', () => {
     expect(res.intent).toBe('list_married_recruits');
     expect(res.responseText).toContain('المتزوجين');
   });
+
+  it('should route surgery and operation inquiries to list_physical_injuries_and_tattoos', async () => {
+    const res = await routeUserQuery('مين عنده عمليات جراحية؟');
+    expect(res.intent).toBe('list_physical_injuries_and_tattoos');
+    expect(res.responseText).toContain('العمليات الجراحية');
+  });
+
+  it('should route tattoo inquiries to list_physical_injuries_and_tattoos', async () => {
+    const res = await routeUserQuery('مين عنده وشم أو تاتو؟');
+    expect(res.intent).toBe('list_physical_injuries_and_tattoos');
+    expect(res.responseText).toContain('الوشوم');
+  });
+
+  it('should route specific qualification level inquiries (e.g. مين معاه مؤهل عالي)', async () => {
+    const res = await routeUserQuery('مين معاه مؤهل عالي؟');
+    expect(res.intent).toBe('list_recruits_by_qualification_level');
+    expect(res.responseText).toContain('المؤهل العالي');
+    expect(res.matchCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should route system audit inquiries (e.g. مين سجل أو عدل في المنظومة)', async () => {
+    const res = await routeUserQuery('مين سجل أو عدل في المنظومة؟');
+    expect(res.intent).toBe('list_recent_system_audits');
+    expect(res.responseText).toContain('سجل حركات وتدقيق المنظومة');
+  });
 });

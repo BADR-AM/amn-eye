@@ -378,6 +378,93 @@ export const QUERY_CATALOG = {
       `, [MAX_ROWS]);
       return rows;
     }
+  },
+
+  // 18. Physical Inspection, Surgeries, Tattoos, and Scars
+  list_physical_injuries_and_tattoos: {
+    id: 'list_physical_injuries_and_tattoos',
+    title: 'توثيق العمليات الجراحية، الإصابات، والوشوم',
+    description: 'حصر المجندين الذين لديهم عمليات جراحية سابقة، كسور، كدمات، جروح قديمة، أو وشوم مسجلة بالهيئة',
+    execute: async (params = {}) => {
+      const type = params.type || 'all';
+      let whereClause = `
+        (inspection LIKE '%عملي%' OR inspection LIKE '%جراح%' OR inspection LIKE '%وشم%' OR inspection LIKE '%تاتو%'
+         OR inspection LIKE '%كسر%' OR inspection LIKE '%جرح%' OR inspection LIKE '%خياط%' OR inspection LIKE '%إصاب%' OR inspection LIKE '%اصاب%')
+      `;
+
+      if (type === 'tattoo') {
+        whereClause = `(inspection LIKE '%وشم%' OR inspection LIKE '%تاتو%')`;
+      } else if (type === 'surgery') {
+        whereClause = `(inspection LIKE '%عملي%' OR inspection LIKE '%جراح%' OR inspection LIKE '%فتق%' OR inspection LIKE '%خياط%')`;
+      } else if (type === 'fracture_injury') {
+        whereClause = `(inspection LIKE '%كسر%' OR inspection LIKE '%جرح%' OR inspection LIKE '%إصاب%' OR inspection LIKE '%اصاب%')`;
+      }
+
+      const rows = await query(`
+        SELECT id, name, national_id, company, inspection, medical_status
+        FROM recruits
+        WHERE ${whereClause}
+        ORDER BY id DESC
+        LIMIT ?
+      `, [MAX_ROWS]);
+      return rows;
+    }
+  },
+
+  // 19. Qualifications Filter by Specific Level
+  list_recruits_by_qualification_level: {
+    id: 'list_recruits_by_qualification_level',
+    title: 'حصر المجندين حسب مستوى المؤهل',
+    description: 'كشف أسماء المجندين لمؤهل محدد (عالي / فوق متوسط / متوسط / عادة وبدون مؤهل / محو أمية)',
+    execute: async (params = {}) => {
+      const level = (params.level || '').trim();
+      let filter = 'qualification LIKE ?';
+      const sqlParams = [`%${level}%`];
+
+      if (level === 'عالي') {
+        filter = `(qualification LIKE '%عالي%' OR qualification LIKE '%جامع%' OR qualification LIKE '%بكالوريوس%' OR qualification LIKE '%ليسانس%')`;
+        sqlParams.length = 0;
+      } else if (level === 'فوق متوسط') {
+        filter = `(qualification LIKE '%فوق متوسط%' OR qualification LIKE '%معهد فني%')`;
+        sqlParams.length = 0;
+      } else if (level === 'متوسط') {
+        filter = `(qualification LIKE '%متوسط%' AND qualification NOT LIKE '%فوق متوسط%') OR qualification LIKE '%دبلوم%'`;
+        sqlParams.length = 0;
+      } else if (level === 'عادة' || level === 'بدون مؤهل') {
+        filter = `(qualification LIKE '%عادة%' OR qualification LIKE '%بدون%' OR qualification LIKE '%ابتدائ%' OR qualification LIKE '%إعداد%')`;
+        sqlParams.length = 0;
+      } else if (level === 'محو أمية') {
+        filter = `(qualification LIKE '%محو أمية%' OR qualification LIKE '%محو امية%')`;
+        sqlParams.length = 0;
+      }
+
+      sqlParams.push(MAX_ROWS);
+      const rows = await query(`
+        SELECT id, name, national_id, company, qualification, current_job, address
+        FROM recruits
+        WHERE ${filter}
+        ORDER BY id DESC
+        LIMIT ?
+      `, sqlParams);
+      return rows;
+    }
+  },
+
+  // 20. System Audit Log Overview (who did what)
+  list_recent_system_audits: {
+    id: 'list_recent_system_audits',
+    title: 'سجل حركات وتدقيق المنظومة (Audit Log)',
+    description: 'بيان آخر الحركات والتعديلات والإضافات التي تمت على النظام مع أسماء المستخدمين وتوقيتها بالثانية',
+    execute: async (params = {}) => {
+      const limit = params.limit || 15;
+      const rows = await query(`
+        SELECT a.id, a.username, a.user_fullname, a.action_type, a.details, a.ip_address, a.created_at
+        FROM audit_logs a
+        ORDER BY a.id DESC
+        LIMIT ?
+      `, [limit]);
+      return rows;
+    }
   }
 };
 
