@@ -458,12 +458,15 @@ export const initDb = async () => {
   await run(`CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity_type, entity_id)`);
   await run(`CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_logs(created_at)`);
 
-  // Auto-seed sample recruits if database is empty (for out-of-the-box readiness)
-  try {
-    const { seedSampleRecruitsIfEmpty } = await import('./ai/sampleData.js');
-    await seedSampleRecruitsIfEmpty(false);
-  } catch (seedErr) {
-    console.warn('Sample seed notice:', seedErr.message);
+  // Sample recruits are opt-in only (SEED_SAMPLE_DATA=true) so fictitious records never
+  // get mixed into a real register. Admins can still seed via POST /api/ai/seed-sample-data.
+  if (process.env.SEED_SAMPLE_DATA === 'true') {
+    try {
+      const { seedSampleRecruitsIfEmpty } = await import('./ai/sampleData.js');
+      await seedSampleRecruitsIfEmpty(false);
+    } catch (seedErr) {
+      console.warn('Sample seed notice:', seedErr.message);
+    }
   }
 };
 

@@ -94,7 +94,7 @@
       "dist/**/*",
       "server/**/*",
       "electron/**/*",
-      "data/**/*",
+      "data/recruits.db",
       "package.json",
       "node_modules/**/*"
     ],

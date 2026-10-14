@@ -101,6 +101,15 @@ export const requireAuth = (req, res, next) => {
   try {
     const decoded = verifyToken(token);
     req.user = decoded;
+
+    // Keep the media cookie in sync with the Bearer token. <img>/<video> tags cannot send
+    // Authorization headers, so a session restored from localStorage without a cookie
+    // would otherwise load data but fail every media request with 401.
+    const cookieMatch = req.headers?.cookie?.match(/(?:^|;\s*)auth_token=([^;]+)/);
+    if ((!cookieMatch || cookieMatch[1] !== token) && typeof res.setHeader === 'function' && !res.headersSent) {
+      res.setHeader('Set-Cookie', `auth_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
+    }
+
     next();
   } catch (err) {
     return res.status(401).json({ error: 'انتهت صلاحية الجلسة - يرجى إعادة تسجيل الدخول' });

@@ -787,7 +787,7 @@ app.get('/api/ai/status', requireAuth, (req, res) => {
 });
 
 // 2.4 Seed Sample Recruits Endpoint (protected admin)
-app.post('/api/ai/seed-sample-data', requireAuth, requireRole(['admin']), async (req, res) => {
+app.post('/api/ai/seed-sample-data', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const { seedSampleRecruitsIfEmpty } = await import('./ai/sampleData.js');
     const result = await seedSampleRecruitsIfEmpty(true);
