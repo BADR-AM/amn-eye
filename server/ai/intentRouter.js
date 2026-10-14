@@ -147,8 +147,46 @@ export async function routeUserQuery(message, options = {}) {
     };
   }
 
+  // 4.1 Distribution Sectors Matching (قطاعات التوزيع بعد انتهاء التدريب الأساسي)
+  const isSectorQuery = /(قطاع|قطاعات|الموزعين|موزع|توزيع المجندين|رئاسة المنطقه|رئاسه المنطقه|احمد عماره|أحمد عمارة|عمر القاضي|على خاطر|علي خاطر|جمال فايق|مركز التدريب|جهه خارجيه|جهة خارجية|عوده|عودة)/.test(norm);
+
+  if (isSectorQuery) {
+    let targetSector = null;
+    if (norm.includes('احمد عماره') || norm.includes('أحمد عمارة')) targetSector = 'قطاع أحمد عمارة';
+    else if (norm.includes('عمر القاضي')) targetSector = 'قطاع عمر القاضي';
+    else if (norm.includes('على خاطر') || norm.includes('علي خاطر')) targetSector = 'قطاع على خاطر';
+    else if (norm.includes('جمال فايق')) targetSector = 'قطاع جمال فايق';
+    else if (norm.includes('رئاسة المنطقه') || norm.includes('رئاسه المنطقه') || norm.includes('رئاسة المنطقة')) targetSector = 'رئاسة المنطقة';
+    else if (norm.includes('مركز التدريب') && (norm.includes('توزيع') || norm.includes('موزع') || norm.includes('مين في'))) targetSector = 'مركز التدريب';
+    else if (norm.includes('جهه خارجيه') || norm.includes('جهة خارجية')) targetSector = 'جهة خارجية';
+    else if (norm.includes('عوده') || norm.includes('عودة')) targetSector = 'عودة';
+    else if (norm.includes('لم يوزع') || norm.includes('غير موزع') || norm.includes('لسه') || norm.includes('مش موزع')) targetSector = 'unassigned';
+
+    // If specific sector asked for listing
+    if (targetSector) {
+      const data = await executeQuery('list_recruits_by_distribution_sector', { sector: targetSector });
+      return {
+        intent: 'list_recruits_by_distribution_sector',
+        mode: 'deterministic',
+        statusLabel: `حصر الموزعين على ${targetSector === 'unassigned' ? 'قيد التدريب (لم يتم التوزيع)' : targetSector}`,
+        ...formatQueryResult('list_recruits_by_distribution_sector', data, { sector: targetSector, totalRecruits })
+      };
+    }
+
+    // General distribution stats query
+    if (norm.includes('قطاع') || norm.includes('قطاعات') || norm.includes('توزيع المجندين') || norm.includes('الموزعين') || norm.includes('جهات التوزيع') || norm.includes('التوزيع')) {
+      const data = await executeQuery('stats_by_distribution_sector');
+      return {
+        intent: 'stats_by_distribution_sector',
+        mode: 'deterministic',
+        statusLabel: 'إحصائية توزيع المجندين على القطاعات',
+        ...formatQueryResult('stats_by_distribution_sector', data)
+      };
+    }
+  }
+
   // 5. Company Force Distribution or Specific Company Listing
-  if (norm.includes('سرايا') || norm.includes('توزيع') || norm.includes('كتيبه')) {
+  if (norm.includes('سرايا') || norm.includes('كتيبه')) {
     const data = await executeQuery('stats_by_company');
     return {
       intent: 'stats_by_company',

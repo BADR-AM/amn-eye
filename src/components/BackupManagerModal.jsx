@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, Database, HardDrive, Wifi, RefreshCw, Download, 
   Trash2, ShieldCheck, CheckCircle2, Clock, AlertCircle, 
-  ExternalLink, Copy, Check, QrCode, Play
+  ExternalLink, Copy, Check, QrCode, Play, RotateCcw, UploadCloud
 } from 'lucide-react';
 import { authHeaders } from '../utils/auth';
 
@@ -142,6 +142,85 @@ export default function BackupManagerModal({ isOpen, onClose }) {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Restore a backup from list
+  const handleRestoreBackup = async (fileName, isExternal = false) => {
+    const confirmMsg = `هل أنت متأكد تماماً من استرجاع النسخة الاحتياطية "${fileName}"؟\n\nتحذير هام: سيتم استبدال قاعدة البيانات والبيانات الحالية ببيانات هذه النسخة.\n(تقوم المنظومة تلقائياً بحفظ نسخة أمان قبل البدء). هل تريد الاستمرار؟`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      setProcessing(true);
+      setProgressMsg('جاري استرجاع النسخة الاحتياطية وتحديث قاعدة البيانات...');
+
+      const res = await fetch('/api/backup/restore', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders()
+        },
+        body: JSON.stringify({
+          fileName,
+          isExternal,
+          externalPath: isExternal ? config.externalPath : null
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert(`✅ ${data.message}\n(تم حفظ نسخة أمان في: ${data.result?.safetyBackup})`);
+        window.location.reload();
+      } else {
+        alert('❌ ' + (data.error || 'فشل استرجاع النسخة الاحتياطية'));
+      }
+    } catch (err) {
+      console.error('Restore error:', err);
+      alert('خطأ في الاتصال أثناء استرجاع النسخة الاحتياطية');
+    } finally {
+      setProcessing(false);
+      setProgressMsg('');
+    }
+  };
+
+  // Upload and restore custom backup file (.zip or .db)
+  const handleUploadRestore = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const confirmMsg = `هل أنت متأكد من استرجاع النسخة المرفوعة "${file.name}"؟\n\nتحذير: سيتم استبدال البيانات الحالية بمحتويات هذه النسخة.`;
+    if (!window.confirm(confirmMsg)) {
+      if (e.target) e.target.value = '';
+      return;
+    }
+
+    try {
+      setProcessing(true);
+      setProgressMsg('جاري رفع واسترجاع النسخة الاحتياطية...');
+
+      const formData = new FormData();
+      formData.append('backupFile', file);
+
+      const res = await fetch('/api/backup/upload-restore', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: formData
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert(`✅ ${data.message}\n(تم حفظ نسخة أمان في: ${data.result?.safetyBackup})`);
+        window.location.reload();
+      } else {
+        alert('❌ ' + (data.error || 'فشل استرجاع النسخة المرفوعة'));
+      }
+    } catch (err) {
+      console.error('Upload restore error:', err);
+      alert('خطأ في الاتصال أثناء رفع واسترجاع النسخة');
+    } finally {
+      setProcessing(false);
+      setProgressMsg('');
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -343,17 +422,24 @@ export default function BackupManagerModal({ isOpen, onClose }) {
 
               {/* Backups History Table */}
               <div className="border border-[#393939] bg-[#161616]">
-                <div className="px-4 py-3 border-b border-[#393939] flex items-center justify-between">
+                <div className="px-4 py-3 border-b border-[#393939] flex flex-wrap items-center justify-between gap-2">
                   <h4 className="text-xs font-bold text-white uppercase tracking-wider">
                     سجل النسخ الاحتياطية المتوفرة ({localBackups.length} نسخة محلية)
                   </h4>
-                  <button
-                    onClick={fetchBackupData}
-                    className="text-xs text-gray-400 hover:text-white flex items-center gap-1"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>تحديث القائمة</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer px-3 py-1 bg-[#262626] hover:bg-[#333] border border-emerald-500/50 text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-colors">
+                      <UploadCloud className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>استرجاع من ملف (.zip/.db)</span>
+                      <input type="file" accept=".zip,.db" onChange={handleUploadRestore} className="hidden" />
+                    </label>
+                    <button
+                      onClick={fetchBackupData}
+                      className="text-xs text-gray-400 hover:text-white flex items-center gap-1 px-2 py-1 bg-[#262626] border border-[#393939]"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>تحديث</span>
+                    </button>
+                  </div>
                 </div>
 
                 {localBackups.length === 0 ? (
@@ -375,6 +461,14 @@ export default function BackupManagerModal({ isOpen, onClose }) {
                         </div>
 
                         <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleRestoreBackup(b.fileName, false)}
+                            className="px-2.5 py-1.5 bg-emerald-950/60 hover:bg-emerald-800 text-emerald-300 hover:text-white border border-emerald-600/60 flex items-center gap-1 transition-colors"
+                            title="استرجاع قاعدة البيانات والمستندات من هذه النسخة"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span className="font-bold text-[11px]">استرجاع</span>
+                          </button>
                           <a
                             href={`/api/backup/download/${b.fileName}`}
                             download
@@ -396,6 +490,44 @@ export default function BackupManagerModal({ isOpen, onClose }) {
                   </div>
                 )}
               </div>
+
+              {/* External Backups Table (if any found) */}
+              {externalBackups.length > 0 && (
+                <div className="border border-[#393939] bg-[#161616]">
+                  <div className="px-4 py-3 border-b border-[#393939] flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                      <HardDrive className="w-4 h-4" />
+                      <span>النسخ الاحتياطية على الهارد الخارجي ({externalBackups.length} نسخة)</span>
+                    </h4>
+                  </div>
+                  <div className="divide-y divide-[#2a2a2a] max-h-56 overflow-y-auto">
+                    {externalBackups.map((b) => (
+                      <div key={b.fileName} className="p-3 hover:bg-[#202020] flex items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-3">
+                          <Database className="w-4 h-4 text-amber-400 shrink-0" />
+                          <div>
+                            <span className="font-mono text-white font-bold block">{b.fileName}</span>
+                            <span className="text-[11px] text-gray-400">
+                              تاريخ الإنشاء: {new Date(b.createdAt).toLocaleString('ar-EG')} — الحجم: <strong className="text-gray-300 font-mono">{b.sizeFormatted}</strong>
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleRestoreBackup(b.fileName, true)}
+                            className="px-2.5 py-1.5 bg-emerald-950/60 hover:bg-emerald-800 text-emerald-300 hover:text-white border border-emerald-600/60 flex items-center gap-1 transition-colors"
+                            title="استرجاع البيانات من هذه النسخة الخارجية"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span className="font-bold text-[11px]">استرجاع</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
             </div>
 

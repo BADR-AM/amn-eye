@@ -30,13 +30,29 @@ if (process.env.APP_DATA_DIR && !fs.existsSync(dbPath)) {
   }
 }
 
-const db = new sqlite3.Database(dbPath, (err) => {
+export let db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('❌ خطأ في فتح قاعدة البيانات:', err.message);
   } else {
     console.log('✅ تم الاتصال بقاعدة بيانات SQLite بنجاح:', dbPath);
   }
 });
+
+
+
+export const reopenDb = () => {
+  return new Promise((resolve, reject) => {
+    db = new sqlite3.Database(dbPath, (err) => {
+      if (err) {
+        console.error('❌ خطأ في إعادة فتح قاعدة البيانات:', err.message);
+        reject(err);
+      } else {
+        console.log('✅ تمت إعادة فتح قاعدة بيانات SQLite بنجاح:', dbPath);
+        resolve(db);
+      }
+    });
+  });
+};
 
 // Promisified database helpers with automatic retry on SQLITE_BUSY / lock contention
 export const query = (sql, params = [], maxRetries = 5) => {
@@ -164,7 +180,13 @@ export const initDb = async () => {
       photo_path TEXT,
       video_path TEXT,
       police_number TEXT DEFAULT '',
+      military_number TEXT DEFAULT '',
       company TEXT DEFAULT '',
+      political_suspicion_status TEXT DEFAULT 'لا يوجد اشتباه',
+      political_suspicion_details TEXT DEFAULT '',
+      criminal_suspicion_status TEXT DEFAULT 'لا يوجد اشتباه',
+      criminal_suspicion_details TEXT DEFAULT '',
+      distribution_sector TEXT DEFAULT '',
       notes TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -211,6 +233,31 @@ export const initDb = async () => {
     await run(`ALTER TABLE recruits ADD COLUMN recruit_code TEXT DEFAULT ''`);
     console.log('✅ تم تحديث المخطط: إضافة عمود recruit_code الموحد والدائم للمجند');
   }
+  if (!colNames.includes('military_number')) {
+    await run(`ALTER TABLE recruits ADD COLUMN military_number TEXT DEFAULT ''`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود military_number (الرقم العسكري)');
+  }
+  if (!colNames.includes('political_suspicion_status')) {
+    await run(`ALTER TABLE recruits ADD COLUMN political_suspicion_status TEXT DEFAULT 'لا يوجد اشتباه'`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود political_suspicion_status (موقف الاشتباه السياسي)');
+  }
+  if (!colNames.includes('political_suspicion_details')) {
+    await run(`ALTER TABLE recruits ADD COLUMN political_suspicion_details TEXT DEFAULT ''`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود political_suspicion_details (تفاصيل الاشتباه السياسي)');
+  }
+  if (!colNames.includes('criminal_suspicion_status')) {
+    await run(`ALTER TABLE recruits ADD COLUMN criminal_suspicion_status TEXT DEFAULT 'لا يوجد اشتباه'`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود criminal_suspicion_status (موقف الاشتباه الجنائي)');
+  }
+  if (!colNames.includes('criminal_suspicion_details')) {
+    await run(`ALTER TABLE recruits ADD COLUMN criminal_suspicion_details TEXT DEFAULT ''`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود criminal_suspicion_details (تفاصيل الاشتباه الجنائي)');
+  }
+  if (!colNames.includes('distribution_sector')) {
+    await run(`ALTER TABLE recruits ADD COLUMN distribution_sector TEXT DEFAULT ''`);
+    console.log('✅ تم تحديث المخطط: إضافة عمود distribution_sector (القطاع الموزع عليه المجند)');
+  }
+  await run(`CREATE INDEX IF NOT EXISTS idx_recruits_dist_sector ON recruits(distribution_sector)`);
 
   // 3. System Settings table (إعدادات المنظومة وألوان السرايا)
   await run(`

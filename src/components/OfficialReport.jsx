@@ -70,9 +70,220 @@ const DynamicTextBox = ({ title, text, minHeight = "min-h-[22px]" }) => {
   );
 };
 
+export const OfficialReportSheet = React.forwardRef(({
+  recruit,
+  currentUser: propCurrentUser,
+  photoFit = 'cover',
+  onTogglePhotoFit
+}, ref) => {
+  const currentUser = propCurrentUser || getUser();
+  const accountFingerprint = getAccountFingerprint(currentUser);
+  const attendanceDate = recruit?.attendance_date || '  /  / 2026';
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
+
+  useEffect(() => {
+    if (!recruit) return;
+    const permanentCode = recruit.national_id 
+      ? recruit.national_id 
+      : (recruit.recruit_code || `REC-${String(recruit.id).padStart(7, '0')}`);
+    const payload = `SEC-EYE:REC:${permanentCode}`;
+    QRCode.toDataURL(payload, {
+      width: 180,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#000000', light: '#ffffff' }
+    }).then(url => setQrCodeUrl(url)).catch(() => {});
+  }, [recruit?.national_id, recruit?.recruit_code, recruit?.id]);
+
+  if (!recruit) return null;
+
+  return (
+    <div 
+      ref={ref}
+      className="official-report-sheet w-[210mm] max-w-full min-h-[297mm] bg-white text-black px-[12mm] py-[10mm] shadow-2xl rounded-sm border border-slate-300 font-sans flex flex-col justify-between box-border my-2"
+      style={{ boxSizing: 'border-box' }}
+    >
+      {/* 1. Official Header (Fixed Top) */}
+      <div className="relative border-b-2 border-black pb-2.5 shrink-0">
+        
+        {/* Central Security Shield Logo in Right Corner */}
+        <div className="absolute right-0 top-0 w-20 h-28 flex flex-col items-center justify-center">
+          <img 
+            src={centralSecurityLogo} 
+            alt="شعار الأمن المركزي" 
+            className="w-16 h-22 object-contain drop-shadow"
+          />
+        </div>
+
+        {/* Right/Center Hierarchy */}
+        <div className="text-center font-bold space-y-0 leading-tight pr-24 pl-30">
+          <h2 className="text-base tracking-wider font-extrabold">وزارة الداخليـــــة</h2>
+          <h3 className="text-sm font-bold">الإدارة العامة للأمن المركزي</h3>
+          <h4 className="text-xs font-bold">منطقة وسط الدلتا • مركز تدريب المجندين</h4>
+          <h5 className="text-[11px] font-semibold underline underline-offset-2">وحدة الأمن والتحريات</h5>
+        </div>
+
+        {/* Photo Box in Left Corner - Elegant Rounded Frame */}
+        <div 
+          onClick={onTogglePhotoFit}
+          style={{ borderRadius: '14px' }}
+          className={`absolute left-0 top-0.5 w-[27mm] h-[35mm] border-2 border-black rounded-[14px] flex items-center justify-center overflow-hidden bg-white ${onTogglePhotoFit ? 'cursor-pointer' : ''} select-none shadow-xs`}
+          title={onTogglePhotoFit ? "انقر لتبديل طريقة ملاءمة الصورة داخل الإطار (ملء كامل أو احتواء)" : undefined}
+        >
+          {recruit.photo_path ? (
+            <img
+              src={recruit.photo_path}
+              alt="صورة المجند"
+              style={{ borderRadius: '12px' }}
+              className={`w-full h-full ${photoFit === 'cover' ? 'object-cover' : 'object-contain'} object-center block m-0 p-0 rounded-[12px]`}
+            />
+          ) : (
+            <div className="text-center p-1 text-[10px] text-slate-500 font-bold flex flex-col items-center justify-center h-full">
+              <span>صورة المجند<br />الشخصية</span>
+            </div>
+          )}
+        </div>
+
+        {/* Report Title Banner */}
+        <div className="text-center mt-2 pr-24 pl-30">
+          <span className="inline-block border-2 border-black px-5 py-0.5 text-[13px] font-black bg-slate-100/60 shadow-xs">
+            ,, تقرير فحص مجند مستجد حضور &nbsp;&nbsp; {attendanceDate} &nbsp;&nbsp; ,,
+          </span>
+          <div className="text-[11px] font-bold text-slate-800 mt-0.5">
+            {recruit.batch_name || ''} {recruit.company ? `• ${recruit.company}` : ''} {recruit.distribution_sector ? `• التوزيع: ${recruit.distribution_sector}` : ''}
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Form Body - Line by Line with Dynamic Text Fitting (Flexible Middle) */}
+      <div className="flex-1 flex flex-col justify-between py-1 text-[12.5px] leading-tight space-y-0.5 overflow-hidden">
+        
+        {/* الاسم */}
+        <DynamicFieldLine label="الاســـــم" value={recruit.name} minLabelWidth="min-w-[70px]" highlight={true} />
+
+        {/* الديانة والمؤهل */}
+        <div className="grid grid-cols-2 gap-3">
+          <DynamicFieldLine label="الديانــــة" value={recruit.religion} minLabelWidth="min-w-[70px]" />
+          <DynamicFieldLine label="المؤهـــل" value={recruit.qualification} minLabelWidth="min-w-[70px]" />
+        </div>
+
+        {/* تاريخ الميلاد والزوجة */}
+        <div className="grid grid-cols-2 gap-3">
+          <DynamicFieldLine label="تاريخ الميلاد" value={recruit.birth_date} minLabelWidth="min-w-[85px]" isMono={true} />
+          <DynamicFieldLine label="الزوجـــــة" value={recruit.wife || 'أعزب'} minLabelWidth="min-w-[70px]" />
+        </div>
+
+        {/* رقم البطاقة */}
+        <DynamicFieldLine label="رقم البطاقـة" value={recruit.national_id} minLabelWidth="min-w-[85px]" highlight={true} isMono={true} />
+
+        {/* عنوان السكن */}
+        <DynamicFieldLine label="عنوان السكن" value={recruit.address} minLabelWidth="min-w-[85px]" />
+
+        {/* المهنة الحالية والمهن الأخرى */}
+        <div className="grid grid-cols-2 gap-3">
+          <DynamicFieldLine label="المهنة الحالية" value={recruit.current_job} minLabelWidth="min-w-[85px]" />
+          <DynamicFieldLine label="مهـــن أخرى" value={recruit.other_jobs} minLabelWidth="min-w-[80px]" />
+        </div>
+
+        {/* السفر خارج البلاد وإجادة القراءة والكتابة */}
+        <div className="grid grid-cols-2 gap-3">
+          <DynamicFieldLine label="السفر خارج البلاد" value={recruit.travel_abroad} minLabelWidth="min-w-[105px]" />
+          <DynamicFieldLine label="إجادة القراءة والكتابة" value={recruit.literacy} minLabelWidth="min-w-[125px]" />
+        </div>
+
+        {/* مناظرة المجند */}
+        <DynamicTextBox title="مناظرة المـجند" text={recruit.inspection} minHeight="min-h-[20px]" />
+
+        {/* الحالة المرضية للمجند */}
+        <DynamicTextBox title="الحالة المرضية للمجند" text={recruit.medical_status} minHeight="min-h-[20px]" />
+
+        {/* بيانات الوالد */}
+        <div className="grid grid-cols-2 gap-3">
+          <DynamicFieldLine label="اسم الوالد" value={recruit.father_name} minLabelWidth="min-w-[70px]" />
+          <DynamicFieldLine label="المهنــــة" value={recruit.father_job} minLabelWidth="min-w-[65px]" />
+        </div>
+
+        {/* بيانات الأم */}
+        <div className="grid grid-cols-2 gap-3">
+          <DynamicFieldLine label="اسم الأم" value={recruit.mother_name} minLabelWidth="min-w-[70px]" />
+          <DynamicFieldLine label="المهنــــة" value={recruit.mother_job} minLabelWidth="min-w-[65px]" />
+        </div>
+
+        {/* فحص الأخوات */}
+        <DynamicTextBox title="فحص الإخـوة والأخوات" text={recruit.siblings_check} minHeight="min-h-[20px]" />
+
+        {/* الحالة الاجتماعية للعائلة */}
+        <DynamicTextBox title="الحالة الاجتماعية للعائلة" text={recruit.family_social_status} minHeight="min-h-[20px]" />
+
+        {/* الحالة السياسية والجنائية للعائلة */}
+        <DynamicTextBox title="الحالة السياسية والجنائية للعائلة" text={recruit.family_security_status} minHeight="min-h-[20px]" />
+
+      </div>
+
+      {/* 3. Official Signatures & Fixed Security Footer (Fixed Bottom) */}
+      <div className="shrink-0 mt-auto pt-1.5 border-t-2 border-black">
+        
+        {/* 3 Official Signatures */}
+        <div className="grid grid-cols-3 gap-2 text-center text-[11px] font-bold pb-1.5">
+          <div>
+            <div>محقق الفحص</div>
+            <div className="mt-3 text-slate-700">..................................</div>
+          </div>
+          <div>
+            <div>رئيس وحدة الأمن والتحريات</div>
+            <div className="mt-3 text-slate-700">..................................</div>
+          </div>
+          <div>
+            <div>يعتمد / قائد مركز تدريب المجندين</div>
+            <div className="mt-3 text-slate-700">..................................</div>
+          </div>
+        </div>
+
+        {/* Fixed Security Verification Strip with QR Code & Account Fingerprint */}
+        <div className="pt-1.5 border-t border-dashed border-black flex items-center justify-between text-[10px] leading-tight">
+          <div className="flex items-center gap-2">
+            {qrCodeUrl && (
+              <img 
+                src={qrCodeUrl} 
+                alt="رمز التحقق الرقمي" 
+                className="w-[48px] h-[48px] border border-black p-0.5 shrink-0 bg-white"
+                style={{ width: '48px', height: '48px' }}
+              />
+            )}
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold text-black text-[10.5px]">وثيقة فحص رسمية مؤمنة رقمياً</span>
+                <span className="px-1 py-0.2 rounded bg-black text-white font-mono text-[9px] font-bold">
+                  {recruit.recruit_code || `REC-${String(recruit.id).padStart(7, '0')}`}
+                </span>
+              </div>
+              <span className="font-mono text-[9.5px] text-slate-700">
+                الرقم القومي: {recruit.national_id || '------'} | رقم الشرطة: {recruit.police_number || '------'}
+              </span>
+              <span className="text-[9px] text-slate-800 font-mono font-bold flex items-center gap-1">
+                <span>SECURITY EYE • {new Date().toLocaleDateString('ar-EG')}</span>
+                <span className="text-black font-extrabold">• بصمة الحساب: [{accountFingerprint}]</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="text-left font-mono text-[9px] text-slate-600 leading-tight">
+            <div className="font-bold text-black">منظومة فحص وتسجيل المجندين</div>
+            <div>VER 02.4 • قطاع الأمن المركزي</div>
+            <div className="text-[8.5px] text-slate-700 font-bold">AUTH: [{accountFingerprint}]</div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  );
+});
+
 export default function OfficialReport({ recruit, currentUser: propCurrentUser, onClose }) {
   const currentUser = propCurrentUser || getUser();
   const accountFingerprint = getAccountFingerprint(currentUser);
+  const [photoFit, setPhotoFit] = useState('cover');
 
   // Close on Escape key
   useEffect(() => {
@@ -89,26 +300,6 @@ export default function OfficialReport({ recruit, currentUser: propCurrentUser, 
     window.print();
   };
 
-  // Format attendance date
-  const attendanceDate = recruit.attendance_date || '  /  / 2026';
-
-  const [qrCodeUrl, setQrCodeUrl] = useState('');
-  const [photoFit, setPhotoFit] = useState('cover'); // 'cover' fills the entire frame edge-to-edge without borders
-
-  // Generate official permanent QR Code for recruit report
-  useEffect(() => {
-    const permanentCode = recruit.national_id 
-      ? recruit.national_id 
-      : (recruit.recruit_code || `REC-${String(recruit.id).padStart(7, '0')}`);
-    const payload = `SEC-EYE:REC:${permanentCode}`;
-    QRCode.toDataURL(payload, {
-      width: 180,
-      margin: 1,
-      errorCorrectionLevel: 'M',
-      color: { dark: '#000000', light: '#ffffff' }
-    }).then(url => setQrCodeUrl(url)).catch(() => {});
-  }, [recruit?.national_id, recruit?.recruit_code, recruit?.id]);
-
   return (
     <div className="official-report-overlay fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-start p-2 sm:p-6 overflow-y-auto" dir="rtl">
       
@@ -121,7 +312,7 @@ export default function OfficialReport({ recruit, currentUser: propCurrentUser, 
           <div>
             <h3 className="text-base font-bold text-white">معاينة طباعة استمارة الفحص الرسمية (A4)</h3>
             <p className="text-xs text-slate-400">
-              طباعة صفحة واحدة مؤمنة A4 • إصدار <span className="font-mono text-emerald-400 font-bold">VER 02.3.1</span> • بصمة الحساب: <span className="font-mono text-amber-300 font-bold">{accountFingerprint}</span>
+              طباعة صفحة واحدة مؤمنة A4 • إصدار <span className="font-mono text-emerald-400 font-bold">VER 02.4</span> • بصمة الحساب: <span className="font-mono text-amber-300 font-bold">{accountFingerprint}</span>
             </p>
           </div>
         </div>
@@ -175,183 +366,13 @@ export default function OfficialReport({ recruit, currentUser: propCurrentUser, 
         </div>
       </div>
 
-      {/* Official A4 Document Sheet - Standard A4 210mm x 297mm */}
-      <div className="official-report-sheet w-[210mm] max-w-full min-h-[297mm] bg-white text-black px-[12mm] py-[10mm] shadow-2xl rounded-sm border border-slate-300 font-sans flex flex-col justify-between box-border my-2">
-        
-        {/* 1. Official Header (Fixed Top) */}
-        <div className="relative border-b-2 border-black pb-2.5 shrink-0">
-          
-          {/* Central Security Shield Logo in Right Corner */}
-          <div className="absolute right-0 top-0 w-20 h-28 flex flex-col items-center justify-center">
-            <img 
-              src={centralSecurityLogo} 
-              alt="شعار الأمن المركزي" 
-              className="w-16 h-22 object-contain drop-shadow"
-            />
-          </div>
-
-          {/* Right/Center Hierarchy */}
-          <div className="text-center font-bold space-y-0 leading-tight pr-24 pl-30">
-            <h2 className="text-base tracking-wider font-extrabold">وزارة الداخليـــــة</h2>
-            <h3 className="text-sm font-bold">الإدارة العامة للأمن المركزي</h3>
-            <h4 className="text-xs font-bold">منطقة وسط الدلتا • مركز تدريب المجندين</h4>
-            <h5 className="text-[11px] font-semibold underline underline-offset-2">وحدة الأمن والتحريات</h5>
-          </div>
-
-          {/* Photo Box in Left Corner - Elegant Rounded Frame */}
-          <div 
-            onClick={() => setPhotoFit(prev => prev === 'cover' ? 'contain' : 'cover')}
-            style={{ borderRadius: '14px' }}
-            className="absolute left-0 top-0.5 w-[27mm] h-[35mm] border-2 border-black rounded-[14px] flex items-center justify-center overflow-hidden bg-white cursor-pointer select-none shadow-xs"
-            title="انقر لتبديل طريقة ملاءمة الصورة داخل الإطار (ملء كامل أو احتواء)"
-          >
-            {recruit.photo_path ? (
-              <img
-                src={recruit.photo_path}
-                alt="صورة المجند"
-                style={{ borderRadius: '12px' }}
-                className={`w-full h-full ${photoFit === 'cover' ? 'object-cover' : 'object-contain'} object-center block m-0 p-0 rounded-[12px]`}
-              />
-            ) : (
-              <div className="text-center p-1 text-[10px] text-slate-500 font-bold flex flex-col items-center justify-center h-full">
-                <span>صورة المجند<br />الشخصية</span>
-              </div>
-            )}
-          </div>
-
-          {/* Report Title Banner */}
-          <div className="text-center mt-2 pr-24 pl-30">
-            <span className="inline-block border-2 border-black px-5 py-0.5 text-[13px] font-black bg-slate-100/60 shadow-xs">
-              ,, تقرير فحص مجند مستجد حضور &nbsp;&nbsp; {attendanceDate} &nbsp;&nbsp; ,,
-            </span>
-            <div className="text-[11px] font-bold text-slate-800 mt-0.5">
-              {recruit.batch_name || ''} {recruit.company ? `• ${recruit.company}` : ''}
-            </div>
-          </div>
-        </div>
-
-        {/* 2. Form Body - Line by Line with Dynamic Text Fitting (Flexible Middle) */}
-        <div className="flex-1 flex flex-col justify-between py-1 text-[12.5px] leading-tight space-y-0.5 overflow-hidden">
-          
-          {/* الاسم */}
-          <DynamicFieldLine label="الاســـــم" value={recruit.name} minLabelWidth="min-w-[70px]" highlight={true} />
-
-          {/* الديانة والمؤهل */}
-          <div className="grid grid-cols-2 gap-3">
-            <DynamicFieldLine label="الديانــــة" value={recruit.religion} minLabelWidth="min-w-[70px]" />
-            <DynamicFieldLine label="المؤهـــل" value={recruit.qualification} minLabelWidth="min-w-[70px]" />
-          </div>
-
-          {/* تاريخ الميلاد والزوجة */}
-          <div className="grid grid-cols-2 gap-3">
-            <DynamicFieldLine label="تاريخ الميلاد" value={recruit.birth_date} minLabelWidth="min-w-[85px]" isMono={true} />
-            <DynamicFieldLine label="الزوجـــــة" value={recruit.wife || 'أعزب'} minLabelWidth="min-w-[70px]" />
-          </div>
-
-          {/* رقم البطاقة */}
-          <DynamicFieldLine label="رقم البطاقـة" value={recruit.national_id} minLabelWidth="min-w-[85px]" highlight={true} isMono={true} />
-
-          {/* عنوان السكن */}
-          <DynamicFieldLine label="عنوان السكن" value={recruit.address} minLabelWidth="min-w-[85px]" />
-
-          {/* المهنة الحالية والمهن الأخرى */}
-          <div className="grid grid-cols-2 gap-3">
-            <DynamicFieldLine label="المهنة الحالية" value={recruit.current_job} minLabelWidth="min-w-[85px]" />
-            <DynamicFieldLine label="مهـــن أخرى" value={recruit.other_jobs} minLabelWidth="min-w-[80px]" />
-          </div>
-
-          {/* السفر خارج البلاد وإجادة القراءة والكتابة */}
-          <div className="grid grid-cols-2 gap-3">
-            <DynamicFieldLine label="السفر خارج البلاد" value={recruit.travel_abroad} minLabelWidth="min-w-[105px]" />
-            <DynamicFieldLine label="إجادة القراءة والكتابة" value={recruit.literacy} minLabelWidth="min-w-[125px]" />
-          </div>
-
-          {/* مناظرة المجند */}
-          <DynamicTextBox title="مناظرة المـجند" text={recruit.inspection} minHeight="min-h-[20px]" />
-
-          {/* الحالة المرضية للمجند */}
-          <DynamicTextBox title="الحالة المرضية للمجند" text={recruit.medical_status} minHeight="min-h-[20px]" />
-
-          {/* بيانات الوالد */}
-          <div className="grid grid-cols-2 gap-3">
-            <DynamicFieldLine label="اسم الوالد" value={recruit.father_name} minLabelWidth="min-w-[70px]" />
-            <DynamicFieldLine label="المهنــــة" value={recruit.father_job} minLabelWidth="min-w-[65px]" />
-          </div>
-
-          {/* بيانات الأم */}
-          <div className="grid grid-cols-2 gap-3">
-            <DynamicFieldLine label="اسم الأم" value={recruit.mother_name} minLabelWidth="min-w-[70px]" />
-            <DynamicFieldLine label="المهنــــة" value={recruit.mother_job} minLabelWidth="min-w-[65px]" />
-          </div>
-
-          {/* فحص الأخوات */}
-          <DynamicTextBox title="فحص الإخـوة والأخوات" text={recruit.siblings_check} minHeight="min-h-[20px]" />
-
-          {/* الحالة الاجتماعية للعائلة */}
-          <DynamicTextBox title="الحالة الاجتماعية للعائلة" text={recruit.family_social_status} minHeight="min-h-[20px]" />
-
-          {/* الحالة السياسية والجنائية للعائلة */}
-          <DynamicTextBox title="الحالة السياسية والجنائية للعائلة" text={recruit.family_security_status} minHeight="min-h-[20px]" />
-
-        </div>
-
-        {/* 3. Official Signatures & Fixed Security Footer (Fixed Bottom) */}
-        <div className="shrink-0 mt-auto pt-1.5 border-t-2 border-black">
-          
-          {/* 3 Official Signatures */}
-          <div className="grid grid-cols-3 gap-2 text-center text-[11px] font-bold pb-1.5">
-            <div>
-              <div>محقق الفحص</div>
-              <div className="mt-3 text-slate-700">..................................</div>
-            </div>
-            <div>
-              <div>رئيس وحدة الأمن والتحريات</div>
-              <div className="mt-3 text-slate-700">..................................</div>
-            </div>
-            <div>
-              <div>يعتمد / قائد مركز تدريب المجندين</div>
-              <div className="mt-3 text-slate-700">..................................</div>
-            </div>
-          </div>
-
-          {/* Fixed Security Verification Strip with QR Code & Account Fingerprint */}
-          <div className="pt-1.5 border-t border-dashed border-black flex items-center justify-between text-[10px] leading-tight">
-            <div className="flex items-center gap-2">
-              {qrCodeUrl && (
-                <img 
-                  src={qrCodeUrl} 
-                  alt="رمز التحقق الرقمي" 
-                  className="w-[48px] h-[48px] border border-black p-0.5 shrink-0 bg-white"
-                  style={{ width: '48px', height: '48px' }}
-                />
-              )}
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-extrabold text-black text-[10.5px]">وثيقة فحص رسمية مؤمنة رقمياً</span>
-                  <span className="px-1 py-0.2 rounded bg-black text-white font-mono text-[9px] font-bold">
-                    {recruit.recruit_code || `REC-${String(recruit.id).padStart(7, '0')}`}
-                  </span>
-                </div>
-                <span className="font-mono text-[9.5px] text-slate-700">
-                  الرقم القومي: {recruit.national_id || '------'} | رقم الشرطة: {recruit.police_number || '------'}
-                </span>
-                <span className="text-[9px] text-slate-800 font-mono font-bold flex items-center gap-1">
-                  <span>SECURITY EYE • {new Date().toLocaleDateString('ar-EG')}</span>
-                  <span className="text-black font-extrabold">• بصمة الحساب: [{accountFingerprint}]</span>
-                </span>
-              </div>
-            </div>
-
-            <div className="text-left font-mono text-[9px] text-slate-600 leading-tight">
-              <div className="font-bold text-black">منظومة فحص وتسجيل المجندين</div>
-              <div>VER 02.3 • قطاع الأمن المركزي</div>
-              <div className="text-[8.5px] text-slate-700 font-bold">AUTH: [{accountFingerprint}]</div>
-            </div>
-          </div>
-
-        </div>
-
-      </div>
+      {/* Official A4 Document Sheet */}
+      <OfficialReportSheet
+        recruit={recruit}
+        currentUser={currentUser}
+        photoFit={photoFit}
+        onTogglePhotoFit={() => setPhotoFit(prev => prev === 'cover' ? 'contain' : 'cover')}
+      />
 
     </div>
   );

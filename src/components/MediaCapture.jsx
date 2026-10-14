@@ -36,7 +36,7 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
 
   // Video recording state
   const [isRecording, setIsRecording] = useState(false);
-  const [countdown, setCountdown] = useState(30);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const timerIntervalRef = useRef(null);
 
   // Hidden native mobile camera input refs
@@ -129,17 +129,22 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
     };
   }, []);
 
-  // Spacebar to trigger photo capture
+  // Keyboard shortcuts: Spacebar or Enter to capture photo or stop/save video recording
   useEffect(() => {
-    const handleSpacebar = (e) => {
-      if (e.code === 'Space' && stage === 'photo' && !capturedPhoto && streamRef.current) {
-        e.preventDefault();
-        capturePhoto();
+    const handleKeydown = (e) => {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        if (stage === 'photo' && !capturedPhoto && streamRef.current) {
+          e.preventDefault();
+          capturePhoto();
+        } else if (stage === 'video' && isRecording) {
+          e.preventDefault();
+          stopVideoRecording();
+        }
       }
     };
-    window.addEventListener('keydown', handleSpacebar);
-    return () => window.removeEventListener('keydown', handleSpacebar);
-  }, [stage, capturedPhoto]);
+    window.addEventListener('keydown', handleKeydown);
+    return () => window.removeEventListener('keydown', handleKeydown);
+  }, [stage, capturedPhoto, isRecording]);
 
   // Ensure video element plays stream when switching back to camera
   useEffect(() => {
@@ -174,7 +179,7 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
     setStage('video');
   };
 
-  // Start 30-second video recording
+  // Start video recording with advisory 30s timer (does not auto-stop, only stops on user action)
   const startVideoRecording = () => {
     if (!streamRef.current) return;
 
@@ -203,19 +208,12 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
 
       recorder.start(500); // 500ms slices
       setIsRecording(true);
-      setCountdown(30);
+      setRecordingSeconds(0);
 
-      // Countdown timer 30 seconds
+      // Advisory timer counting seconds elapsed - will NOT cut off automatically at 30 seconds
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-      let currentSeconds = 30;
       timerIntervalRef.current = setInterval(() => {
-        currentSeconds -= 1;
-        setCountdown(currentSeconds);
-
-        if (currentSeconds <= 0) {
-          clearInterval(timerIntervalRef.current);
-          stopVideoRecording();
-        }
+        setRecordingSeconds((prev) => prev + 1);
       }, 1000);
 
     } catch (err) {
@@ -241,7 +239,7 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
     }
     setCapturedVideoBlob(null);
     setCapturedVideoUrl(null);
-    setCountdown(30);
+    setRecordingSeconds(0);
   };
 
   // Final Submit to Backend API
@@ -544,7 +542,7 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
                     </button>
                   )}
 
-                  {/* Recording Status & 30s Countdown Display */}
+                  {/* Recording Status & Elapsed Advisory Display */}
                   {isRecording && (
                     <div className="absolute top-4 inset-x-0 flex items-center justify-between px-6">
                       <div className="flex items-center gap-2 bg-rose-600/90 text-white px-3.5 py-1.5 rounded-full text-xs font-bold shadow-lg animate-pulse">
@@ -552,12 +550,16 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
                         <span>جاري التسجيل المباشر</span>
                       </div>
 
-                      {/* Prominent Circular Countdown */}
-                      <div className="flex items-center gap-2 bg-darkslate-950/90 border border-slate-700 px-4 py-2 rounded-2xl shadow-xl">
+                      {/* Prominent Recording Timer Display */}
+                      <div className="flex items-center gap-3 bg-darkslate-950/95 border border-slate-700 px-4 py-2 rounded-2xl shadow-xl">
                         <span className="text-2xl font-black text-rose-400 font-mono">
-                          {countdown < 10 ? `0${countdown}` : countdown}
+                          {Math.floor(recordingSeconds / 60) > 0 ? `${Math.floor(recordingSeconds / 60)}:` : ''}
+                          {recordingSeconds % 60 < 10 ? `0${recordingSeconds % 60}` : recordingSeconds % 60}
                         </span>
-                        <span className="text-xs text-slate-400 font-bold">ثانية متبقية</span>
+                        <div className="flex flex-col text-right">
+                          <span className="text-xs text-amber-300 font-bold">30 ثانية استرشادية</span>
+                          <span className="text-[10px] text-slate-400">اضغط مسطرة أو Enter للإيقاف والحفظ</span>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -569,12 +571,16 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
                         <Video className="w-7 h-7" />
                       </div>
                       <h3 className="text-lg font-bold text-white mb-1">
-                        تسجيل مقطع الفيديو المرفق (30 ثانية)
+                        تسجيل مقطع الفيديو المرفق (30 ثانية استرشادية)
                       </h3>
                       <p className="text-slate-300 text-xs sm:text-sm max-w-md leading-relaxed">
                         قم بتوجيه المجند للتحدث بصوت واضح: <br />
                         <span className="text-emerald-300 font-bold">
                           "اذكر اسمك الرباعي، مؤهلك الدراسي، ومحل إقامتك بالتفصيل"
+                        </span>
+                        <br />
+                        <span className="text-amber-300 text-xs block mt-2 font-semibold">
+                          * مدة 30 ثانية استرشادية فقط ولن ينقطع التسجيل تلقائياً. اضغط زر الإيقاف أو المسطرة / Enter عند الانتهاء.
                         </span>
                       </p>
                     </div>
@@ -615,7 +621,7 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
                           className="flex items-center gap-2.5 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white font-extrabold text-sm shadow-xl shadow-rose-950/60 transform hover:scale-105 active:scale-95 transition-all"
                         >
                           <CircleDot className="w-5 h-5 text-white" />
-                          <span>تسجيل من الويب كام (30 ث)</span>
+                          <span>بدء تسجيل الفيديو من الكاميرا</span>
                         </button>
                       )}
 
@@ -643,7 +649,7 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
                       className="flex items-center gap-2 px-8 py-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-sm border-2 border-rose-500 shadow-xl transition-all"
                     >
                       <Square className="w-5 h-5 text-rose-400 fill-rose-400" />
-                      <span>إنهاء التسجيل الآن ({countdown} ث)</span>
+                      <span>إنهاء التسجيل وحفظ الفيديو ({recordingSeconds} ث) - [مسطرة / Enter]</span>
                     </button>
                   )}
                 </>

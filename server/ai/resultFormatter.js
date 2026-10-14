@@ -145,6 +145,48 @@ export function formatQueryResult(intent, data, context = {}) {
       break;
     }
 
+    // 4.1 Distribution Sectors Statistics (قطاعات التوزيع)
+    case 'stats_by_distribution_sector': {
+      responseText = `### 📍 إحصائية وبيان توزيع المجندين على القطاعات والجهات الخارجية\n\n`;
+      const sectors = data.sectors || [];
+      responseText += `تمام يا فندم، إجمالي القوة: **${data.total} مجند**\n`;
+      responseText += `* ✅ **تم توزيعهم:** **${data.distributed_count} مجند**\n`;
+      responseText += `* ⏳ **قيد التدريب الأساسي (لم يوزعوا بعد):** **${data.unassigned_count} مجند**\n\n`;
+      if (sectors.length > 0) {
+        responseText += `| القطاع / الجهة الموزع إليها | عدد المجندين | النسبة |\n`;
+        responseText += `| :--- | :---: | :---: |\n`;
+        for (const s of sectors) {
+          const pct = data.total > 0 ? Math.round((s.count / data.total) * 100) : 0;
+          responseText += `| **${s.sector}** | **${s.count}** فرد | \`${pct}%\` |\n`;
+        }
+      }
+      responseText += `\n> [!TIP]\n> تقدر تسألني: 'مين اتوزع على قطاع عمر القاضي؟' أو 'مين لسه لم يوزع؟' لاستخراج الأسماء فوراً.\n`;
+      suggestions = ['مين اتوزع على رئاسة المنطقة؟', 'مين في قطاع أحمد عمارة؟', 'مين لسه لم يوزع؟'];
+      matchCount = data.distributed_count;
+      break;
+    }
+
+    // 4.2 List Recruits by Distribution Sector
+    case 'list_recruits_by_distribution_sector': {
+      const sectorName = data.sector || 'القطاع المحدد';
+      const recruits = data.recruits || [];
+      responseText = `### 📋 كشف أسماء المجندين الموزعين على (${sectorName})\n\n`;
+      if (recruits.length > 0) {
+        responseText += `تمام يا فندم، تم حصر **${recruits.length} مجند** موزع على (**${sectorName}**):\n\n`;
+        responseText += `| م | اسم المجند | الرقم العسكري | رقم الشرطة | السرية | المؤهل |\n`;
+        responseText += `| :-: | :--- | :---: | :---: | :--- | :--- |\n`;
+        recruits.forEach((r, idx) => {
+          responseText += `| ${idx + 1} | **${r.name}** | \`${r.military_number || 'ـ'}\` | \`${r.police_number || 'ـ'}\` | ${r.company || 'ـ'} | ${r.qualification || 'ـ'} |\n`;
+        });
+        matchCount = recruits.length;
+        suggestions = ['إحصائية كل قطاعات التوزيع', 'مين في قطاع جمال فايق؟', 'مين لسه لم يوزع؟'];
+      } else {
+        responseText += `تمام يا فندم، لا يوجد مجندين موزعون حالياً على (**${sectorName}**).\n`;
+        suggestions = ['إحصائية كل قطاعات التوزيع', 'مين لسه لم يوزع؟'];
+      }
+      break;
+    }
+
     // 5. Married Recruits List
     case 'list_married_recruits': {
       responseText = `### 💍 بيان المجندين المتزوجين بالقوة المقيدة\n\n`;

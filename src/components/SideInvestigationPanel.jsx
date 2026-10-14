@@ -52,6 +52,12 @@ export default function SideInvestigationPanel({
                   <span className="text-orange-300 truncate max-w-[100px]">{recruit.company}</span>
                 </>
               )}
+              {recruit.distribution_sector && (
+                <>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-indigo-300 truncate max-w-[110px]">{recruit.distribution_sector}</span>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -104,6 +110,17 @@ export default function SideInvestigationPanel({
         {/* Quick Details List */}
         <div className="space-y-2">
           
+          <div className="bg-darkslate-850 p-2.5 rounded-xl border border-slate-800 space-y-1">
+            <span className="text-slate-400 text-[10px] block">القطاع الموزع عليه</span>
+            <div className={`font-bold text-xs px-2 py-0.5 rounded inline-block ${
+              recruit.distribution_sector 
+                ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' 
+                : 'text-slate-500'
+            }`}>
+              {recruit.distribution_sector || 'قيد التدريب الأساسي (لم يوزع)'}
+            </div>
+          </div>
+
           <div className="bg-darkslate-850 p-2.5 rounded-xl border border-slate-800 space-y-1">
             <span className="text-slate-400 text-[10px] block">الرقم القومي والميلاد</span>
             <div className="flex justify-between items-center font-mono font-bold text-slate-200">

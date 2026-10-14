@@ -133,11 +133,12 @@ export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecru
         await fetchDocuments();
         onRefreshRecruits?.();
       } else {
-        alert('فشل حفظ المسح الضوئي');
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || 'فشل حفظ المسح الضوئي');
       }
     } catch (err) {
       console.error(err);
-      alert('خطأ في الاتصال بالخادم');
+      alert('خطأ في حفظ المسح الضوئي: ' + err.message);
     } finally {
       setUploadingType(null);
     }

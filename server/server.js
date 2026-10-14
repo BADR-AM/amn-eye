@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 import { initDb, query, get, run } from './db.js';
 import { getLocalIpAddresses } from './network.js';
 import { requireAuth, requireRole, requireMediaAuth, handleLogin, handleQrLogin, hashPassword, comparePassword, getOrInitJwtSecret, isDefaultAdminPassword } from './auth.js';
-import { createBackup, listBackups, deleteBackup, getAvailableDrives, startAutoBackupSchedule } from './backup.js';
+import { createBackup, listBackups, deleteBackup, restoreBackup, getAvailableDrives, startAutoBackupSchedule } from './backup.js';
 import { logAudit, computeRecruitDiff } from './auditLogger.js';
 import * as XLSX from 'xlsx';
 import { parseRecruitMarkdown } from './markdownParser.js';
@@ -39,6 +39,41 @@ const docsDir = path.join(uploadsDir, 'documents');
     fs.mkdirSync(dir, { recursive: true });
   }
 });
+
+// Auto-migrate existing uploads from project root, backup folders or installation directory into APP_DATA_DIR
+if (process.env.APP_DATA_DIR) {
+  const fallbackUploadDirs = [
+    path.join(__dirname, '..', 'uploads'),
+    path.join(process.cwd(), 'uploads'),
+    'D:\\sherif\\PROJECT\\sys amn\\uploads',
+    'D:\\sherif\\PROJECT\\BACKUP_RECRUITS_DATA_20261014_221243\\uploads'
+  ];
+
+  fallbackUploadDirs.forEach(srcRoot => {
+    if (fs.existsSync(srcRoot) && path.resolve(srcRoot) !== path.resolve(uploadsDir)) {
+      try {
+        const copyDirRecursive = (src, dest) => {
+          if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+          const entries = fs.readdirSync(src, { withFileTypes: true });
+          for (const entry of entries) {
+            if (entry.name === '.gitkeep') continue;
+            const srcPath = path.join(src, entry.name);
+            const destPath = path.join(dest, entry.name);
+            if (entry.isDirectory()) {
+              copyDirRecursive(srcPath, destPath);
+            } else if (!fs.existsSync(destPath)) {
+              fs.copyFileSync(srcPath, destPath);
+              console.log('✅ تم ترحيل ملف المرفقات تلقائياً إلى مجلد بيانات المنظومة:', entry.name);
+            }
+          }
+        };
+        copyDirRecursive(srcRoot, uploadsDir);
+      } catch (migErr) {
+        console.warn('⚠️ تنبيه عند فحص مجلد المرفقات المرجعي:', migErr.message);
+      }
+    }
+  });
+}
 
 // Origin validation: allow same-origin, loopback, Electron, and private LAN subnets
 const isAllowedOrigin = (origin) => {
@@ -114,6 +149,47 @@ app.use('/uploads', requireMediaAuth, (req, res, next) => {
         }
       }
     }
+
+    // Fallback: If not found in uploadsDir and running in APP_DATA_DIR, check project root, installed directory or backup folders
+    if (process.env.APP_DATA_DIR) {
+      const fallbackUploadDirs = [
+        path.join(__dirname, '..', 'uploads'),
+        path.join(process.cwd(), 'uploads'),
+        'D:\\sherif\\PROJECT\\sys amn\\uploads',
+        'D:\\sherif\\PROJECT\\BACKUP_RECRUITS_DATA_20261014_221243\\uploads'
+      ];
+      for (const fbRoot of fallbackUploadDirs) {
+        if (!fs.existsSync(fbRoot)) continue;
+        const candidateInFb = path.resolve(path.join(fbRoot, safePath));
+        if (candidateInFb.startsWith(path.resolve(fbRoot)) && fs.existsSync(candidateInFb) && fs.statSync(candidateInFb).isFile()) {
+          try {
+            const destDir = path.dirname(targetCandidate);
+            if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+            fs.copyFileSync(candidateInFb, targetCandidate);
+          } catch (e) {}
+          return res.sendFile(candidateInFb);
+        }
+
+        if (rawName) {
+          const fbCandidates = [
+            path.join(fbRoot, 'photos', rawName),
+            path.join(fbRoot, 'videos', rawName),
+            path.join(fbRoot, 'documents', rawName),
+            path.join(fbRoot, rawName)
+          ];
+          for (const cand of fbCandidates) {
+            if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+              try {
+                const destDir = path.dirname(targetCandidate);
+                if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+                fs.copyFileSync(cand, targetCandidate);
+              } catch (e) {}
+              return res.sendFile(cand);
+            }
+          }
+        }
+      }
+    }
   } catch (e) {}
 
   res.status(404).json({ error: 'الملف المطلوب غير موجود في مجلد المرفقات' });
@@ -172,7 +248,7 @@ const fileFilter = (req, file, cb) => {
     /\.(mp4|mov|webm|m4v|3gp|quicktime|avi)$/i.test(file.originalname || '')
   );
   const isDoc = (file.fieldname === 'document' || file.fieldname === 'doc_file' || file.fieldname === 'report_photo') && 
-    (ALLOWED_DOC_MIME.includes(cleanMime) || cleanMime.startsWith('image/') || cleanMime.includes('pdf'));
+    (ALLOWED_DOC_MIME.includes(cleanMime) || cleanMime.startsWith('image/') || cleanMime.includes('pdf') || cleanMime === 'application/octet-stream' || /\.(jpe?g|png|webp|pdf|bmp|tiff)$/i.test(file.originalname || ''));
 
   if (isPhoto || isVideo || isDoc) {
     cb(null, true);
@@ -820,7 +896,7 @@ app.put('/api/batches/:id/set-active', requireAuth, async (req, res) => {
 // 4. Recruits List & Advanced Search (protected)
 app.get('/api/recruits', requireAuth, async (req, res) => {
   try {
-    const { search, batch_id, qualification, company, attendance_date, category, page = 1, limit = 50 } = req.query;
+    const { search, batch_id, qualification, company, attendance_date, category, distribution_sector, page = 1, limit = 50 } = req.query;
     const isUnlimited = limit === 'all' || parseInt(limit) >= 5000;
     const safeLimit = isUnlimited ? 10000 : Math.min(Math.max(parseInt(limit) || 50, 1), 500);
     const safePage = Math.max(parseInt(page) || 1, 1);
@@ -831,8 +907,8 @@ app.get('/api/recruits', requireAuth, async (req, res) => {
       const s = `%${search.trim()}%`;
       const raw = search.trim();
       const num = parseInt(raw, 10);
-      whereClauses.push(`(r.name LIKE ? OR r.national_id LIKE ? OR r.recruit_code LIKE ? OR r.address LIKE ? OR r.current_job LIKE ? OR r.police_number LIKE ? OR r.id = ?)`);
-      params.push(s, s, s, s, s, s, isNaN(num) ? -1 : num);
+      whereClauses.push(`(r.name LIKE ? OR r.national_id LIKE ? OR r.recruit_code LIKE ? OR r.address LIKE ? OR r.current_job LIKE ? OR r.police_number LIKE ? OR r.military_number LIKE ? OR r.distribution_sector LIKE ? OR r.id = ?)`);
+      params.push(s, s, s, s, s, s, s, s, isNaN(num) ? -1 : num);
     }
 
     if (batch_id && batch_id !== 'all') {
@@ -855,6 +931,15 @@ app.get('/api/recruits', requireAuth, async (req, res) => {
       params.push(attendance_date);
     }
 
+    if (distribution_sector && distribution_sector !== 'all') {
+      if (distribution_sector === 'unassigned') {
+        whereClauses.push(`(r.distribution_sector IS NULL OR r.distribution_sector = '')`);
+      } else {
+        whereClauses.push(`(r.distribution_sector = ? OR r.distribution_sector LIKE ?)`);
+        params.push(distribution_sector, `%${distribution_sector}%`);
+      }
+    }
+
     // Category filter: psychological, tickets, criminal_suspicion, political_suspicion, medical
     if (category && category !== 'all') {
       if (category === 'psychological') {
@@ -862,9 +947,9 @@ app.get('/api/recruits', requireAuth, async (req, res) => {
       } else if (category === 'tickets') {
         whereClauses.push(`EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.status = 'open')`);
       } else if (category === 'criminal_suspicion') {
-        whereClauses.push(`(EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'criminal_suspicion' AND t.status = 'open') OR r.family_security_status LIKE '%جنائي%' OR r.inspection LIKE '%جنائي%')`);
+        whereClauses.push(`(r.criminal_suspicion_status = 'اشتباه' OR r.criminal_suspicion_status = 'جاري الفحص' OR EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'criminal_suspicion' AND t.status = 'open') OR (r.family_security_status NOT LIKE '%خالية%' AND r.family_security_status LIKE '%جنائي%') OR r.inspection LIKE '%جنائي%')`);
       } else if (category === 'political_suspicion') {
-        whereClauses.push(`(EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'political_suspicion' AND t.status = 'open') OR r.family_security_status LIKE '%سياسي%' OR r.inspection LIKE '%سياسي%')`);
+        whereClauses.push(`(r.political_suspicion_status = 'اشتباه' OR r.political_suspicion_status = 'جاري الفحص' OR EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'political_suspicion' AND t.status = 'open') OR (r.family_security_status NOT LIKE '%خالية%' AND r.family_security_status LIKE '%سياسي%') OR r.inspection LIKE '%سياسي%')`);
       } else if (category === 'medical') {
         whereClauses.push(`((${SQL_MEDICAL_UNFIT}) OR EXISTS (SELECT 1 FROM recruit_activities a WHERE a.recruit_id = r.id AND a.activity_type = 'medical_referral' AND (a.return_date IS NULL OR a.return_date = '')) OR EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'medical_condition' AND t.status = 'open'))`);
       }
@@ -920,9 +1005,26 @@ app.get('/api/recruits/filter-options', requireAuth, async (req, res) => {
       WHERE attendance_date IS NOT NULL AND attendance_date != '' 
       ORDER BY attendance_date DESC
     `);
+    const sectors = await query(`
+      SELECT DISTINCT distribution_sector FROM recruits 
+      WHERE distribution_sector IS NOT NULL AND distribution_sector != '' 
+      ORDER BY distribution_sector ASC
+    `);
+    const OFFICIAL_DISTRIBUTION_SECTORS = [
+      'رئاسة المنطقة',
+      'قطاع أحمد عمارة',
+      'قطاع عمر القاضي',
+      'قطاع على خاطر',
+      'قطاع جمال فايق',
+      'مركز التدريب',
+      'جهة خارجية',
+      'عودة'
+    ];
     res.json({
       companies: companies.map(c => c.company),
-      attendance_dates: dates.map(d => d.attendance_date)
+      attendance_dates: dates.map(d => d.attendance_date),
+      distribution_sectors: sectors.map(s => s.distribution_sector),
+      official_sectors: OFFICIAL_DISTRIBUTION_SECTORS
     });
   } catch (err) {
     console.error('Error fetching filter options:', err);
@@ -1022,14 +1124,22 @@ app.post('/api/recruits', requireAuth, upload.fields([{ name: 'photo', maxCount:
         other_jobs, travel_abroad, literacy, inspection, medical_status,
         father_name, father_job, mother_name, mother_job, siblings_check,
         family_social_status, family_security_status, photo_path, video_path,
-        police_number, company, notes
+        police_number, military_number, company,
+        political_suspicion_status, political_suspicion_details,
+        criminal_suspicion_status, criminal_suspicion_details,
+        distribution_sector,
+        notes
       ) VALUES (
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
+        ?, ?,
+        ?,
+        ?
       )
     `;
 
@@ -1059,13 +1169,40 @@ app.post('/api/recruits', requireAuth, upload.fields([{ name: 'photo', maxCount:
       photoPath,
       videoPath,
       data.police_number || '',
+      data.military_number || '',
       data.company || '',
+      data.political_suspicion_status || 'لا يوجد اشتباه',
+      data.political_suspicion_details || '',
+      data.criminal_suspicion_status || 'لا يوجد اشتباه',
+      data.criminal_suspicion_details || '',
+      data.distribution_sector || '',
       data.notes || ''
     ];
 
     const result = await run(sql, params);
     const permanentCode = 'REC-' + String(result.lastID).padStart(7, '0');
     await run(`UPDATE recruits SET recruit_code = ? WHERE id = ?`, [permanentCode, result.lastID]);
+
+    // Auto-create ticket if criminal suspicion exists
+    if (data.criminal_suspicion_status === 'اشتباه') {
+      const crimTitle = data.criminal_suspicion_details?.trim() || 'اشتباه جنائي مسجل عند القيد';
+      await run(
+        `INSERT INTO recruit_tickets (recruit_id, ticket_type, title, description, severity, status, officer_name)
+         VALUES (?, 'criminal_suspicion', ?, ?, 'high', 'open', 'كشك التسجيل والفحص')`,
+        [result.lastID, crimTitle.slice(0, 100), data.criminal_suspicion_details || crimTitle]
+      );
+    }
+
+    // Auto-create ticket if political suspicion exists
+    if (data.political_suspicion_status === 'اشتباه') {
+      const polTitle = data.political_suspicion_details?.trim() || 'اشتباه سياسي مسجل عند القيد';
+      await run(
+        `INSERT INTO recruit_tickets (recruit_id, ticket_type, title, description, severity, status, officer_name)
+         VALUES (?, 'political_suspicion', ?, ?, 'high', 'open', 'كشك التسجيل والفحص')`,
+        [result.lastID, polTitle.slice(0, 100), data.political_suspicion_details || polTitle]
+      );
+    }
+
     const created = await get(`SELECT * FROM recruits WHERE id = ?`, [result.lastID]);
 
     logAudit(req, {
@@ -1389,7 +1526,11 @@ app.put('/api/recruits/:id', requireAuth, requireRole('admin', 'officer'), uploa
         other_jobs = ?, travel_abroad = ?, literacy = ?, inspection = ?, medical_status = ?,
         father_name = ?, father_job = ?, mother_name = ?, mother_job = ?, siblings_check = ?,
         family_social_status = ?, family_security_status = ?, photo_path = ?, video_path = ?,
-        police_number = ?, company = ?, notes = ?,
+        police_number = ?, military_number = ?, company = ?,
+        political_suspicion_status = ?, political_suspicion_details = ?,
+        criminal_suspicion_status = ?, criminal_suspicion_details = ?,
+        distribution_sector = ?,
+        notes = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `;
@@ -1420,7 +1561,13 @@ app.put('/api/recruits/:id', requireAuth, requireRole('admin', 'officer'), uploa
       photoPath,
       videoPath,
       data.police_number ?? existing.police_number ?? '',
+      data.military_number ?? existing.military_number ?? '',
       data.company ?? existing.company ?? '',
+      data.political_suspicion_status ?? existing.political_suspicion_status ?? 'لا يوجد اشتباه',
+      data.political_suspicion_details ?? existing.political_suspicion_details ?? '',
+      data.criminal_suspicion_status ?? existing.criminal_suspicion_status ?? 'لا يوجد اشتباه',
+      data.criminal_suspicion_details ?? existing.criminal_suspicion_details ?? '',
+      data.distribution_sector ?? existing.distribution_sector ?? '',
       data.notes ?? existing.notes,
       id
     ];
@@ -1456,6 +1603,58 @@ app.put('/api/recruits/:id', requireAuth, requireRole('admin', 'officer'), uploa
       return res.status(409).json({ error: 'الرقم القومي مسجل مسبقاً' });
     }
     res.status(500).json({ error: 'خطأ في تعديل بيانات المجند' });
+  }
+});
+
+// 7.1 Bulk Update Distribution Sectors (Excel Import or Batch Allocation)
+app.post('/api/recruits/bulk-update-distribution', requireAuth, requireRole('admin', 'officer'), async (req, res) => {
+  try {
+    const { updates } = req.body;
+    if (!updates || !Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({ error: 'قائمة تحديثات التوزيع مطلوبة' });
+    }
+
+    let updatedCount = 0;
+    const errors = [];
+
+    await run('BEGIN TRANSACTION');
+    try {
+      for (const item of updates) {
+        const { id, distribution_sector } = item;
+        if (!id || !distribution_sector) continue;
+        const cleanSector = String(distribution_sector).trim();
+        const r = await run(
+          'UPDATE recruits SET distribution_sector = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          [cleanSector, id]
+        );
+        if (r && r.changes > 0) {
+          updatedCount++;
+        }
+      }
+      await run('COMMIT');
+    } catch (txErr) {
+      await run('ROLLBACK');
+      throw txErr;
+    }
+
+    logAudit(req, {
+      action_type: 'BULK_UPDATE_DISTRIBUTION',
+      entity_type: 'recruit',
+      entity_id: 0,
+      entity_name: 'تحديث توزيع قطاعات',
+      details: `تم تحديث بيانات قطاع التوزيع لعدد (${updatedCount}) مجند من خلال استيراد ملف التوزيع الخارجي`,
+    });
+
+    notifyDataChanged();
+
+    res.json({
+      success: true,
+      message: `تم تحديث توزيع (${updatedCount}) مجند بنجاح`,
+      updatedCount
+    });
+  } catch (err) {
+    console.error('Bulk update distribution error:', err);
+    res.status(500).json({ error: 'خطأ أثناء تحديث بيانات التوزيع: ' + err.message });
   }
 });
 
@@ -1504,7 +1703,12 @@ app.post('/api/recruits/bulk-delete', requireAuth, requireRole('admin'), async (
       return res.status(400).json({ error: 'قائمة المعرفات غير صالحة' });
     }
     const placeholders = ids.map(() => '?').join(',');
-    const recruitsToDelete = await query(`SELECT id, name, military_number, photo_path, video_path FROM recruits WHERE id IN (${placeholders})`, ids);
+    const recruitsToDelete = await query(`SELECT id, name, photo_path, video_path FROM recruits WHERE id IN (${placeholders})`, ids);
+    
+    // Explicitly delete all child records to guarantee foreign key integrity
+    await run(`DELETE FROM recruit_documents WHERE recruit_id IN (${placeholders})`, ids);
+    await run(`DELETE FROM recruit_tickets WHERE recruit_id IN (${placeholders})`, ids);
+    await run(`DELETE FROM recruit_activities WHERE recruit_id IN (${placeholders})`, ids);
     await run(`DELETE FROM recruits WHERE id IN (${placeholders})`, ids);
     for (const r of recruitsToDelete) {
       if (r.photo_path) {
@@ -2631,6 +2835,85 @@ app.delete('/api/backup/:fileName', requireAuth, requireRole('admin'), (req, res
   } catch (err) {
     console.error('Error deleting backup:', err);
     res.status(500).json({ error: 'خطأ في حذف النسخة الاحتياطية' });
+  }
+});
+
+// استرجاع نسخة احتياطية من قائمة النسخ (Admin only)
+app.post('/api/backup/restore', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { fileName, isExternal, externalPath } = req.body;
+    if (!fileName) {
+      return res.status(400).json({ error: 'اسم ملف النسخة الاحتياطية مطلوب' });
+    }
+
+    const safeName = path.basename(fileName);
+    let targetPath = '';
+
+    if (isExternal && externalPath && fs.existsSync(externalPath)) {
+      targetPath = path.join(externalPath, safeName);
+    } else {
+      const backupsDir = path.join(baseDir, 'backups');
+      targetPath = path.join(backupsDir, safeName);
+    }
+
+    if (!fs.existsSync(targetPath)) {
+      return res.status(404).json({ error: 'ملف النسخة الاحتياطية المحدد غير موجود' });
+    }
+
+    console.log(`🔄 جاري بدء استرجاع النسخة الاحتياطية من: ${targetPath}`);
+    const restoreResult = await restoreBackup(targetPath);
+
+    logAudit(req, {
+      action_type: 'RESTORE_BACKUP',
+      entity_type: 'backup',
+      entity_id: safeName,
+      entity_name: safeName,
+      details: `استرجاع نسخة احتياطية شاملة للمنظومة: ${safeName} (تم حفظ نسخة أمان: ${restoreResult.safetyBackup})`,
+    });
+
+    notifyDataChanged();
+    res.json({
+      message: 'تم استرجاع النسخة الاحتياطية بنجاح واكتمال التحقق من قاعدة البيانات',
+      result: restoreResult
+    });
+  } catch (err) {
+    console.error('Error restoring backup:', err);
+    res.status(500).json({ error: 'خطأ في استرجاع النسخة الاحتياطية: ' + err.message });
+  }
+});
+
+// استرجاع نسخة احتياطية من ملف مرفوع مباشرة (Admin only)
+app.post('/api/backup/upload-restore', requireAuth, requireRole('admin'), upload.single('backupFile'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'يرجى اختيار ملف النسخة الاحتياطية (.zip أو .db)' });
+    }
+
+    const uploadedPath = req.file.path;
+    console.log(`🔄 جاري بدء استرجاع النسخة الاحتياطية المرفوعة من: ${uploadedPath}`);
+    const restoreResult = await restoreBackup(uploadedPath);
+
+    // Clean up the uploaded temporary archive
+    try {
+      if (fs.existsSync(uploadedPath)) fs.unlinkSync(uploadedPath);
+    } catch (e) {}
+
+    logAudit(req, {
+      action_type: 'RESTORE_BACKUP',
+      entity_type: 'backup',
+      entity_id: req.file.originalname,
+      entity_name: req.file.originalname,
+      details: `استرجاع نسخة احتياطية مرفوعة: ${req.file.originalname}`,
+    });
+
+    notifyDataChanged();
+    res.json({
+      message: 'تم استرجاع النسخة الاحتياطية المرفوعة بنجاح',
+      result: restoreResult
+    });
+  } catch (err) {
+    console.error('Error restoring uploaded backup:', err);
+    res.status(500).json({ error: 'خطأ في استرجاع النسخة الاحتياطية: ' + err.message });
   }
 });
 

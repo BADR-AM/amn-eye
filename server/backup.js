@@ -1,8 +1,12 @@
 import fs from 'fs';
 import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { ZipArchive } from 'archiver';
 import { fileURLToPath } from 'url';
-import { run, get, query } from './db.js';
+import { run, get, query, closeDb, reopenDb, initDb } from './db.js';
+
+const execFileAsync = promisify(execFile);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -184,6 +188,108 @@ export const deleteBackup = (fileName, customDir = null) => {
     return true;
   }
   return false;
+};
+
+/**
+ * Restore system data (recruits.db and media) from a backup archive (.zip) or SQLite file (.db)
+ */
+export const restoreBackup = async (sourcePath) => {
+  if (!fs.existsSync(sourcePath)) {
+    throw new Error('ملف النسخة الاحتياطية غير موجود: ' + sourcePath);
+  }
+
+  // 1. Pre-restore automatic snapshot of current active DB
+  const safetyBackupName = `pre_restore_safety_${Date.now()}.db`;
+  const safetyBackupPath = path.join(dataDir, safetyBackupName);
+  try {
+    if (fs.existsSync(dbPath)) {
+      fs.copyFileSync(dbPath, safetyBackupPath);
+      console.log(`🛡️ تم إنشاء نسخة أمان احتياطية قبل الاسترجاع: ${safetyBackupPath}`);
+    }
+  } catch (snapErr) {
+    console.warn('Could not create pre-restore snapshot:', snapErr.message);
+  }
+
+  // 2. Prepare temporary extract folder
+  const tempExtractDir = path.join(dataDir, `temp_restore_${Date.now()}`);
+  if (!fs.existsSync(tempExtractDir)) fs.mkdirSync(tempExtractDir, { recursive: true });
+
+  let restoredDbFile = null;
+  let restoredUploadsDir = null;
+
+  try {
+    if (sourcePath.endsWith('.db')) {
+      restoredDbFile = sourcePath;
+    } else {
+      // .zip archive: extract using native tar (or PowerShell Expand-Archive fallback)
+      try {
+        await execFileAsync('tar', ['-xf', sourcePath, '-C', tempExtractDir]);
+      } catch (tarErr) {
+        console.warn('tar extraction failed, trying PowerShell Expand-Archive:', tarErr.message);
+        await execFileAsync('powershell', ['-NoProfile', '-Command', `Expand-Archive -LiteralPath '${sourcePath}' -DestinationPath '${tempExtractDir}' -Force`]);
+      }
+
+      // Locate recruits.db inside extracted directory
+      const candidateDb = path.join(tempExtractDir, 'recruits.db');
+      if (fs.existsSync(candidateDb)) {
+        restoredDbFile = candidateDb;
+      } else {
+        const findDb = (dir) => {
+          const entries = fs.readdirSync(dir);
+          for (const item of entries) {
+            const full = path.join(dir, item);
+            if (fs.statSync(full).isDirectory()) {
+              const res = findDb(full);
+              if (res) return res;
+            } else if (item.endsWith('.db')) {
+              return full;
+            }
+          }
+          return null;
+        };
+        restoredDbFile = findDb(tempExtractDir);
+      }
+
+      const candidateUploads = path.join(tempExtractDir, 'uploads');
+      if (fs.existsSync(candidateUploads)) {
+        restoredUploadsDir = candidateUploads;
+      }
+    }
+
+    if (!restoredDbFile || !fs.existsSync(restoredDbFile)) {
+      throw new Error('لم يتم العثور على ملف قاعدة بيانات recruits.db صالح داخل النسخة الاحتياطية');
+    }
+
+    // 3. Close current active SQLite connection
+    await closeDb();
+
+    // 4. Overwrite active database file
+    fs.copyFileSync(restoredDbFile, dbPath);
+
+    // 5. Restore uploads if present in the backup
+    if (restoredUploadsDir && fs.existsSync(restoredUploadsDir)) {
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+      fs.cpSync(restoredUploadsDir, uploadsDir, { recursive: true, force: true });
+    }
+
+    // 6. Reopen SQLite connection and verify schema/migrations
+    await reopenDb();
+    await initDb();
+
+    console.log(`✅ تم استرجاع النسخة الاحتياطية بنجاح من: ${sourcePath}`);
+    return {
+      success: true,
+      restoredFile: path.basename(sourcePath),
+      safetyBackup: safetyBackupName
+    };
+  } finally {
+    // Cleanup temporary extraction workspace
+    try {
+      if (fs.existsSync(tempExtractDir)) {
+        fs.rmSync(tempExtractDir, { recursive: true, force: true });
+      }
+    } catch (e) {}
+  }
 };
 
 /**

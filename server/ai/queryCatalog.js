@@ -29,9 +29,11 @@ export const QUERY_CATALOG = {
       const baseCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE company LIKE '%أساسية%' OR company LIKE '%اساسية%'`);
       const fitCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE ${SQL_MEDICAL_FIT}`);
       const unfitCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE ${SQL_MEDICAL_UNFIT}`);
+      const distributedCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE distribution_sector IS NOT NULL AND distribution_sector != ''`);
+      const total = stats?.total_recruits || 0;
 
       return {
-        total_recruits: stats?.total_recruits || 0,
+        total_recruits: total,
         active_batch: activeBatch ? activeBatch.name : 'غير محدد',
         open_tickets: tickets?.open_tickets || 0,
         psych_cases: psych?.psych_cases || 0,
@@ -39,6 +41,8 @@ export const QUERY_CATALOG = {
         base_force: baseCount?.count || 0,
         medically_fit: fitCount?.count || 0,
         medically_unfit: unfitCount?.count || 0,
+        distributed_recruits: distributedCount?.count || 0,
+        unassigned_recruits: Math.max(0, total - (distributedCount?.count || 0))
       };
     }
   },
@@ -100,6 +104,67 @@ export const QUERY_CATALOG = {
         LIMIT 20
       `);
       return rows;
+    }
+  },
+
+  // 4.1 Distribution Sectors Statistics (قطاعات التوزيع)
+  stats_by_distribution_sector: {
+    id: 'stats_by_distribution_sector',
+    title: 'توزيع المجندين حسب القطاعات والجهات الموزع عليها',
+    description: 'إحصائية وبيان توزيع المجندين بعد انتهاء التدريب الأساسي على قطاعات الأمن المركزي والجهات الخارجية',
+    execute: async () => {
+      const rows = await query(`
+        SELECT 
+          CASE 
+            WHEN distribution_sector IS NULL OR distribution_sector = '' THEN 'قيد التدريب (لم يتم التوزيع)'
+            ELSE distribution_sector
+          END as sector,
+          COUNT(*) as count
+        FROM recruits
+        GROUP BY sector
+        ORDER BY count DESC
+      `);
+      const totalRecruits = await get(`SELECT COUNT(*) as c FROM recruits`);
+      const distributed = await get(`SELECT COUNT(*) as c FROM recruits WHERE distribution_sector IS NOT NULL AND distribution_sector != ''`);
+      return {
+        sectors: rows,
+        total: totalRecruits?.c || 0,
+        distributed_count: distributed?.c || 0,
+        unassigned_count: (totalRecruits?.c || 0) - (distributed?.c || 0)
+      };
+    }
+  },
+
+  // 4.2 List Recruits by Distribution Sector
+  list_recruits_by_distribution_sector: {
+    id: 'list_recruits_by_distribution_sector',
+    title: 'قائمة المجندين الموزعين على قطاع معين',
+    description: 'استخراج أسماء وتفاصيل المجندين الموزعين على قطاع أو جهة محددة',
+    execute: async (params = {}) => {
+      const sector = params.sector || '';
+      let rows;
+      if (!sector || sector === 'unassigned' || sector === 'غير موزع' || sector === 'لم يوزع') {
+        rows = await query(`
+          SELECT id, name, national_id, military_number, police_number, company, qualification, distribution_sector
+          FROM recruits
+          WHERE distribution_sector IS NULL OR distribution_sector = ''
+          ORDER BY id DESC
+          LIMIT 50
+        `);
+      } else {
+        rows = await query(`
+          SELECT id, name, national_id, military_number, police_number, company, qualification, distribution_sector
+          FROM recruits
+          WHERE distribution_sector LIKE ?
+          ORDER BY id DESC
+          LIMIT 50
+        `, [`%${sector}%`]);
+      }
+      return {
+        sector: sector || 'قيد التدريب (لم يتم التوزيع)',
+        count: rows.length,
+        recruits: rows
+      };
     }
   },
 

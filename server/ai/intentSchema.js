@@ -23,6 +23,7 @@ export function validateIntent(parsed) {
     if (typeof params.term === 'string') cleanParams.query = params.term.slice(0, 100).trim();
     if (typeof params.national_id === 'string') cleanParams.national_id = params.national_id.replace(/\D/g, '').slice(0, 14);
     if (typeof params.company === 'string') cleanParams.company = params.company.slice(0, 50).trim();
+    if (typeof params.sector === 'string') cleanParams.sector = params.sector.slice(0, 50).trim();
     if (typeof params.trade === 'string') cleanParams.trade = params.trade.slice(0, 50).trim();
     if (typeof params.location === 'string') cleanParams.location = params.location.slice(0, 50).trim();
     if (typeof params.hospital === 'string') cleanParams.hospital = params.hospital.slice(0, 50).trim();

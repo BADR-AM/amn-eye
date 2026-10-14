@@ -47,6 +47,8 @@ import RecruitDocumentsModal from './RecruitDocumentsModal';
 import TicketModal from './TicketModal';
 import PsychologicalFollowupModal from './PsychologicalFollowupModal';
 import CameraQrScanner from './CameraQrScanner';
+import DistributionImportModal from './DistributionImportModal';
+import BulkReportExportModal from './BulkReportExportModal';
 import { fetchCompanyColors, DEFAULT_COMPANY_COLORS, getCompanyStyle } from '../utils/companyColors';
 import { authHeaders, getUser } from '../utils/auth';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -69,8 +71,11 @@ export default function Dashboard({
   const [selectedBatchId, setSelectedBatchId] = useState('all');
   const [selectedQualification, setSelectedQualification] = useState('all');
   const [selectedCompanyFilter, setSelectedCompanyFilter] = useState('all');
+  const [selectedSectorFilter, setSelectedSectorFilter] = useState('all');
   const [selectedDateFilter, setSelectedDateFilter] = useState('all');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
+  const [showDistributionModal, setShowDistributionModal] = useState(false);
+  const [showBulkReportModal, setShowBulkReportModal] = useState(false);
   const [recruits, setRecruits] = useState([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
@@ -249,6 +254,7 @@ export default function Dashboard({
         batch_id: selectedBatchId,
         qualification: selectedQualification,
         company: selectedCompanyFilter,
+        distribution_sector: selectedSectorFilter,
         attendance_date: selectedDateFilter,
         category: selectedCategoryFilter,
         page: page.toString(),
@@ -281,7 +287,7 @@ export default function Dashboard({
     const controller = new AbortController();
     fetchRecruits(controller.signal);
     return () => controller.abort();
-  }, [debouncedSearch, selectedBatchId, selectedQualification, selectedCompanyFilter, selectedDateFilter, selectedCategoryFilter, page, refreshTrigger]);
+  }, [debouncedSearch, selectedBatchId, selectedQualification, selectedCompanyFilter, selectedSectorFilter, selectedDateFilter, selectedCategoryFilter, page, refreshTrigger]);
 
   // Real-time live synchronization between Desktop, Mobile & other devices
   const fetchRecruitsRef = useRef(fetchRecruits);
@@ -484,10 +490,31 @@ export default function Dashboard({
             ))}
           </select>
 
-          {(selectedCompanyFilter !== 'all' || selectedDateFilter !== 'all') && (
+          <select
+            value={selectedSectorFilter}
+            onChange={(e) => {
+              setSelectedSectorFilter(e.target.value);
+              setPage(1);
+            }}
+            className="bg-[#262626] border border-[#525252] text-indigo-300 font-bold text-xs px-3 py-2.5 focus:border-indigo-500 focus:outline-none"
+          >
+            <option value="all">كافة قطاعات التوزيع</option>
+            <option value="unassigned">قيد التدريب الأساسي (لم يوزع)</option>
+            <option value="رئاسة المنطقة">رئاسة المنطقة</option>
+            <option value="قطاع أحمد عمارة">قطاع أحمد عمارة</option>
+            <option value="قطاع عمر القاضي">قطاع عمر القاضي</option>
+            <option value="قطاع على خاطر">قطاع على خاطر</option>
+            <option value="قطاع جمال فايق">قطاع جمال فايق</option>
+            <option value="مركز التدريب">مركز التدريب</option>
+            <option value="جهة خارجية">جهة خارجية</option>
+            <option value="عودة">عودة</option>
+          </select>
+
+          {(selectedCompanyFilter !== 'all' || selectedSectorFilter !== 'all' || selectedDateFilter !== 'all') && (
             <button
               onClick={() => {
                 setSelectedCompanyFilter('all');
+                setSelectedSectorFilter('all');
                 setSelectedDateFilter('all');
               }}
               className="text-xs text-amber-400 hover:text-amber-300 px-2 py-1 bg-amber-500/10 border border-amber-500/30"
@@ -548,6 +575,31 @@ export default function Dashboard({
                 {selectedIds.length}
               </span>
             )}
+          </button>
+
+          {/* Bulk Export Official Reports */}
+          <button
+            onClick={() => setShowBulkReportModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors shadow-sm"
+            title="تصدير استمارات الفحص الرسمية A4 لعدة مجندين (PDF مجمع أو صور PNG)"
+          >
+            <Printer className="w-4 h-4" />
+            <span>تصدير الاستمارات</span>
+            {selectedIds.length > 0 && (
+              <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded font-mono font-bold">
+                {selectedIds.length}
+              </span>
+            )}
+          </button>
+
+          {/* Import Distribution from Excel */}
+          <button
+            onClick={() => setShowDistributionModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-[#0891b2] hover:bg-[#06b6d4] text-white transition-colors"
+            title="استيراد وتوزيع المجندين على القطاعات من ملفات Excel (.xlsx / .xls)"
+          >
+            <MapPin className="w-4 h-4" />
+            <span>توزيع الإكسل</span>
           </button>
 
           {/* Import Recruits from Markdown (.md) */}
@@ -623,6 +675,16 @@ export default function Dashboard({
             >
               <IdCard className="w-4 h-4" />
               <span>تصدير كروت المحددين ({selectedIds.length})</span>
+            </button>
+
+            {/* Bulk Export Official Reports Button */}
+            <button
+              onClick={() => setShowBulkReportModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow"
+              title="تصدير استمارات الفحص الرسمية (PDF / PNG) للمجندين المحددين"
+            >
+              <Printer className="w-4 h-4" />
+              <span>تصدير الاستمارات الرسمية ({selectedIds.length})</span>
             </button>
 
             {/* Bulk Delete Button (Admin only) */}
@@ -807,6 +869,16 @@ export default function Dashboard({
                                 <span className="text-gray-400">المؤهل:</span>
                                 <span className="truncate max-w-[120px] text-gray-300 font-sans">{r.qualification}</span>
                               </div>
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-gray-400">التوزيع:</span>
+                                <span className={`truncate max-w-[130px] font-sans px-1 rounded text-[10px] ${
+                                  r.distribution_sector 
+                                    ? 'bg-indigo-950/90 text-indigo-300 border border-indigo-500/40 font-bold' 
+                                    : 'text-gray-500'
+                                }`}>
+                                  {r.distribution_sector || 'قيد التدريب'}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -987,6 +1059,7 @@ export default function Dashboard({
                       <th className="py-2.5 px-3">الاسم الكامل</th>
                       <th className="py-2.5 px-3 font-mono">رقم الشرطة</th>
                       <th className="py-2.5 px-3">السرية</th>
+                      <th className="py-2.5 px-3">القطاع الموزع إليه</th>
                       <th className="py-2.5 px-3 font-mono">الرقم القومي</th>
                       <th className="py-2.5 px-3">الموقف الطبي</th>
                       <th className="py-2.5 px-3 text-center">الإجراءات</th>
@@ -1051,6 +1124,15 @@ export default function Dashboard({
                               }}
                             >
                               {r.company || 'غير محدد'}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className={`px-2 py-0.5 text-[10px] font-bold border rounded ${
+                              r.distribution_sector 
+                                ? 'bg-indigo-950/80 text-indigo-300 border-indigo-500/40' 
+                                : 'bg-[#1e1e1e] text-gray-500 border-[#333]'
+                            }`}>
+                              {r.distribution_sector || 'قيد التدريب'}
                             </span>
                           </td>
                           <td className="py-2 px-3 font-mono text-gray-300">{r.national_id || '---'}</td>
@@ -1341,6 +1423,29 @@ export default function Dashboard({
             />
           </div>
         </div>
+      )}
+
+      {/* Excel Distribution Import Modal */}
+      {showDistributionModal && (
+        <DistributionImportModal
+          isOpen={showDistributionModal}
+          onClose={() => setShowDistributionModal(false)}
+          onSuccess={() => {
+            fetchRecruits();
+            if (onRefresh) onRefresh();
+          }}
+        />
+      )}
+
+      {/* Bulk Official Report Export Modal (PDF / PNG) */}
+      {showBulkReportModal && (
+        <BulkReportExportModal
+          isOpen={showBulkReportModal}
+          onClose={() => setShowBulkReportModal(false)}
+          recruits={recruits}
+          selectedRecruitIds={selectedIds}
+          currentUser={currentUser}
+        />
       )}
 
     </div>

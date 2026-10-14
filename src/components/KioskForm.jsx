@@ -5,6 +5,7 @@ import {
   Check, 
   CornerDownLeft, 
   ShieldAlert, 
+  AlertOctagon,
   Sparkles,
   Camera,
   X,
@@ -51,7 +52,13 @@ export default function KioskForm({ activeBatch, onComplete, onCancel, initialDa
     family_social_status: 'الأسرة مستقرة والوالدان على قيد الحياة',
     family_security_status: 'العائلة خالية من السوابق والشبهات الجنائية والسياسية',
     police_number: '',
-    company: 'السرية الثالثة ( ٣ )'
+    military_number: '',
+    criminal_suspicion_status: 'لا يوجد اشتباه',
+    criminal_suspicion_details: '',
+    political_suspicion_status: 'لا يوجد اشتباه',
+    political_suspicion_details: '',
+    company: 'السرية الأولى ( ١ )',
+    distribution_sector: ''
   });
 
   // Questions configuration
@@ -255,6 +262,26 @@ export default function KioskForm({ activeBatch, onComplete, onCancel, initialDa
       placeholder: 'مثال: ١٢٤٩٢٣ أو 124923',
     },
     {
+      id: 'criminal_suspicion_status',
+      title: 'موقف الاشتباه الجنائي',
+      subtitle: 'اختر موقف المجند الجنائي (في حالة وجود اشتباه تظهر خانة لتدوين تفاصيل القضايا أو السوابق)',
+      icon: AlertOctagon,
+      type: 'suspicion_choice',
+      detailsField: 'criminal_suspicion_details',
+      options: ['لا يوجد اشتباه', 'اشتباه', 'جاري الفحص'],
+      detailsPlaceholder: 'اكتب وقائع وسوابق الاشتباه الجنائي والقضايا وأسماء الأقارب بالتفصيل...',
+    },
+    {
+      id: 'political_suspicion_status',
+      title: 'موقف الاشتباه السياسي',
+      subtitle: 'اختر موقف المجند السياسي (في حالة وجود اشتباه تظهر خانة لتدوين تفاصيل الفحص والصلات)',
+      icon: ShieldAlert,
+      type: 'suspicion_choice',
+      detailsField: 'political_suspicion_details',
+      options: ['لا يوجد اشتباه', 'اشتباه', 'جاري الفحص'],
+      detailsPlaceholder: 'اكتب وقائع الاشتباه السياسي والانتماءات وصلة القرابة وتفاصيل الفحص بالتفصيل...',
+    },
+    {
       id: 'company',
       title: 'السرية / الكتيبة',
       subtitle: 'اختر أو اكتب السرية التابع لها المجند لتظهر على كارت الدولاب',
@@ -297,13 +324,16 @@ export default function KioskForm({ activeBatch, onComplete, onCancel, initialDa
     }
   }, [currentStep]);
 
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+
   // Handle value change
-  const handleChange = (val) => {
+  const handleChange = (val, fieldId = currentQ.id) => {
     setFormData(prev => {
-      const updated = { ...prev, [currentQ.id]: val };
+      const updated = { ...prev, [fieldId]: val };
 
       // Auto-extract birth date & governorate when national ID is typed
-      if (currentQ.id === 'national_id' && val.trim().length === 14) {
+      if (fieldId === 'national_id' && val.trim().length === 14) {
         const parsed = parseEgyptianNationalId(val);
         if (parsed && parsed.isValid) {
           updated.birth_date = parsed.birthDate;
@@ -313,14 +343,21 @@ export default function KioskForm({ activeBatch, onComplete, onCancel, initialDa
         }
       }
 
+      formDataRef.current = updated;
       return updated;
     });
+    formDataRef.current = { ...formDataRef.current, [fieldId]: val };
   };
 
   // Next step handler
-  const handleNext = () => {
+  const handleNext = (overrideVal = null) => {
+    let currentData = { ...formDataRef.current };
+    if (overrideVal !== null) {
+      currentData = { ...currentData, [currentQ.id]: overrideVal };
+    }
+
     // Basic validation for required fields
-    if (currentQ.required && (!formData[currentQ.id] || !formData[currentQ.id].trim())) {
+    if (currentQ.required && (!currentData[currentQ.id] || !currentData[currentQ.id].trim())) {
       alert(`يرجى ملء حقل "${currentQ.title}" للمتابعة.`);
       return;
     }
@@ -328,8 +365,8 @@ export default function KioskForm({ activeBatch, onComplete, onCancel, initialDa
     if (currentStep < questions.length - 1) {
       setCurrentStep(prev => prev + 1);
     } else {
-      // Completed all 20 questions -> Proceed to Camera & Media Capture
-      onComplete(formData);
+      // Completed all questions -> Proceed to Camera & Media Capture
+      onComplete(currentData);
     }
   };
 
@@ -386,22 +423,26 @@ export default function KioskForm({ activeBatch, onComplete, onCancel, initialDa
 
         if (num !== null && num >= 1 && num <= currentQ.options.length) {
           const isInputFocused = document.activeElement === inputRef.current;
+          const isChoiceType = currentQ.type === 'choice' || currentQ.type === 'suspicion_choice';
           // In choice questions, or when input is empty or altKey is held
-          if (currentQ.type === 'choice' || !isInputFocused || !inputRef.current?.value?.trim() || e.altKey) {
+          if (isChoiceType || !isInputFocused || !inputRef.current?.value?.trim() || e.altKey) {
             e.preventDefault();
             const opt = currentQ.options[num - 1];
             handleChange(opt);
+
+            // If suspicion_choice and option is 'اشتباه', allow typing details without auto-advancing
+            if (currentQ.type === 'suspicion_choice' && opt === 'اشتباه') {
+              return;
+            }
+
             // Brief visual feedback then advance
             setTimeout(() => {
-              if (currentStep < questions.length - 1) {
-                setCurrentStep(prev => prev + 1);
-              } else {
-                onComplete({ ...formData, [currentQ.id]: opt });
-              }
+              handleNext(opt);
             }, 180);
             return;
           }
         }
+
 
         // Arrow navigation for choice-only questions
         if (currentQ.type === 'choice') {
@@ -509,12 +550,17 @@ export default function KioskForm({ activeBatch, onComplete, onCancel, initialDa
                     type="button"
                     onClick={() => {
                       handleChange(opt);
-                      // Auto advance on single choice click
-                      setTimeout(handleNext, 150);
+                      if (currentQ.type === 'suspicion_choice' && opt === 'اشتباه') {
+                        return; // Let user type details into the textarea
+                      }
+                      // Auto advance on single choice click passing the chosen option
+                      setTimeout(() => handleNext(opt), 180);
                     }}
                     className={`flex items-center justify-between p-4 rounded-xl border text-sm font-bold transition-all ${
                       isSelected
-                        ? 'bg-emerald-600/30 border-emerald-500 text-emerald-300 shadow-lg shadow-emerald-950/50 scale-[1.02] ring-2 ring-emerald-500/40'
+                        ? (opt === 'اشتباه' 
+                            ? 'bg-rose-600/30 border-rose-500 text-rose-300 shadow-lg shadow-rose-950/50 scale-[1.02] ring-2 ring-rose-500/40' 
+                            : 'bg-emerald-600/30 border-emerald-500 text-emerald-300 shadow-lg shadow-emerald-950/50 scale-[1.02] ring-2 ring-emerald-500/40')
                         : 'bg-darkslate-850 hover:bg-slate-800 border-slate-700/80 text-slate-200 hover:border-slate-600'
                     }`}
                   >
@@ -530,6 +576,27 @@ export default function KioskForm({ activeBatch, onComplete, onCancel, initialDa
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {/* Suspicion Details Textarea for criminal and political suspicion */}
+          {currentQ.type === 'suspicion_choice' && formData[currentQ.id] === 'اشتباه' && (
+            <div className="mt-4 p-4 bg-rose-950/30 border-2 border-rose-500/60 rounded-2xl animate-in fade-in space-y-2.5">
+              <div className="flex items-center justify-between text-rose-300 text-xs font-bold">
+                <span className="flex items-center gap-1.5">
+                  <AlertOctagon className="w-4 h-4 text-rose-400" />
+                  <span>تدوين تفاصيل الاشتباه والوقائع والقضايا:</span>
+                </span>
+                <span className="text-[11px] text-slate-400">اضغط Enter أو زر التالي للمتابعة</span>
+              </div>
+              <textarea
+                rows={3}
+                value={formData[currentQ.detailsField] || ''}
+                onChange={(e) => handleChange(e.target.value, currentQ.detailsField)}
+                placeholder={currentQ.detailsPlaceholder || 'اكتب التفاصيل هنا بالتفصيل...'}
+                className="w-full bg-slate-900 border border-rose-500/50 focus:border-rose-400 rounded-xl p-3 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-rose-500/30 placeholder:text-slate-500 leading-relaxed"
+                autoFocus
+              />
             </div>
           )}
 
@@ -551,7 +618,7 @@ export default function KioskForm({ activeBatch, onComplete, onCancel, initialDa
               onChange={(e) => handleChange(e.target.value)}
               className="w-full bg-darkslate-900 border-2 border-slate-700 focus:border-emerald-500 rounded-2xl p-4 text-xl sm:text-2xl font-bold text-white focus:outline-none focus:ring-4 focus:ring-emerald-500/20 transition-all"
             />
-          ) : currentQ.type !== 'choice' ? (
+          ) : (currentQ.type !== 'choice' && currentQ.type !== 'suspicion_choice') ? (
             <div className="relative">
               <input
                 ref={inputRef}

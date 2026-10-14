@@ -242,8 +242,10 @@ export default function RecruitModal({
         'wife', 'address', 'current_job', 'other_jobs', 'travel_abroad',
         'literacy', 'inspection', 'medical_status', 'father_name', 'father_job',
         'mother_name', 'mother_job', 'siblings_check', 'family_social_status',
-        'family_security_status', 'police_number', 'company', 'notes',
-        'attendance_date', 'batch_id'
+        'family_security_status', 'police_number', 'company', 'distribution_sector', 'notes',
+        'attendance_date', 'batch_id', 'military_number',
+        'political_suspicion_status', 'political_suspicion_details',
+        'criminal_suspicion_status', 'criminal_suspicion_details'
       ];
 
       textFields.forEach((field) => {
@@ -718,7 +720,21 @@ export default function RecruitModal({
                     </div>
                     <div>
                       <span className="text-slate-400 block">السرية</span>
-                      <span className="font-bold text-orange-400 text-sm">{recruit.company || 'السرية الثالثة ( ٣ )'}</span>
+                      <span className="font-bold text-orange-400 text-sm">{recruit.company || 'السرية الأولى ( ١ )'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block">القطاع الموزع عليه</span>
+                      <span className={`font-bold text-xs px-2 py-0.5 rounded-lg inline-block mt-0.5 ${
+                        recruit.distribution_sector 
+                          ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' 
+                          : 'text-slate-400 bg-slate-800/60'
+                      }`}>
+                        {recruit.distribution_sector || 'قيد التدريب الأساسي'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block">الرقم العسكري</span>
+                      <span className="font-bold text-cyan-400 text-sm font-mono">{recruit.military_number || 'غير مدون'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 block">الديانة</span>
@@ -817,10 +833,49 @@ export default function RecruitModal({
                       <span className="font-bold text-white">{recruit.family_social_status}</span>
                     </div>
                     <div className="col-span-2">
-                      <span className="text-slate-400 block">الحالة السياسية والجنائية للعائلة</span>
+                      <span className="text-slate-400 block">الحالة السياسية والجنائية العامة للعائلة</span>
                       <p className="font-bold text-emerald-300 bg-emerald-500/10 p-2 rounded-xl mt-1 border border-emerald-500/20">
                         {recruit.family_security_status}
                       </p>
+                    </div>
+
+                    {/* موقف الاشتباه الجنائي والسياسي للمجند */}
+                    <div className="col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+                      <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                        <span className="text-slate-400 block text-xs mb-1">موقف الاشتباه الجنائي للمجند:</span>
+                        <span className={`inline-block font-black text-xs px-2.5 py-1 rounded-lg ${
+                          recruit.criminal_suspicion_status === 'اشتباه' 
+                            ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' 
+                            : recruit.criminal_suspicion_status === 'جاري الفحص'
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        }`}>
+                          {recruit.criminal_suspicion_status || 'لا يوجد اشتباه'}
+                        </span>
+                        {recruit.criminal_suspicion_details && (
+                          <p className="mt-2 text-rose-200 text-xs bg-rose-950/40 p-2 rounded-lg border border-rose-900/50">
+                            {recruit.criminal_suspicion_details}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                        <span className="text-slate-400 block text-xs mb-1">موقف الاشتباه السياسي للمجند:</span>
+                        <span className={`inline-block font-black text-xs px-2.5 py-1 rounded-lg ${
+                          recruit.political_suspicion_status === 'اشتباه' 
+                            ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' 
+                            : recruit.political_suspicion_status === 'جاري الفحص'
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        }`}>
+                          {recruit.political_suspicion_status || 'لا يوجد اشتباه'}
+                        </span>
+                        {recruit.political_suspicion_details && (
+                          <p className="mt-2 text-rose-200 text-xs bg-rose-950/40 p-2 rounded-lg border border-rose-900/50">
+                            {recruit.political_suspicion_details}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -861,6 +916,25 @@ export default function RecruitModal({
                         <option value="السرية السادسة ( ٦ )">السرية السادسة ( ٦ )</option>
                         <option value="سرية الأمن">سرية الأمن (خاصة)</option>
                         <option value="القوة الأساسية">القوة الأساسية (المركز)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-slate-400 block mb-1">القطاع الموزع عليه (بعد التدريب الأساسي)</label>
+                      <select
+                        value={editData.distribution_sector || ''}
+                        onChange={(e) => handleFieldChange('distribution_sector', e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-indigo-300 font-bold focus:border-indigo-500 outline-none"
+                      >
+                        <option value="">لم يحدد (قيد التدريب الأساسي)</option>
+                        <option value="رئاسة المنطقة">رئاسة المنطقة</option>
+                        <option value="قطاع أحمد عمارة">قطاع أحمد عمارة</option>
+                        <option value="قطاع عمر القاضي">قطاع عمر القاضي</option>
+                        <option value="قطاع على خاطر">قطاع على خاطر</option>
+                        <option value="قطاع جمال فايق">قطاع جمال فايق</option>
+                        <option value="مركز التدريب">مركز التدريب</option>
+                        <option value="جهة خارجية">جهة خارجية</option>
+                        <option value="عودة">عودة</option>
                       </select>
                     </div>
 
@@ -920,24 +994,13 @@ export default function RecruitModal({
                     </div>
 
                     <div>
-                      <label className="text-slate-400 block mb-1">رقم الشرطة</label>
+                      <label className="text-slate-400 block mb-1">الرقم العسكري</label>
                       <input 
                         type="text" 
-                        value={editData.police_number || ''} 
-                        onChange={(e) => handleFieldChange('police_number', e.target.value)}
-                        placeholder="مثال: 1024"
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-orange-400 font-mono font-bold focus:border-emerald-500 outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-slate-400 block mb-1">السرية</label>
-                      <input 
-                        type="text" 
-                        value={editData.company || ''} 
-                        onChange={(e) => handleFieldChange('company', e.target.value)}
-                        placeholder="السرية الثالثة ( ٣ )"
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-orange-300 font-bold focus:border-emerald-500 outline-none"
+                        value={editData.military_number || ''} 
+                        onChange={(e) => handleFieldChange('military_number', e.target.value)}
+                        placeholder="مثال: 20241012..."
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-cyan-400 font-mono font-bold focus:border-emerald-500 outline-none"
                       />
                     </div>
 
@@ -1116,6 +1179,53 @@ export default function RecruitModal({
                         onChange={(e) => handleFieldChange('family_security_status', e.target.value)}
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-emerald-300 font-bold focus:border-purple-500 outline-none"
                       />
+                    </div>
+
+                    {/* موقف الاشتباه الجنائي والسياسي للمجند */}
+                    <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-slate-800">
+                      <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                        <label className="text-slate-300 font-bold block mb-1.5 text-xs">موقف الاشتباه الجنائي للمجند</label>
+                        <select
+                          value={editData.criminal_suspicion_status || 'لا يوجد اشتباه'}
+                          onChange={(e) => handleFieldChange('criminal_suspicion_status', e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold text-xs focus:border-purple-500 outline-none"
+                        >
+                          <option value="لا يوجد اشتباه">لا يوجد اشتباه</option>
+                          <option value="اشتباه">اشتباه جنائي</option>
+                          <option value="جاري الفحص">جاري الفحص</option>
+                        </select>
+                        {editData.criminal_suspicion_status === 'اشتباه' && (
+                          <textarea
+                            rows={2}
+                            placeholder="تفاصيل وسوابق الاشتباه الجنائي..."
+                            value={editData.criminal_suspicion_details || ''}
+                            onChange={(e) => handleFieldChange('criminal_suspicion_details', e.target.value)}
+                            className="w-full mt-2 bg-slate-950 border border-rose-500/50 rounded-xl p-2 text-rose-200 text-xs focus:border-rose-400 outline-none"
+                          />
+                        )}
+                      </div>
+
+                      <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                        <label className="text-slate-300 font-bold block mb-1.5 text-xs">موقف الاشتباه السياسي للمجند</label>
+                        <select
+                          value={editData.political_suspicion_status || 'لا يوجد اشتباه'}
+                          onChange={(e) => handleFieldChange('political_suspicion_status', e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold text-xs focus:border-purple-500 outline-none"
+                        >
+                          <option value="لا يوجد اشتباه">لا يوجد اشتباه</option>
+                          <option value="اشتباه">اشتباه سياسي</option>
+                          <option value="جاري الفحص">جاري الفحص</option>
+                        </select>
+                        {editData.political_suspicion_status === 'اشتباه' && (
+                          <textarea
+                            rows={2}
+                            placeholder="تفاصيل وتصنيف الاشتباه السياسي..."
+                            value={editData.political_suspicion_details || ''}
+                            onChange={(e) => handleFieldChange('political_suspicion_details', e.target.value)}
+                            className="w-full mt-2 bg-slate-950 border border-rose-500/50 rounded-xl p-2 text-rose-200 text-xs focus:border-rose-400 outline-none"
+                          />
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
