@@ -40,6 +40,39 @@ const docsDir = path.join(uploadsDir, 'documents');
   }
 });
 
+// Auto-migrate existing uploads from project root or installation directory into APP_DATA_DIR
+if (process.env.APP_DATA_DIR) {
+  const fallbackUploadDirs = [
+    path.join(__dirname, '..', 'uploads'),
+    path.join(process.cwd(), 'uploads')
+  ];
+
+  fallbackUploadDirs.forEach(srcRoot => {
+    if (fs.existsSync(srcRoot) && path.resolve(srcRoot) !== path.resolve(uploadsDir)) {
+      try {
+        const copyDirRecursive = (src, dest) => {
+          if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+          const entries = fs.readdirSync(src, { withFileTypes: true });
+          for (const entry of entries) {
+            if (entry.name === '.gitkeep') continue;
+            const srcPath = path.join(src, entry.name);
+            const destPath = path.join(dest, entry.name);
+            if (entry.isDirectory()) {
+              copyDirRecursive(srcPath, destPath);
+            } else if (!fs.existsSync(destPath)) {
+              fs.copyFileSync(srcPath, destPath);
+              console.log('✅ تم ترحيل ملف المرفقات تلقائياً إلى مجلد بيانات المنظومة:', entry.name);
+            }
+          }
+        };
+        copyDirRecursive(srcRoot, uploadsDir);
+      } catch (migErr) {
+        console.warn('⚠️ تنبيه عند فحص مجلد المرفقات المرجعي:', migErr.message);
+      }
+    }
+  });
+}
+
 // Origin validation: allow same-origin, loopback, Electron, and private LAN subnets
 const isAllowedOrigin = (origin) => {
   if (!origin) return true; // Direct, file://, curl, mobile native
@@ -111,6 +144,25 @@ app.use('/uploads', requireMediaAuth, (req, res, next) => {
         const resolvedCand = path.resolve(cand);
         if (resolvedCand.startsWith(resolvedBase) && fs.existsSync(resolvedCand) && fs.statSync(resolvedCand).isFile()) {
           return res.sendFile(resolvedCand);
+        }
+      }
+    }
+
+    // Fallback: If not found in uploadsDir and running in APP_DATA_DIR, check project root or cwd
+    if (process.env.APP_DATA_DIR) {
+      const fallbackUploadDirs = [
+        path.join(__dirname, '..', 'uploads'),
+        path.join(process.cwd(), 'uploads')
+      ];
+      for (const fbRoot of fallbackUploadDirs) {
+        const candidateInFb = path.resolve(path.join(fbRoot, safePath));
+        if (candidateInFb.startsWith(path.resolve(fbRoot)) && fs.existsSync(candidateInFb) && fs.statSync(candidateInFb).isFile()) {
+          try {
+            const destDir = path.dirname(targetCandidate);
+            if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+            fs.copyFileSync(candidateInFb, targetCandidate);
+          } catch (e) {}
+          return res.sendFile(candidateInFb);
         }
       }
     }
