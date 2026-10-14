@@ -63,11 +63,11 @@ ADMIN_PASSWORD_HASH=$2b$10$...
    ```
 2. انسخ ملف النموذج اللغوي المعتمد:
    ```text
-   qwen3-1.7b-instruct-q4_k_m.gguf
+   qwen2.5-0.5b-instruct-q4_k_m.gguf
    ```
    وضعه داخل مجلد:
    ```text
-   assets/ai/qwen3-1.7b-instruct-q4_k_m.gguf
+   assets/ai/qwen2.5-0.5b-instruct-q4_k_m.gguf
    ```
 3. تحقق من سلامة الملفات عبر تشغيل:
    ```powershell

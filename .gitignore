@@ -2,15 +2,34 @@ node_modules/
 dist/
 dist-electron/
 RecruitsApp/
-data/
-uploads/
 .env
 *.db
 *.db-journal
 *.db-wal
-*.exe
-*.dll
 backups/
 docs/presentation/
+
+# Large binary payloads (must not be committed to Git)
 *.gguf
-assets/
+*.exe
+*.dll
+assets/ai/*.gguf
+assets/runtimes/*.exe
+assets/runtimes/*.dll
+
+# Dynamic uploads (preserve directory structure via .gitkeep)
+uploads/*
+!uploads/.gitkeep
+!uploads/photos/
+uploads/photos/*
+!uploads/photos/.gitkeep
+!uploads/videos/
+uploads/videos/*
+!uploads/videos/.gitkeep
+!uploads/documents/
+uploads/documents/*
+!uploads/documents/.gitkeep
+
+# Local data (preserve directory structure via .gitkeep)
+data/*
+!data/.gitkeep
