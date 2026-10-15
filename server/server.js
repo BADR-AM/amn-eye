@@ -916,6 +916,14 @@ app.get('/api/recruits', requireAuth, async (req, res) => {
       params.push(batch_id);
     }
 
+    if (req.query.ids) {
+      const idList = req.query.ids.split(',').map(x => parseInt(x.trim(), 10)).filter(x => !isNaN(x) && x > 0);
+      if (idList.length > 0) {
+        whereClauses.push(`r.id IN (${idList.map(() => '?').join(',')})`);
+        params.push(...idList);
+      }
+    }
+
     if (qualification && qualification !== 'all') {
       whereClauses.push(`r.qualification = ?`);
       params.push(qualification);

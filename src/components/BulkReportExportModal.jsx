@@ -68,6 +68,40 @@ export default function BulkReportExportModal({
   const [scope, setScope] = useState(hasSelected ? 'selected' : 'all');
   const [selectedCompany, setSelectedCompany] = useState(COMPANIES[0]);
   const [selectedSector, setSelectedSector] = useState(OFFICIAL_SECTORS[0]);
+  const [bulkRecruits, setBulkRecruits] = useState([]);
+  const [loadingBulk, setLoadingBulk] = useState(false);
+
+  // Fetch full dataset from server based on chosen scope
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const fetchBulk = async () => {
+      setLoadingBulk(true);
+      try {
+        const params = new URLSearchParams({ limit: 'all' });
+
+        if (scope === 'selected' && selectedRecruitIds.length > 0) {
+          params.append('ids', selectedRecruitIds.join(','));
+        } else if (scope === 'company' && selectedCompany) {
+          params.append('company', selectedCompany);
+        } else if (scope === 'sector' && selectedSector) {
+          params.append('distribution_sector', selectedSector);
+        }
+
+        const res = await fetch(`/api/recruits?${params.toString()}`, { headers: authHeaders() });
+        if (res.ok) {
+          const data = await res.json();
+          setBulkRecruits(data.recruits || []);
+        }
+      } catch (e) {
+        console.error('Failed to fetch bulk recruits for report:', e);
+      } finally {
+        setLoadingBulk(false);
+      }
+    };
+
+    fetchBulk();
+  }, [isOpen, scope, selectedCompany, selectedSector, selectedRecruitIds.length]);
 
   // Export format: 'pdf' | 'png_zip'
   const [format, setFormat] = useState('pdf');
@@ -85,6 +119,7 @@ export default function BulkReportExportModal({
 
   // Compute target recruits based on scope
   const targetRecruits = React.useMemo(() => {
+    if (bulkRecruits.length > 0) return bulkRecruits;
     if (scope === 'selected') {
       const idSet = new Set(selectedRecruitIds);
       return recruits.filter(r => idSet.has(r.id));
@@ -96,7 +131,7 @@ export default function BulkReportExportModal({
       return recruits.filter(r => r.distribution_sector === selectedSector);
     }
     return recruits;
-  }, [recruits, scope, selectedRecruitIds, selectedCompany, selectedSector]);
+  }, [bulkRecruits, recruits, scope, selectedRecruitIds, selectedCompany, selectedSector]);
 
   // Reset states when modal reopens
   useEffect(() => {
@@ -303,9 +338,9 @@ export default function BulkReportExportModal({
                   {scope === 'all' ? <CheckSquare className="w-4 h-4 text-indigo-400" /> : <Square className="w-4 h-4 text-slate-600" />}
                 </div>
                 <div>
-                  <div className="font-bold text-sm">جميع مجندي القائمة الحالية</div>
+                  <div className="font-bold text-sm">جميع مجندي المنظومة بالكامل</div>
                   <div className="text-[11px] text-slate-400 mt-0.5">
-                    إجمالي {recruits.length} مجند
+                    {loadingBulk ? 'جاري جلب كافة السجلات...' : `إجمالي ${targetRecruits.length} مجند`}
                   </div>
                 </div>
               </button>

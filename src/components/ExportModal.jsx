@@ -99,10 +99,9 @@ export default function ExportModal({
       .catch(err => console.warn('Could not fetch filter options:', err));
   }, [isOpen]);
 
-  // 2. Fetch Bulk Recruits when scope is company / date / all
+  // 2. Fetch Bulk Recruits when scope is company / date / all / selected
   useEffect(() => {
     if (!isOpen) return;
-    if (scope === 'selected') return;
 
     const fetchBulk = async () => {
       setLoadingBulk(true);
@@ -112,7 +111,9 @@ export default function ExportModal({
           batch_id: activeBatch?.id ? String(activeBatch.id) : 'all'
         });
 
-        if (scope === 'company' && selectedCompany) {
+        if (scope === 'selected' && selectedRecruitIds.length > 0) {
+          params.append('ids', selectedRecruitIds.join(','));
+        } else if (scope === 'company' && selectedCompany) {
           params.append('company', selectedCompany);
         } else if (scope === 'date' && selectedDate) {
           params.append('attendance_date', selectedDate);
@@ -131,7 +132,7 @@ export default function ExportModal({
     };
 
     fetchBulk();
-  }, [scope, selectedCompany, selectedDate, isOpen, activeBatch?.id]);
+  }, [scope, selectedCompany, selectedDate, isOpen, activeBatch?.id, selectedRecruitIds.length]);
 
   const cardRef = useRef(null);
   const exportCardRef = useRef(null);
@@ -142,14 +143,15 @@ export default function ExportModal({
   const targetRecruits = React.useMemo(() => {
     if (scope === 'selected') {
       if (selectedRecruitIds.length > 0) {
+        if (bulkRecruits.length > 0) return bulkRecruits;
         return recruits.filter(r => selectedRecruitIds.includes(r.id));
       }
-      return recruits;
+      return bulkRecruits.length > 0 ? bulkRecruits : recruits;
     }
     if (scope === 'company' || scope === 'date' || scope === 'all') {
       return bulkRecruits;
     }
-    return recruits;
+    return bulkRecruits.length > 0 ? bulkRecruits : recruits;
   }, [scope, selectedRecruitIds, recruits, bulkRecruits]);
 
   // Adjust preview index if bounds change

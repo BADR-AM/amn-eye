@@ -176,6 +176,38 @@ export default function Dashboard({
     }
   };
 
+  // Select all recruits across all pages in the current active filter / system
+  const [loadingSelectAll, setLoadingSelectAll] = useState(false);
+  const handleSelectAllInSystem = async () => {
+    if (selectedIds.length === totalCount && totalCount > 0) {
+      setSelectedIds([]);
+      return;
+    }
+    setLoadingSelectAll(true);
+    try {
+      const params = new URLSearchParams({
+        search: debouncedSearch,
+        batch_id: selectedBatchId,
+        qualification: selectedQualification,
+        company: selectedCompanyFilter,
+        distribution_sector: selectedSectorFilter,
+        attendance_date: selectedDateFilter,
+        category: selectedCategoryFilter,
+        limit: 'all'
+      });
+      const res = await fetch(`/api/recruits?${params.toString()}`, { headers: authHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        const allIds = (data.recruits || []).map(r => r.id);
+        setSelectedIds(allIds);
+      }
+    } catch (err) {
+      console.error('Failed to select all recruits in system:', err);
+    } finally {
+      setLoadingSelectAll(false);
+    }
+  };
+
   // Bulk Delete Selected Recruits (Admin only)
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
@@ -660,14 +692,27 @@ export default function Dashboard({
               <strong className="text-blue-300 font-mono text-sm px-2 py-0.5 bg-blue-900/60 border border-blue-500/50 rounded">
                 {selectedIds.length}
               </strong>
-              <span>مجند</span>
+              <span>من إجمالي {totalCount} مجند</span>
             </span>
             <button
               onClick={toggleSelectAll}
-              className="text-[11px] font-semibold text-gray-300 hover:text-white underline px-2 py-0.5"
+              className="text-[11px] font-semibold text-gray-300 hover:text-white underline px-1 py-0.5"
             >
-              {allVisibleSelected ? 'إلغاء تحديد المعروض' : 'تحديد كل المعروض بالصفحة'}
+              {allVisibleSelected ? 'إلغاء تحديد هذه الصفحة' : 'تحديد معروضي الصفحة'}
             </button>
+            {totalCount > recruits.length && (
+              <button
+                onClick={handleSelectAllInSystem}
+                disabled={loadingSelectAll}
+                className="text-[11px] font-bold text-amber-300 hover:text-amber-200 underline px-2 py-0.5 bg-amber-950/40 border border-amber-500/40 rounded transition-all"
+              >
+                {loadingSelectAll 
+                  ? 'جاري التحديد...' 
+                  : selectedIds.length === totalCount 
+                    ? 'إلغاء تحديد الكل' 
+                    : `تحديد كافة الـ ${totalCount} مجند بالمنظومة`}
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -736,9 +781,16 @@ export default function Dashboard({
             <div className="space-y-4">
               <div className="flex items-center justify-between text-xs text-gray-400 px-1">
                 <span>عرض {recruits.length} مجند من إجمالي {totalCount}</span>
-                <button onClick={toggleSelectAll} className="hover:text-white underline">
-                  {allVisibleSelected ? 'إلغاء تحديد الكل' : 'تحديد كل المعروضين للتصدير'}
-                </button>
+                <div className="flex items-center gap-3">
+                  <button onClick={toggleSelectAll} className="hover:text-white underline">
+                    {allVisibleSelected ? 'إلغاء تحديد الصفحة' : 'تحديد معروضي الصفحة'}
+                  </button>
+                  {totalCount > recruits.length && (
+                    <button onClick={handleSelectAllInSystem} className="text-amber-400 hover:text-amber-300 font-bold underline">
+                      {selectedIds.length === totalCount ? 'إلغاء تحديد الكل' : `تحديد كل الـ ${totalCount} مجند بالمنظومة`}
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
@@ -1043,7 +1095,14 @@ export default function Dashboard({
             /* ============================================================ */
             <div className="bg-[#161616] border border-[#393939] shadow-xl overflow-hidden">
               <div className="p-3 border-b border-[#393939] flex items-center justify-between text-xs">
-                <span className="font-bold text-gray-300">سجلات فحص المجندين ({totalCount} مجند)</span>
+                <div className="flex items-center gap-3">
+                  <span className="font-bold text-gray-300">سجلات فحص المجندين ({totalCount} مجند)</span>
+                  {totalCount > recruits.length && (
+                    <button onClick={handleSelectAllInSystem} className="text-amber-400 hover:text-amber-300 font-bold underline text-[11px]">
+                      {selectedIds.length === totalCount ? 'إلغاء تحديد الكل' : `تحديد كل الـ ${totalCount} مجند بالمنظومة`}
+                    </button>
+                  )}
+                </div>
                 <span className="text-gray-400">صفحة {page} من {totalPages}</span>
               </div>
 
