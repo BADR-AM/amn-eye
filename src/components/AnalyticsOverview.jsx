@@ -47,18 +47,6 @@ function AnalyticsOverview({
     }
   }, [refreshTrigger]);
 
-  if (loading && !data) {
-    return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
-        {[1, 2, 3, 4, 5].map(i => (
-          <div key={i} className="bg-[#161616] border border-[#262626] p-4 animate-pulse h-24"></div>
-        ))}
-      </div>
-    );
-  }
-
-  if (!data) return null;
-
   // Real-time synchronized company counts with 100% mathematical consistency to data.total
   const { countsMap, unassignedCount } = useMemo(() => {
     const map = {};
@@ -82,12 +70,24 @@ function AnalyticsOverview({
 
     // Safety net: ensure any unmapped recruits are tracked in unassigned so sum matches total
     const mappedSum = Object.values(map).reduce((a, b) => a + b, 0);
-    if (data.total > (mappedSum + unassigned)) {
+    if (data && data.total > (mappedSum + unassigned)) {
       unassigned = data.total - mappedSum;
     }
 
     return { countsMap: map, unassignedCount: unassigned };
   }, [data?.companyDistribution, data?.total, companyColors]);
+
+  if (loading && !data) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} className="bg-[#161616] border border-[#262626] p-4 animate-pulse h-24"></div>
+        ))}
+      </div>
+    );
+  }
+
+  if (!data) return null;
 
   return (
     <div className="space-y-4 mb-6">
