@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, ShieldAlert, ShieldCheck, Stethoscope, ChevronRight, 
   Layers, Calendar, Activity, BarChart2, CheckCircle2, ArrowUpRight,
@@ -20,28 +20,34 @@ function AnalyticsOverview({
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchOverview = async (silent = false) => {
+  const fetchOverview = async (isBackground = false) => {
     try {
-      if (!silent) setLoading(true);
+      if (!isBackground) setLoading(true);
       const res = await fetch(`/api/analytics/overview?batch_id=${selectedBatch || 'all'}`, {
         headers: authHeaders()
       });
       if (res.ok) {
         const json = await res.json();
-        setData(json);
+        setData(json.data || json);
       }
     } catch (err) {
       console.error('Error fetching analytics overview:', err);
     } finally {
-      if (!silent) setLoading(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchOverview(!data);
-  }, [selectedBatch, refreshTrigger]);
+    fetchOverview(false);
+  }, [selectedBatch]);
 
-  if (loading) {
+  useEffect(() => {
+    if (refreshTrigger) {
+      fetchOverview(true);
+    }
+  }, [refreshTrigger]);
+
+  if (loading && !data) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
         {[1, 2, 3, 4, 5].map(i => (
@@ -54,7 +60,7 @@ function AnalyticsOverview({
   if (!data) return null;
 
   // Real-time synchronized company counts with 100% mathematical consistency to data.total
-  const { countsMap, unassignedCount } = React.useMemo(() => {
+  const { countsMap, unassignedCount } = useMemo(() => {
     const map = {};
     (companyColors || []).forEach(c => { map[c.id] = 0; });
     let unassigned = 0;
