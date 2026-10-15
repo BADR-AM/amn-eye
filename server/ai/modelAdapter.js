@@ -117,20 +117,24 @@ Do not output markdown codeblocks. Output pure JSON.`;
   }
 
   async generateConversationalResponse(userPrompt, factualContext = '') {
+    return this.generateGroundedAnswer(userPrompt, factualContext);
+  }
+
+  async generateGroundedAnswer(userPrompt, factualContext = '') {
     if (this.queue.length >= AI_CONFIG.hardware.queueLimit) {
       return null;
     }
 
-    const systemPrompt = `أنت المساعد الذكي لمنظومة أمن وتسجيل المجندين (Security Eye).
-تحدث بالعامية المصرية العسكرية المحترمة والمهذبة (يا فندم، يا باشا، تمام يا فندم، كله تمام).
-أجب باختصار وأدب، واستند بدقة فقط إلى الحقائق والإحصائيات المذكورة تالياً دون اختلاق:
+    const systemPrompt = `أنت المساعد الذكي لمنظومة عين الأمن (Security Eye) بوحدة الأمن والتحريات.
+تحدث بالعامية المصرية العسكرية المحترمة والمهذبة (يا فندم، يا باشا، تمام يا فندم).
+أجب باختصار واحترافية، واستند بدقة تامة فقط إلى الحقائق والبيانات الرسمية المذكورة تالياً دون اختلاق:
 ${factualContext}`;
 
     const payload = JSON.stringify({
       prompt: `<|im_start|>system\n${systemPrompt}<|im_end|>\n<|im_start|>user\n${userPrompt}<|im_end|>\n<|im_start|>assistant\n`,
-      n_predict: 180,
-      temperature: 0.3,
-      stop: ['<|im_end|>', '\n\n\n\n']
+      n_predict: 220,
+      temperature: 0.15,
+      stop: ['<|im_end|>', '<|endoftext|>', '\n\n\n\n']
     });
 
     return new Promise((resolve) => {
@@ -144,7 +148,7 @@ ${factualContext}`;
             'Content-Type': 'application/json',
             'Content-Length': Buffer.byteLength(payload)
           },
-          timeout: 4000
+          timeout: 25000 // 25s timeout safe for CPU inference
         },
         (res) => {
           let body = '';

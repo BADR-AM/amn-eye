@@ -109,6 +109,39 @@ export async function searchRecruits(rawTerm, options = {}) {
           total,
           mode: 'fts5'
         };
+      } else if (ftsQueryStr.includes(' AND ')) {
+        // Multi-word fallback: Try OR matching if strict AND yielded zero results
+        const orQueryStr = ftsQueryStr.replaceAll(' AND ', ' OR ');
+        const orParams = [orQueryStr, ...filterParams.slice(1)];
+        const countOrRow = await get(`
+          SELECT COUNT(*) as total
+          FROM recruits_fts f
+          JOIN recruits r ON f.recruit_id = r.id
+          WHERE recruits_fts MATCH ? ${filterSql}
+        `, orParams);
+
+        if ((countOrRow?.total || 0) > 0) {
+          const orResults = await query(`
+            SELECT r.id, r.name, r.national_id, r.recruit_code, r.qualification,
+                   r.current_job, r.other_jobs, r.address, r.company, r.medical_status,
+                   r.photo_path, r.video_path, b.name as batch_name, r.batch_id,
+                   bm25(recruits_fts) as rank
+            FROM recruits_fts f
+            JOIN recruits r ON f.recruit_id = r.id
+            JOIN batches b ON r.batch_id = b.id
+            WHERE recruits_fts MATCH ? ${filterSql}
+            ORDER BY rank
+            LIMIT ? OFFSET ?
+          `, [...orParams, limit, offset]);
+
+          if (orResults.length > 0) {
+            return {
+              results: orResults,
+              total: countOrRow.total,
+              mode: 'fts5_or'
+            };
+          }
+        }
       }
     } catch (ftsErr) {
       // If FTS fails for any reason (e.g. malformed tokenizer syntax), fall back to LIKE

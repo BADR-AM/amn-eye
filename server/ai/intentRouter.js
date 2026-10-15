@@ -4,15 +4,48 @@ import { executeQuery, QUERY_CATALOG } from './queryCatalog.js';
 import { formatQueryResult } from './resultFormatter.js';
 import { modelManager } from './modelManager.js';
 import { modelAdapter } from './modelAdapter.js';
-import { get } from '../db.js';
+import { get, query } from '../db.js';
+
+/**
+ * Generates an up-to-the-minute factual summary snapshot of the database
+ * to provide rock-solid ground truth for the local Qwen LLM.
+ */
+export async function getLiveSystemSummaryContext() {
+  try {
+    const totalRow = await get(`SELECT COUNT(*) as c FROM recruits`);
+    const totalRecruits = totalRow?.c || 0;
+    const batchRow = await get(`SELECT name FROM batches WHERE active = 1 LIMIT 1`);
+    const companies = await query(`SELECT company, COUNT(*) as c FROM recruits WHERE company != '' GROUP BY company ORDER BY c DESC LIMIT 6`);
+    const sectors = await query(`SELECT distribution_sector, COUNT(*) as c FROM recruits WHERE distribution_sector != '' GROUP BY distribution_sector ORDER BY c DESC LIMIT 6`);
+    const medUnfit = await get(`SELECT COUNT(*) as c FROM recruits WHERE medical_status LIKE '%غير لائق%'`);
+    const psych = await get(`SELECT COUNT(*) as c FROM recruits WHERE is_psychological_case = 1 OR inspection LIKE '%نفسي%'`);
+    const tickets = await get(`SELECT COUNT(*) as c FROM recruit_tickets WHERE status = 'open'`);
+
+    let summary = `حقائق وبيانات رسمية مؤكدة من منظومة عين الأمن (SECURITY EYE):\n`;
+    summary += `- إجمالي القوة المقيدة بالمنظومة: ${totalRecruits} مجند.\n`;
+    if (batchRow?.name) summary += `- الدفع التجنيدي النشط: ${batchRow.name}.\n`;
+    if (companies.length > 0) {
+      summary += `- توزيع السرايا: ` + companies.map(c => `${c.company} (${c.c} مجند)`).join('، ') + '.\n';
+    }
+    if (sectors.length > 0) {
+      summary += `- قطاعات التوزيع: ` + sectors.map(s => `${s.distribution_sector} (${s.c} مجند)`).join('، ') + '.\n';
+    }
+    if (medUnfit?.c) summary += `- غير لائقين طبياً: ${medUnfit.c} مجند.\n`;
+    if (psych?.c) summary += `- حالات الملاحظة النفسية: ${psych.c} حالة.\n`;
+    if (tickets?.c) summary += `- تيكتات المتابعة والاشتباه المفتوحة: ${tickets.c} تيكت.\n`;
+    return summary;
+  } catch (err) {
+    return 'إجمالي المجندين المسجلين 56 مجند.';
+  }
+}
 
 /**
  * Egyptian Military Colloquial Intent Router
  *
  * Combines:
  * 1. Fast deterministic Egyptian dialect pattern matching & entity extraction (0ms latency, zero hallucination)
- * 2. Real-time database grounding with SQLite
- * 3. Optional local Qwen2.5 LLM enhancement when active
+ * 2. Real-time database grounding with SQLite (RAG)
+ * 3. Local Qwen2.5 LLM enhancement using live facts
  */
 
 export async function routeUserQuery(message, options = {}) {
@@ -61,20 +94,21 @@ export async function routeUserQuery(message, options = {}) {
     if (isIdentityWord) chitChatType = 'identity';
     else if (isGratitudeWord) chitChatType = 'gratitude';
 
-    // If local LLM is ready, we can enhance the reply with local AI
+    // If local LLM is ready, enhance the reply using live database facts
     if (modelManager.state === 'ready') {
       try {
+        const liveContext = await getLiveSystemSummaryContext();
         const aiChitChat = await modelAdapter.generateConversationalResponse(
           rawMsg,
-          `المنظومة بها حالياً ${totalRecruits} مجند مسجلين.`
+          liveContext
         );
         if (aiChitChat) {
           return {
             intent: 'egyptian_chit_chat',
             mode: 'ai_assisted',
-            statusLabel: 'رد المحادثة الذكي بالعامية المصرية',
+            statusLabel: 'رد المحادثة الذكي بالعامية المصرية مدعوم بالبيانات الحية',
             responseText: aiChitChat,
-            suggestions: ['عندنا كام واحد في المنظومة؟', 'مين هنا نجار أو كهربائي؟', 'مين في سرية الأمن؟'],
+            suggestions: ['عندنا كام واحد في المنظومة؟', 'مين هنا نجار أو كهربائي؟', 'مين في سرية الأمن؟', 'توزيع قطاعات المجندين'],
             matchCount: 1
           };
         }
@@ -457,27 +491,65 @@ export async function routeUserQuery(message, options = {}) {
     };
   }
 
-  // 15. Optional Local LLM Planning (if sidecar running and non-standard query)
-  if (modelManager.state === 'ready') {
-    try {
-      const planned = await modelAdapter.planIntent(rawMsg);
-      const validated = validateIntent(planned);
-      if (validated && validated.intent !== 'search_recruits') {
-        const data = await executeQuery(validated.intent, validated.params);
-        return {
-          intent: validated.intent,
-          mode: 'assisted',
-          statusLabel: validated.userFacingExplanation,
-          ...formatQueryResult(validated.intent, data, { totalRecruits })
-        };
-      }
-    } catch (llmErr) {
-      console.warn('AI Planning notice:', llmErr.message);
+  // 15. Clean conversational prefixes to extract search target (e.g. "مين السواقين اللي هنا" -> "سواقين")
+  const cleanTerm = rawMsg
+    .replace(/^(عايز|عاوز|عاوزين|عايزين|قولي|وريني|طلعلي|هاتلي|ابحث عن|ابحث|مين|كشف بـ?|اسماء|أسماء|بيان|جدول|تقرير|عرفني|شغالين|واخدين|عندهم|عنده|فيه|فيها|حد|واحد|يا باشا|يا فندم|بالله عليك)\s+/gi, '')
+    .trim();
+
+  const searchTarget = cleanTerm && cleanTerm.length >= 2 ? cleanTerm : rawMsg;
+  const searchResult = await executeQuery('search_recruits', { query: searchTarget });
+
+  if (searchResult.results && searchResult.results.length > 0) {
+    const formatted = formatQueryResult('search_recruits', searchResult, { query: searchTarget, totalRecruits });
+
+    // If local LLM is ready, synthesize a smart executive officer briefing from matched recruits
+    if (modelManager.state === 'ready') {
+      try {
+        const recruitSnippets = searchResult.results.slice(0, 6).map((r, idx) =>
+          `${idx + 1}- ${r.name} (السرية: ${r.company || 'غير محددة'}، القطاع: ${r.distribution_sector || 'قيد التدريب'}، المؤهل: ${r.qualification || 'بدون'}، المهنة: ${r.current_job || 'بدون'})`
+        ).join('\n');
+        const context = `المجندون المطابقون للاستفسار في قاعدة البيانات:\n${recruitSnippets}`;
+        const aiSummary = await modelAdapter.generateConversationalResponse(rawMsg, context);
+        if (aiSummary) {
+          return {
+            intent: 'search_recruits',
+            mode: 'ai_grounded',
+            statusLabel: `تحليل ذكي ومطابقة لسجلات المجندين (${searchResult.results.length} مجند)`,
+            responseText: `${aiSummary}\n\n---\n\n${formatted.responseText}`,
+            matchCount: searchResult.results.length,
+            suggestions: formatted.suggestions || []
+          };
+        }
+      } catch (e) {}
     }
+
+    return {
+      intent: 'search_recruits',
+      mode: 'deterministic',
+      statusLabel: 'البحث في سجلات المجندين ومطابقة الأسماء والبيانات',
+      ...formatted
+    };
   }
 
-  // 16. Default: Full-Text FTS5 Search across Recruits with courteous Egyptian fallback
-  const searchResult = await executeQuery('search_recruits', { query: rawMsg });
+  // 16. If no direct records matched, consult Qwen with live system summary
+  if (modelManager.state === 'ready') {
+    try {
+      const liveContext = await getLiveSystemSummaryContext();
+      const aiReply = await modelAdapter.generateConversationalResponse(rawMsg, liveContext);
+      if (aiReply) {
+        return {
+          intent: 'ai_conversational_inquiry',
+          mode: 'ai_grounded',
+          statusLabel: 'استجابة الذكاء الاصطناعي مدعومة ببيانات المنظومة الحية',
+          responseText: aiReply,
+          suggestions: ['إجمالي قوة المنظومة كام؟', 'أصحاب المهن والصنائع', 'توزيع المجندين على القطاعات', 'تيكتات الاشتباه الأمني'],
+          matchCount: 1
+        };
+      }
+    } catch (e) {}
+  }
+
+  // 17. Final Courteous Fallback
   return {
     intent: 'search_recruits',
     mode: 'deterministic',

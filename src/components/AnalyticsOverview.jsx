@@ -4,7 +4,7 @@ import {
   Layers, Calendar, Activity, BarChart2, CheckCircle2, ArrowUpRight,
   Brain, AlertOctagon
 } from 'lucide-react';
-import { getCompanyStyle } from '../utils/companyColors';
+import { getCompanyStyle, getCompanyColorConfig } from '../utils/companyColors';
 import { authHeaders } from '../utils/auth';
 
 function AnalyticsOverview({ 
@@ -14,14 +14,15 @@ function AnalyticsOverview({
   onSelectAttendanceDate,
   onOpenExportModal,
   onSelectCategory,
-  activeCategory = 'all'
+  activeCategory = 'all',
+  refreshTrigger
 }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchOverview = async () => {
+  const fetchOverview = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await fetch(`/api/analytics/overview?batch_id=${selectedBatch || 'all'}`, {
         headers: authHeaders()
       });
@@ -32,13 +33,13 @@ function AnalyticsOverview({
     } catch (err) {
       console.error('Error fetching analytics overview:', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchOverview();
-  }, [selectedBatch]);
+    fetchOverview(!data);
+  }, [selectedBatch, refreshTrigger]);
 
   if (loading) {
     return (
@@ -51,6 +52,36 @@ function AnalyticsOverview({
   }
 
   if (!data) return null;
+
+  // Real-time synchronized company counts with 100% mathematical consistency to data.total
+  const { countsMap, unassignedCount } = React.useMemo(() => {
+    const map = {};
+    (companyColors || []).forEach(c => { map[c.id] = 0; });
+    let unassigned = 0;
+
+    if (data && Array.isArray(data.companyDistribution)) {
+      for (const item of data.companyDistribution) {
+        if (!item.company || String(item.company).trim() === '') {
+          unassigned += (item.count || 0);
+          continue;
+        }
+        const config = getCompanyColorConfig(item.company, companyColors);
+        if (config && config.id && map[config.id] !== undefined) {
+          map[config.id] += (item.count || 0);
+        } else {
+          unassigned += (item.count || 0);
+        }
+      }
+    }
+
+    // Safety net: ensure any unmapped recruits are tracked in unassigned so sum matches total
+    const mappedSum = Object.values(map).reduce((a, b) => a + b, 0);
+    if (data.total > (mappedSum + unassigned)) {
+      unassigned = data.total - mappedSum;
+    }
+
+    return { countsMap: map, unassignedCount: unassigned };
+  }, [data?.companyDistribution, data?.total, companyColors]);
 
   return (
     <div className="space-y-4 mb-6">
@@ -222,27 +253,10 @@ function AnalyticsOverview({
           </button>
         </div>
 
+        {/* Company cards with guaranteed sync to total */}
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
           {companyColors.map((c) => {
-            let count = 0;
-            if (Array.isArray(data.companyDistribution)) {
-              for (const d of data.companyDistribution) {
-                if (!d.company) continue;
-                const dComp = String(d.company).trim();
-                const isMatch = dComp === c.name || 
-                                (c.match && dComp.includes(c.match)) ||
-                                (c.number && (dComp === c.number || dComp.includes(`(${c.number})`))) ||
-                                (c.id === 'c1' && (dComp === '1' || dComp.includes('أول') || dComp.includes('اول'))) ||
-                                (c.id === 'c2' && (dComp === '2' || dComp.includes('ثان') || dComp.includes('تان'))) ||
-                                (c.id === 'c3' && (dComp === '3' || dComp.includes('ثالث') || dComp.includes('تالت'))) ||
-                                (c.id === 'c4' && (dComp === '4' || dComp.includes('رابع'))) ||
-                                (c.id === 'c5' && (dComp === '5' || dComp.includes('خامس'))) ||
-                                (c.id === 'c6' && (dComp === '6' || dComp.includes('سادس'))) ||
-                                (c.id === 'sec' && dComp.includes('أمن')) ||
-                                (c.id === 'base' && dComp.includes('أساس'));
-                if (isMatch) count += (d.count || 0);
-              }
-            }
+            const count = countsMap[c.id] || 0;
             const percentage = data.total > 0 ? Math.round((count / data.total) * 100) : 0;
 
             return (
@@ -272,6 +286,34 @@ function AnalyticsOverview({
               </button>
             );
           })}
+
+          {unassignedCount > 0 && (
+            <button
+              onClick={() => onSelectCompany?.('بدون')}
+              className="text-right p-3 border transition-all hover:scale-[1.02] active:scale-[0.99] relative group bg-[#1a1a1a] hover:bg-[#262626] border-slate-700"
+              style={{ borderTop: `4px solid #64748b` }}
+              title="مجندون بدون تسكين في سرية بعد"
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-bold text-gray-300">بدون سرية</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+              </div>
+
+              <div className="flex items-baseline justify-between mt-2">
+                <span className="text-2xl font-black text-amber-400 font-mono">{unassignedCount}</span>
+                <span className="text-xs text-gray-400 font-mono">
+                  {data.total > 0 ? Math.round((unassignedCount / data.total) * 100) : 0}%
+                </span>
+              </div>
+
+              <div className="w-full bg-[#111111] h-1.5 mt-2 overflow-hidden">
+                <div 
+                  className="h-full bg-slate-500 transition-all duration-500"
+                  style={{ width: `${data.total > 0 ? Math.round((unassignedCount / data.total) * 100) : 0}%` }}
+                ></div>
+              </div>
+            </button>
+          )}
         </div>
       </div>
 

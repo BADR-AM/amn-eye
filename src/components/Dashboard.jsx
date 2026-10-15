@@ -81,6 +81,7 @@ export default function Dashboard({
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [analyticsSyncTrigger, setAnalyticsSyncTrigger] = useState(0);
 
   // View Mode: 'table' or 'grid' (Large Carbon Cards)
   const [viewMode, setViewMode] = useState('grid');
@@ -307,6 +308,7 @@ export default function Dashboard({
           lastSyncTimestampRef.current = data.timestamp;
           if (isMounted) {
             fetchRecruitsRef.current?.();
+            setAnalyticsSyncTrigger(prev => prev + 1);
             if (onRefresh) onRefresh();
           }
         }
@@ -340,6 +342,7 @@ export default function Dashboard({
       <AnalyticsOverview
         selectedBatch={selectedBatchId}
         companyColors={companyColors}
+        refreshTrigger={analyticsSyncTrigger + (refreshTrigger || 0)}
         onSelectCompany={(comp) => {
           setSelectedCompanyFilter(comp === selectedCompanyFilter ? 'all' : comp);
           setPage(1);

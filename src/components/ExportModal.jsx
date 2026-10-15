@@ -16,7 +16,8 @@ import {
   Calendar,
   Users,
   CalendarDays,
-  ShieldAlert
+  ShieldAlert,
+  FileArchive
 } from 'lucide-react';
 import LockerCard from './LockerCard';
 import CompanyColorsModal from './CompanyColorsModal';
@@ -25,6 +26,18 @@ import { authHeaders } from '../utils/auth';
 import { toPng, toJpeg } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
+import { createZipBlob } from '../utils/simpleZip';
+
+function dataUrlToUint8Array(dataUrl) {
+  const base64 = dataUrl.split(',')[1];
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
 
 export default function ExportModal({ 
   isOpen, 
@@ -44,7 +57,7 @@ export default function ExportModal({
   const [bulkRecruits, setBulkRecruits] = useState([]);
   const [loadingBulk, setLoadingBulk] = useState(false);
 
-  const [pdfLayout, setPdfLayout] = useState('a4_grid'); // 'a4_grid' (4 per page) | 'single' (1 per page)
+  const [pdfLayout, setPdfLayout] = useState('a4_grid_8'); // 'a4_grid_8' (8 per page) | 'a4_grid_4' (4 per page) | 'single' (1 per page)
   const [previewIndex, setPreviewIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressMsg, setProgressMsg] = useState('');
@@ -227,7 +240,7 @@ export default function ExportModal({
     }
   };
 
-  // 2. Export All / Selected Cards as PDF (A4 Sheet ready for printing, lossless PNG embedding)
+  // 2. Export All / Selected Cards as PDF (A4 Sheet ready for printing, 8 cards per page default, lossless PNG embedding)
   const handleExportCardsPDF = async () => {
     if (targetRecruits.length === 0) {
       alert('لا يوجد مجندين محددين للتصدير');
@@ -245,13 +258,9 @@ export default function ExportModal({
       });
 
       // A4 dimensions: 210mm x 297mm
-      // Card aspect ratio: 640 x 380 (~1.68). Card size in mm: 95mm x 56mm (fits 4 per page: 2 rows x 2 cols)
+      // Card aspect ratio: 640 x 380 (~1.68). Card size in mm: 95mm x 56mm
       const cardWidth = 95;
       const cardHeight = 56;
-      const marginX = 8;
-      const marginY = 12;
-      const gapX = 4;
-      const gapY = 12;
 
       for (let i = 0; i < targetRecruits.length; i++) {
         const rec = targetRecruits[i];
@@ -275,12 +284,11 @@ export default function ExportModal({
           // 1 card centered per page (landscape A6 / horizontal)
           if (i > 0) pdf.addPage('a6', 'landscape');
           else {
-            // first page
             pdf.deletePage(1);
             pdf.addPage('a6', 'landscape');
           }
           pdf.addImage(imgData, 'PNG', 5, 5, 138, 82, undefined, 'FAST');
-        } else {
+        } else if (pdfLayout === 'a4_grid_4') {
           // A4 Grid: 4 cards per page (2 columns x 2 rows)
           const indexOnPage = i % 4;
           if (i > 0 && indexOnPage === 0) {
@@ -289,6 +297,35 @@ export default function ExportModal({
 
           const col = indexOnPage % 2; // 0 or 1
           const row = Math.floor(indexOnPage / 2); // 0 or 1
+
+          const marginX = 8;
+          const marginY = 16;
+          const gapX = 4;
+          const gapY = 18;
+
+          const x = marginX + col * (cardWidth + gapX);
+          const y = marginY + row * (cardHeight + gapY);
+
+          pdf.addImage(imgData, 'PNG', x, y, cardWidth, cardHeight, undefined, 'FAST');
+
+          // Cutting guides (light gray dashed border)
+          pdf.setDrawColor(200, 200, 200);
+          pdf.setLineDashPattern([2, 2], 0);
+          pdf.rect(x - 1, y - 1, cardWidth + 2, cardHeight + 2);
+        } else {
+          // Default: A4 Grid: 8 cards per page (2 columns x 4 rows)
+          const indexOnPage = i % 8;
+          if (i > 0 && indexOnPage === 0) {
+            pdf.addPage('a4', 'portrait');
+          }
+
+          const col = indexOnPage % 2; // 0 or 1
+          const row = Math.floor(indexOnPage / 2); // 0, 1, 2, 3
+
+          const marginX = 8;
+          const marginY = 10;
+          const gapX = 4;
+          const gapY = 14;
 
           const x = marginX + col * (cardWidth + gapX);
           const y = marginY + row * (cardHeight + gapY);
@@ -306,6 +343,66 @@ export default function ExportModal({
     } catch (err) {
       console.error('Failed to export PDF:', err);
       alert('حدث خطأ أثناء تصدير ملف PDF');
+    } finally {
+      setExportRecruit(null);
+      setIsProcessing(false);
+      setProgressMsg('');
+    }
+  };
+
+  // 2.1 Export All / Selected Cards as ZIP of individual PNG files
+  const handleExportCardsZipPNG = async () => {
+    if (targetRecruits.length === 0) {
+      alert('لا يوجد مجندين محددين للتصدير');
+      return;
+    }
+
+    setIsProcessing(true);
+    setProgressMsg('جاري تجهيز حزمة صور كروت الدولاب (ZIP)...');
+
+    try {
+      const zipFiles = [];
+      const timestamp = new Date().toISOString().split('T')[0];
+
+      for (let i = 0; i < targetRecruits.length; i++) {
+        const rec = targetRecruits[i];
+        setProgressMsg(`جاري حفظ كارت ${i + 1} من ${targetRecruits.length}: ${rec.name}...`);
+
+        setExportRecruit(rec);
+        await new Promise(r => setTimeout(r, 90));
+
+        const targetNode = exportCardRef.current || cardRef.current;
+        if (!targetNode) continue;
+
+        const dataUrl = await toPng(targetNode, {
+          pixelRatio: 2.5,
+          backgroundColor: '#ffffff',
+          cacheBust: true,
+        });
+
+        const rawBytes = dataUrlToUint8Array(dataUrl);
+        const safeName = (rec.name || `recruit_${rec.id}`).replace(/[\/\\:*?"<>|]/g, '_').trim();
+        const pNum = rec.police_number || String(rec.id);
+        const fileName = `كارت_دولاب_${pNum}_${safeName}.png`;
+
+        zipFiles.push({
+          name: fileName,
+          data: rawBytes
+        });
+      }
+
+      const zipBlob = createZipBlob(zipFiles);
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `كروت_الدولاب_PNG_${activeBatch ? activeBatch.name.replace(/\s+/g, '_') : 'دفعة'}_${timestamp}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export ZIP cards:', err);
+      alert('حدث خطأ أثناء تصدير حزمة ملفات الصور المضغوطة');
     } finally {
       setExportRecruit(null);
       setIsProcessing(false);
@@ -659,12 +756,24 @@ export default function ExportModal({
                     <input
                       type="radio"
                       name="pdfLayout"
-                      value="a4_grid"
-                      checked={pdfLayout === 'a4_grid'}
-                      onChange={() => setPdfLayout('a4_grid')}
+                      value="a4_grid_8"
+                      checked={pdfLayout === 'a4_grid_8'}
+                      onChange={() => setPdfLayout('a4_grid_8')}
                       className="text-orange-500"
                     />
-                    <span>صفحة A4 للطباعة والقص (4 كروت في كل ورقة)</span>
+                    <span className="font-bold text-white">صفحة A4 كاملة للطباعة (8 كروت في الورقة - توفير الورق)</span>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="pdfLayout"
+                      value="a4_grid_4"
+                      checked={pdfLayout === 'a4_grid_4'}
+                      onChange={() => setPdfLayout('a4_grid_4')}
+                      className="text-orange-500"
+                    />
+                    <span>صفحة A4 نصف ممتلئة (4 كروت في كل ورقة)</span>
                   </label>
 
                   <label className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
@@ -676,7 +785,7 @@ export default function ExportModal({
                       onChange={() => setPdfLayout('single')}
                       className="text-orange-500"
                     />
-                    <span>كارت منفصل لكل صفحة (مقاس البطاقة المستقل)</span>
+                    <span>كارت منفصل لكل صفحة (A6 مستقل)</span>
                   </label>
                 </div>
 
@@ -791,19 +900,30 @@ export default function ExportModal({
                     ) : (
                       <>
                         <Printer className="w-4 h-4" />
-                        <span>تصدير كروت الدولاب للطباعة (PDF)</span>
+                        <span>تصدير كروت الدولاب للطباعة (PDF - 8 كروت/صفحة)</span>
                       </>
                     )}
                   </button>
 
                   <button
                     type="button"
+                    onClick={handleExportCardsZipPNG}
+                    disabled={isProcessing || targetRecruits.length === 0}
+                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-700 to-amber-600 hover:from-amber-600 hover:to-amber-500 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                    title="تصدير جميع كروت المجندين المحددين كصور PNG عالية الدقة داخل ملف مضغوط ZIP"
+                  >
+                    <FileArchive className="w-4 h-4" />
+                    <span>تصدير الكروت بملف مضغوط (PNG داخل ZIP)</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handleExportSinglePNG}
                     disabled={isProcessing || !currentRecruit}
-                    className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                    className="w-full py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
                   >
                     <Download className="w-4 h-4 text-orange-400" />
-                    <span>تحميل الكارت المعروض حالياً كصورة (PNG)</span>
+                    <span>تحميل الكارت المعروض حالياً فقط (PNG)</span>
                   </button>
                 </>
               ) : (
