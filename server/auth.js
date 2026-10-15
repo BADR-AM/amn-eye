@@ -10,44 +10,53 @@ import { logAudit } from './auditLogger.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DEFAULT_JWT_SECRET = '7e131eddafb06b08511e744666e8d2d34137b093a9e8e66ba0f1d194b4eda80ae326ed4d84ed35b6d54792892f4e7b4d';
 // Default hash for password '123456'
 const DEFAULT_ADMIN_HASH = '$2b$10$bNpheeFBkTWNE1sDaCkmcuLCYEYzuHbmA/BVAvsHawdBrLTlhOgcG';
 
-// Persistent secret loading & initialization
-export function getOrInitJwtSecret() {
-  if (process.env.JWT_SECRET && !process.env.JWT_SECRET.startsWith('dev-secret-change-me-in-production-')) {
-    return process.env.JWT_SECRET;
-  }
-  try {
-    const baseDir = process.env.APP_DATA_DIR || path.join(__dirname, '..');
-    const dataDir = path.join(baseDir, 'data');
-    const secretFilePath = path.join(dataDir, 'jwt.secret');
+let cachedJwtSecret = null;
 
+// Persistent secret loading & in-memory caching
+export function getOrInitJwtSecret() {
+  if (cachedJwtSecret) return cachedJwtSecret;
+
+  if (process.env.JWT_SECRET && process.env.JWT_SECRET.trim().length >= 32) {
+    cachedJwtSecret = process.env.JWT_SECRET.trim();
+    return cachedJwtSecret;
+  }
+
+  const dataDir = process.env.APP_DATA_DIR
+    ? path.join(process.env.APP_DATA_DIR, 'data')
+    : path.join(__dirname, '..', 'data');
+  const secretPath = path.join(dataDir, 'jwt.secret');
+
+  try {
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
-    if (fs.existsSync(secretFilePath)) {
-      const savedSecret = fs.readFileSync(secretFilePath, 'utf8').trim();
-      if (savedSecret && savedSecret.length >= 32) {
-        process.env.JWT_SECRET = savedSecret;
-        return savedSecret;
+    if (fs.existsSync(secretPath)) {
+      const existing = fs.readFileSync(secretPath, 'utf8').trim();
+      if (existing.length >= 32) {
+        cachedJwtSecret = existing;
+        process.env.JWT_SECRET = existing;
+        return cachedJwtSecret;
       }
     }
-    // Generate secure random secret if not present
-    const randomSecret = crypto.randomBytes(48).toString('hex');
-    fs.writeFileSync(secretFilePath, randomSecret, 'utf8');
-    process.env.JWT_SECRET = randomSecret;
-    return randomSecret;
+    const newSecret = crypto.randomBytes(64).toString('hex');
+    fs.writeFileSync(secretPath, newSecret, { encoding: 'utf8', mode: 0o600 });
+    cachedJwtSecret = newSecret;
+    process.env.JWT_SECRET = newSecret;
+    return cachedJwtSecret;
   } catch (err) {
-    process.env.JWT_SECRET = DEFAULT_JWT_SECRET;
-    return DEFAULT_JWT_SECRET;
+    console.error('[AUTH] Failed to persist jwt.secret to disk; using ephemeral runtime secret:', err.message);
+    cachedJwtSecret = crypto.randomBytes(64).toString('hex');
+    process.env.JWT_SECRET = cachedJwtSecret;
+    return cachedJwtSecret;
   }
 }
 
 // Initialize persistent secret immediately
 const PERSISTENT_SECRET = getOrInitJwtSecret();
-const getSecret = () => process.env.JWT_SECRET || PERSISTENT_SECRET;
+const getSecret = () => process.env.JWT_SECRET || cachedJwtSecret || PERSISTENT_SECRET;
 const getHash = () => process.env.ADMIN_PASSWORD_HASH || DEFAULT_ADMIN_HASH;
 export const isDefaultAdminPassword = () => getHash() === DEFAULT_ADMIN_HASH;
 const TOKEN_EXPIRY = '30d';
@@ -101,6 +110,15 @@ export const requireAuth = (req, res, next) => {
   try {
     const decoded = verifyToken(token);
     req.user = decoded;
+
+    // Keep the media cookie in sync with the Bearer token. <img>/<video> tags cannot send
+    // Authorization headers, so a session restored from localStorage without a cookie
+    // would otherwise load data but fail every media request with 401.
+    const cookieMatch = req.headers?.cookie?.match(/(?:^|;\s*)auth_token=([^;]+)/);
+    if ((!cookieMatch || cookieMatch[1] !== token) && typeof res.setHeader === 'function' && !res.headersSent) {
+      res.setHeader('Set-Cookie', `auth_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
+    }
+
     next();
   } catch (err) {
     return res.status(401).json({ error: 'انتهت صلاحية الجلسة - يرجى إعادة تسجيل الدخول' });

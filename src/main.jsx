@@ -7,9 +7,10 @@ import './index.css';
 // Intercept relative fetch requests if running under file:// protocol fallback
 if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
   const originalFetch = window.fetch;
+  const serverPort = window.__SERVER_PORT__ || import.meta.env?.VITE_API_PORT || 5000;
   window.fetch = function (resource, init) {
     if (typeof resource === 'string' && (resource.startsWith('/api') || resource.startsWith('/uploads'))) {
-      resource = `http://localhost:5000${resource}`;
+      resource = `http://localhost:${serverPort}${resource}`;
     }
     return originalFetch.call(this, resource, init);
   };

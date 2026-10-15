@@ -67,7 +67,8 @@ import OfficialReport from './OfficialReport';
 import RecruitHistoryModal from './RecruitHistoryModal';
 import CameraQrScanner from './CameraQrScanner';
 import { fetchCompanyColors, DEFAULT_COMPANY_COLORS, getCompanyStyle } from '../utils/companyColors';
-import { authHeaders, getUser } from '../utils/auth';
+import { authHeaders, getUser, getToken } from '../utils/auth';
+import { flushOfflineQueue } from '../utils/offlineQueue';
 import { parseEgyptianNationalId } from '../utils/nationalId';
 
 export default function MobileApp({
@@ -316,11 +317,13 @@ export default function MobileApp({
   useEffect(() => {
     let isMounted = true;
     const checkSyncStatus = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       try {
         const res = await fetch('/api/sync/status', { headers: authHeaders() });
         if (!res.ok) return;
         const data = await res.json();
-        if (data && data.timestamp && data.timestamp > mobileLastSyncTimestampRef.current) {
+        const { synced } = await flushOfflineQueue(getToken);
+        if (synced > 0 || (data && data.timestamp && data.timestamp > mobileLastSyncTimestampRef.current)) {
           mobileLastSyncTimestampRef.current = data.timestamp;
           if (isMounted) {
             fetchMobileRecruitsRef.current?.();

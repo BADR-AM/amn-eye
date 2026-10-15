@@ -6,7 +6,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
 import { fileURLToPath } from 'url';
-import { initDb, query, get, run } from './db.js';
+import { initDb, query, get, run, withTransaction } from './db.js';
 import { getLocalIpAddresses } from './network.js';
 import { requireAuth, requireRole, requireMediaAuth, handleLogin, handleQrLogin, hashPassword, comparePassword, getOrInitJwtSecret, isDefaultAdminPassword } from './auth.js';
 import { createBackup, listBackups, deleteBackup, restoreBackup, getAvailableDrives, startAutoBackupSchedule } from './backup.js';
@@ -1472,6 +1472,15 @@ app.put('/api/recruits/:id', requireAuth, requireRole('admin', 'officer'), uploa
     const existing = await get(`SELECT * FROM recruits WHERE id = ?`, [id]);
     if (!existing) {
       return res.status(404).json({ error: 'المجند غير موجود' });
+    }
+
+    if (data.expected_updated_at && existing.updated_at &&
+        data.expected_updated_at !== existing.updated_at) {
+      return res.status(409).json({
+        error: 'تم تعديل بيانات هذا المجند من جهاز آخر. يرجى تحديث الصفحة والمحاولة مرة أخرى.',
+        code: 'CONCURRENT_MODIFICATION',
+        serverUpdatedAt: existing.updated_at
+      });
     }
 
     // Validate national_id format if provided

@@ -1,7 +1,11 @@
 import os from 'os';
 
 // Virtual adapter name patterns to exclude
-const VIRTUAL_PATTERNS = ['virtual', 'vethernet', 'vmware', 'vmnet', 'docker', 'vbox', 'loopback', 'wsl', 'hyper-v'];
+const VIRTUAL_PATTERNS = [
+  'virtual', 'vethernet', 'vmware', 'vmnet', 'docker', 'vbox',
+  'loopback', 'wsl', 'hyper-v', 'tailscale', 'zerotier',
+  'wireguard', 'tap', 'tun', 'hamachi', 'nordlynx', 'radmin'
+];
 
 // Physical adapter name patterns to prioritize
 const PHYSICAL_PATTERNS = ['wi-fi', 'wifi', 'wireless', 'wlan', 'ethernet', 'eth', 'lan'];

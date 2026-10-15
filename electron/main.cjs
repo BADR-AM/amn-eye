@@ -1,6 +1,28 @@
 const { app, BrowserWindow, session, ipcMain } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
+const http = require('http');
+
+function waitForServer(url, timeoutMs = 15000) {
+  const start = Date.now();
+  return new Promise((resolve) => {
+    const check = () => {
+      const req = http.get(url, (res) => {
+        res.resume();
+        resolve(true);
+      });
+      req.on('error', () => {
+        if (Date.now() - start >= timeoutMs) {
+          resolve(false);
+        } else {
+          setTimeout(check, 250);
+        }
+      });
+      req.setTimeout(1000, () => req.destroy());
+    };
+    check();
+  });
+}
 
 // IPC Handlers for app lifecycle
 const quitApplication = () => {
@@ -124,6 +146,11 @@ session.defaultSession.setPermissionRequestHandler((webContents, permission, cal
   const url = isDev ? 'http://localhost:5173' : `http://localhost:${PORT}`;
 
   console.log('🌐 جاري تحميل واجهة البرنامج من:', url);
+
+  if (!isDev) {
+    console.log('⏳ انتظار جاهزية خادم المنظومة الداخلي...');
+    await waitForServer(`http://localhost:${PORT}/api/sync/status`, 15000);
+  }
 
   // Load URL with automatic retry if server is still starting
   let retries = 0;

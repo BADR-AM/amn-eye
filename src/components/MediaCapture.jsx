@@ -17,6 +17,7 @@ import {
   SwitchCamera
 } from 'lucide-react';
 import { authHeaders } from '../utils/auth';
+import { enqueuePendingRecruit } from '../utils/offlineQueue';
 
 export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel }) {
   // Stages: 'photo' | 'video' | 'review' | 'saving'
@@ -233,6 +234,20 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
     setIsRecording(false);
   };
 
+  // Cleanup URLs and active media tracks on unmount
+  useEffect(() => {
+    return () => {
+      if (capturedVideoUrl) {
+        try {
+          URL.revokeObjectURL(capturedVideoUrl);
+        } catch (_) {}
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+      }
+    };
+  }, [capturedVideoUrl]);
+
   const retakeVideo = () => {
     if (capturedVideoUrl) {
       URL.revokeObjectURL(capturedVideoUrl);
@@ -240,6 +255,29 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
     setCapturedVideoBlob(null);
     setCapturedVideoUrl(null);
     setRecordingSeconds(0);
+  };
+
+  const isLiveCameraSupported =
+    typeof window !== 'undefined' &&
+    Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+
+  const handleNativePhotoFile = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCapturedPhoto(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleNativeVideoFile = (file) => {
+    if (!file) return;
+    if (capturedVideoUrl) {
+      URL.revokeObjectURL(capturedVideoUrl);
+    }
+    setCapturedVideoBlob(file);
+    const url = URL.createObjectURL(file);
+    setCapturedVideoUrl(url);
   };
 
   // Final Submit to Backend API
@@ -300,6 +338,26 @@ export default function MediaCapture({ formData, onSaveSuccess, onBack, onCancel
       onSaveSuccess(savedRecruit);
     } catch (error) {
       console.error('Save error:', error);
+      const isNetworkFailure = !navigator.onLine || error instanceof TypeError;
+      if (isNetworkFailure && formData) {
+        try {
+          const photoBlob = capturedPhoto ? await fetch(capturedPhoto).then(r => r.blob()) : null;
+          await enqueuePendingRecruit({
+            fields: formData,
+            photoBlob,
+            videoBlob: capturedVideoBlob,
+          });
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(t => t.stop());
+          }
+          if (typeof onSaveSuccess === 'function') {
+            onSaveSuccess({ queuedOffline: true, ...formData });
+          }
+          return;
+        } catch (queueErr) {
+          console.error('[OfflineQueue] Failed to enqueue offline recruit:', queueErr);
+        }
+      }
       setSaveError('خطأ أثناء حفظ الملف: ' + error.message);
       setIsSaving(false);
     }

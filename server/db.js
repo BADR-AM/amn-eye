@@ -38,7 +38,17 @@ export let db = new sqlite3.Database(dbPath, (err) => {
   }
 });
 
+const configureDbPragmas = (targetDb) => {
+  targetDb.serialize(() => {
+    targetDb.run('PRAGMA journal_mode = WAL;');
+    targetDb.run('PRAGMA synchronous = NORMAL;');
+    targetDb.run('PRAGMA busy_timeout = 5000;');
+    targetDb.run('PRAGMA foreign_keys = ON;');
+    targetDb.run('PRAGMA temp_store = MEMORY;');
+  });
+};
 
+configureDbPragmas(db);
 
 export const reopenDb = () => {
   return new Promise((resolve, reject) => {
@@ -48,10 +58,31 @@ export const reopenDb = () => {
         reject(err);
       } else {
         console.log('✅ تمت إعادة فتح قاعدة بيانات SQLite بنجاح:', dbPath);
+        configureDbPragmas(db);
         resolve(db);
       }
     });
   });
+};
+
+let txQueue = Promise.resolve();
+
+export const withTransaction = (workFn) => {
+  const nextTx = txQueue.then(async () => {
+    await run('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      const result = await workFn();
+      await run('COMMIT');
+      return result;
+    } catch (err) {
+      try {
+        await run('ROLLBACK');
+      } catch (_) {}
+      throw err;
+    }
+  });
+  txQueue = nextTx.catch(() => {});
+  return nextTx;
 };
 
 // Promisified database helpers with automatic retry on SQLITE_BUSY / lock contention
@@ -505,12 +536,15 @@ export const initDb = async () => {
   await run(`CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity_type, entity_id)`);
   await run(`CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_logs(created_at)`);
 
-  // Auto-seed sample recruits if database is empty (for out-of-the-box readiness)
-  try {
-    const { seedSampleRecruitsIfEmpty } = await import('./ai/sampleData.js');
-    await seedSampleRecruitsIfEmpty(false);
-  } catch (seedErr) {
-    console.warn('Sample seed notice:', seedErr.message);
+  // Sample recruits are opt-in only (SEED_SAMPLE_DATA=true) so fictitious records never
+  // get mixed into a real register. Admins can still seed via POST /api/ai/seed-sample-data.
+  if (process.env.SEED_SAMPLE_DATA === 'true') {
+    try {
+      const { seedSampleRecruitsIfEmpty } = await import('./ai/sampleData.js');
+      await seedSampleRecruitsIfEmpty(false);
+    } catch (seedErr) {
+      console.warn('Sample seed notice:', seedErr.message);
+    }
   }
 };
 

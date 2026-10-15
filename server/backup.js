@@ -89,7 +89,8 @@ export const createBackup = async ({ destinationDir = null, isAuto = false } = {
   // 3. Create zip archive
   await new Promise((resolve, reject) => {
     const output = fs.createWriteStream(localZipPath);
-    const archive = new ZipArchive({ zlib: { level: 8 } });
+    // Use level 1 compression to avoid CPU spikes when archiving compressed video/photo uploads
+    const archive = new ZipArchive({ zlib: { level: 1 } });
 
     output.on('close', resolve);
     archive.on('error', reject);

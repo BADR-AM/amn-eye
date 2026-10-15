@@ -298,6 +298,7 @@ export default function Dashboard({
     let isMounted = true;
 
     const checkSyncStatus = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       try {
         const res = await fetch('/api/sync/status', { headers: authHeaders() });
         if (!res.ok) return;
