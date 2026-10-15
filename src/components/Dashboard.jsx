@@ -795,7 +795,7 @@ export default function Dashboard({
                                 borderColor: companyStyle.border 
                               }}
                             >
-                              {r.company || 'بدون سرية'}
+                              {companyStyle.displayName || r.company || 'بدون سرية'}
                             </span>
                           </div>
 
@@ -1124,7 +1124,7 @@ export default function Dashboard({
                                 borderColor: companyStyle.border 
                               }}
                             >
-                              {r.company || 'غير محدد'}
+                              {companyStyle.displayName || r.company || 'غير محدد'}
                             </span>
                           </td>
                           <td className="py-2 px-3">

@@ -23,7 +23,7 @@ export default defineConfig({
     sourcemap: true
   },
   test: {
-    exclude: ['dist/**', 'dist-electron/**', 'node_modules/**'],
+    exclude: ['dist/**', 'dist-electron/**', 'node_modules/**', 'RecruitsApp/**'],
     hookTimeout: 30000
   }
 });

@@ -290,6 +290,20 @@ export const initDb = async () => {
   }
   await run(`CREATE INDEX IF NOT EXISTS idx_recruits_dist_sector ON recruits(distribution_sector)`);
 
+  // Standardize recruit company names for consistent color matching and filtering
+  try {
+    await run(`UPDATE recruits SET company = 'السرية الأولى ( ١ )' WHERE company IN ('1', '١', 'السرية الأولي( 1)', 'السريه الاأولي (1)', 'السرية الأولى', 'السرية الاولي', 'السريه الاولي')`);
+    await run(`UPDATE recruits SET company = 'السرية الثانية ( ٢ )' WHERE company IN ('2', '٢', 'السرية الثانية', 'السرية الثانيه', 'السريه الثانيه')`);
+    await run(`UPDATE recruits SET company = 'السرية الثالثة ( ٣ )' WHERE company IN ('3', '٣', 'السرية الثالثة ( 3 )', 'السرية الثالثة', 'السرية الثالثه', 'السريه الثالثه')`);
+    await run(`UPDATE recruits SET company = 'السرية الرابعة ( ٤ )' WHERE company IN ('4', '٤', 'السرية الرابعة', 'السرية الرابعه', 'السريه الرابعه')`);
+    await run(`UPDATE recruits SET company = 'السرية الخامسة ( ٥ )' WHERE company IN ('5', '٥', 'السرية الخامسة', 'السرية الخامسه', 'السريه الخامسه')`);
+    await run(`UPDATE recruits SET company = 'السرية السادسة ( ٦ )' WHERE company IN ('6', '٦', 'السرية السادسة', 'السرية السادسه', 'السريه السادسه')`);
+    await run(`UPDATE recruits SET company = 'سرية الأمن' WHERE company IN ('أمن', 'امن', 'سرية الامن', 'سريه الامن')`);
+    await run(`UPDATE recruits SET company = 'القوة الأساسية' WHERE company IN ('أساسية', 'اساسية', 'القوة الاساسية', 'القوه الاساسيه')`);
+  } catch (compCleanErr) {
+    // Non-critical cleanup
+  }
+
   // 3. System Settings table (إعدادات المنظومة وألوان السرايا)
   await run(`
     CREATE TABLE IF NOT EXISTS settings (

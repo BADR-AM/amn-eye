@@ -1066,6 +1066,36 @@ const cleanupUploadedFiles = (req) => {
   }
 };
 
+export const standardizeCompanyName = (comp) => {
+  if (!comp) return '';
+  const str = String(comp).trim();
+  if (['1', '١', 'السرية الأولى', 'السرية الاولى', 'السرية الأولي', 'السريه الاولى', 'السريه الاولي', 'السرية الأولى ( ١ )', 'السرية الأولي( 1)', 'السريه الاأولي (1)'].includes(str)) {
+    return 'السرية الأولى ( ١ )';
+  }
+  if (['2', '٢', 'السرية الثانية', 'السرية الثانيه', 'السريه الثانيه', 'السرية الثانية ( ٢ )'].includes(str)) {
+    return 'السرية الثانية ( ٢ )';
+  }
+  if (['3', '٣', 'السرية الثالثة', 'السرية الثالثه', 'السريه الثالثه', 'السرية الثالثة ( ٣ )', 'السرية الثالثة ( 3 )'].includes(str)) {
+    return 'السرية الثالثة ( ٣ )';
+  }
+  if (['4', '٤', 'السرية الرابعة', 'السرية الرابعه', 'السريه الرابعه', 'السرية الرابعة ( ٤ )'].includes(str)) {
+    return 'السرية الرابعة ( ٤ )';
+  }
+  if (['5', '٥', 'السرية الخامسة', 'السرية الخامسه', 'السريه الخامسه', 'السرية الخامسة ( ٥ )'].includes(str)) {
+    return 'السرية الخامسة ( ٥ )';
+  }
+  if (['6', '٦', 'السرية السادسة', 'السرية السادسه', 'السريه السادسه', 'السرية السادسة ( ٦ )'].includes(str)) {
+    return 'السرية السادسة ( ٦ )';
+  }
+  if (['أمن', 'امن', 'سرية الأمن', 'سرية الامن', 'سريه الامن'].includes(str)) {
+    return 'سرية الأمن';
+  }
+  if (['أساسية', 'اساسية', 'القوة الأساسية', 'القوة الاساسية', 'القوه الاساسيه'].includes(str)) {
+    return 'القوة الأساسية';
+  }
+  return str;
+};
+
 // 6. Create Recruit with Multipart Photo and Video Upload
 app.post('/api/recruits', requireAuth, upload.fields([{ name: 'photo', maxCount: 1 }, { name: 'video', maxCount: 1 }]), async (req, res) => {
   try {
@@ -1170,7 +1200,7 @@ app.post('/api/recruits', requireAuth, upload.fields([{ name: 'photo', maxCount:
       videoPath,
       data.police_number || '',
       data.military_number || '',
-      data.company || '',
+      standardizeCompanyName(data.company),
       data.political_suspicion_status || 'لا يوجد اشتباه',
       data.political_suspicion_details || '',
       data.criminal_suspicion_status || 'لا يوجد اشتباه',
@@ -1363,7 +1393,7 @@ app.post('/api/recruits/import-markdown', requireAuth, requireRole('admin', 'off
             rec.family_social_status || 'مستقرة',
             rec.family_security_status || 'خالية من السوابق والشبهات',
             rec.police_number || '',
-            rec.company || '',
+            standardizeCompanyName(rec.company),
             rec.is_psychological_case ? 1 : 0,
             rec.psychological_notes || '',
             rec.notes || '',
@@ -1423,7 +1453,7 @@ app.post('/api/recruits/import-markdown', requireAuth, requireRole('admin', 'off
         '', // photo_path
         '', // video_path
         rec.police_number || '',
-        rec.company || '',
+        standardizeCompanyName(rec.company),
         rec.notes || '',
         rec.is_psychological_case ? 1 : 0,
         rec.psychological_notes || ''
@@ -1571,7 +1601,7 @@ app.put('/api/recruits/:id', requireAuth, requireRole('admin', 'officer'), uploa
       videoPath,
       data.police_number ?? existing.police_number ?? '',
       data.military_number ?? existing.military_number ?? '',
-      data.company ?? existing.company ?? '',
+      standardizeCompanyName(data.company ?? existing.company ?? ''),
       data.political_suspicion_status ?? existing.political_suspicion_status ?? 'لا يوجد اشتباه',
       data.political_suspicion_details ?? existing.political_suspicion_details ?? '',
       data.criminal_suspicion_status ?? existing.criminal_suspicion_status ?? 'لا يوجد اشتباه',

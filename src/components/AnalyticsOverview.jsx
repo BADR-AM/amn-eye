@@ -224,8 +224,25 @@ function AnalyticsOverview({
 
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
           {companyColors.map((c) => {
-            const row = data.companyDistribution?.find(d => d.company === c.match || d.company?.includes(c.match));
-            const count = row ? row.count : 0;
+            let count = 0;
+            if (Array.isArray(data.companyDistribution)) {
+              for (const d of data.companyDistribution) {
+                if (!d.company) continue;
+                const dComp = String(d.company).trim();
+                const isMatch = dComp === c.name || 
+                                (c.match && dComp.includes(c.match)) ||
+                                (c.number && (dComp === c.number || dComp.includes(`(${c.number})`))) ||
+                                (c.id === 'c1' && (dComp === '1' || dComp.includes('أول') || dComp.includes('اول'))) ||
+                                (c.id === 'c2' && (dComp === '2' || dComp.includes('ثان') || dComp.includes('تان'))) ||
+                                (c.id === 'c3' && (dComp === '3' || dComp.includes('ثالث') || dComp.includes('تالت'))) ||
+                                (c.id === 'c4' && (dComp === '4' || dComp.includes('رابع'))) ||
+                                (c.id === 'c5' && (dComp === '5' || dComp.includes('خامس'))) ||
+                                (c.id === 'c6' && (dComp === '6' || dComp.includes('سادس'))) ||
+                                (c.id === 'sec' && dComp.includes('أمن')) ||
+                                (c.id === 'base' && dComp.includes('أساس'));
+                if (isMatch) count += (d.count || 0);
+              }
+            }
             const percentage = data.total > 0 ? Math.round((count / data.total) * 100) : 0;
 
             return (
