@@ -1507,17 +1507,23 @@ app.put('/api/recruits/:id', requireAuth, requireRole('admin', 'officer'), uploa
     const { id } = req.params;
     const data = req.body;
 
-    const existing = await get(`SELECT * FROM recruits WHERE id = ?`, [id]);
-    if (!existing) {
+    const existingRecruit = await get(`SELECT * FROM recruits WHERE id = ?`, [id]);
+    const existing = existingRecruit;
+    if (!existingRecruit) {
       return res.status(404).json({ error: 'المجند غير موجود' });
     }
 
-    if (data.expected_updated_at && existing.updated_at &&
-        data.expected_updated_at !== existing.updated_at) {
+    const clientExpectedUpdatedAt = req.body?.expected_updated_at;
+    const currentRecord = typeof existingRecruit !== 'undefined' ? existingRecruit : oldRow;
+    if (
+      clientExpectedUpdatedAt &&
+      currentRecord?.updated_at &&
+      String(clientExpectedUpdatedAt) !== String(currentRecord.updated_at)
+    ) {
       return res.status(409).json({
         error: 'تم تعديل بيانات هذا المجند من جهاز آخر. يرجى تحديث الصفحة والمحاولة مرة أخرى.',
         code: 'CONCURRENT_MODIFICATION',
-        serverUpdatedAt: existing.updated_at
+        serverUpdatedAt: currentRecord.updated_at
       });
     }
 
@@ -1619,28 +1625,31 @@ app.put('/api/recruits/:id', requireAuth, requireRole('admin', 'officer'), uploa
       id
     ];
 
-    await run(sql, params);
-    const updated = await get(`SELECT * FROM recruits WHERE id = ?`, [id]);
+    let updated;
+    await withTransaction(async () => {
+      await run(sql, params);
+      updated = await get(`SELECT * FROM recruits WHERE id = ?`, [id]);
 
-    let diffRes = { hasChanges: false, diff: {}, summary: '' };
-    try {
-      if (typeof computeRecruitDiff === 'function') {
-        diffRes = computeRecruitDiff(existing, updated);
+      let diffRes = { hasChanges: false, diff: {}, summary: '' };
+      try {
+        if (typeof computeRecruitDiff === 'function') {
+          diffRes = computeRecruitDiff(existing, updated);
+        }
+      } catch (e) {
+        console.warn('⚠️ تعذر حساب الفروق:', e.message);
       }
-    } catch (e) {
-      console.warn('⚠️ تعذر حساب الفروق:', e.message);
-    }
 
-    if (diffRes && diffRes.hasChanges) {
-      logAudit(req, {
-        action_type: 'UPDATE_RECRUIT',
-        entity_type: 'recruit',
-        entity_id: id,
-        entity_name: updated.name,
-        details: `تعديل بيانات المجند ${updated.name}: ${diffRes.summary}`,
-        diff_data: diffRes.diff
-      });
-    }
+      if (diffRes && diffRes.hasChanges) {
+        await logAudit(req, {
+          action_type: 'UPDATE_RECRUIT',
+          entity_type: 'recruit',
+          entity_id: id,
+          entity_name: updated.name,
+          details: `تعديل بيانات المجند ${updated.name}: ${diffRes.summary}`,
+          diff_data: diffRes.diff
+        });
+      }
+    });
 
     notifyDataChanged();
     res.json(updated);
