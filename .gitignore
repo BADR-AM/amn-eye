@@ -6,8 +6,18 @@ RecruitsApp/
 *.db
 *.db-journal
 *.db-wal
+*.sqlite
+*.sqlite3
+*.bak
+*.bak*
 backups/
 docs/presentation/
+
+# Dynamic exports and reports
+*.xlsx
+*.csv
+*.pdf
+*.zip
 
 # Large binary payloads (must not be committed to Git)
 *.gguf
