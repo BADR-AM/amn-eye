@@ -50,7 +50,7 @@ export const AI_CONFIG = {
       filename: 'qwen2.5-1.5b-instruct-q4_k_m.gguf',
       downloadUrl: 'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf',
       approxSizeBytes: 1117320736,
-      sha256: '6ca5463cf24c16cd56d7ad7461524d813b07b3f29889b2fbdbb8286a7e97a14a',
+      sha256: '6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e',
       license: 'Apache-2.0',
       minRamGb: 6,
       recommendedRamGb: 8,
