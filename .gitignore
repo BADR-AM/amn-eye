@@ -43,3 +43,5 @@ uploads/documents/*
 # Local data (preserve directory structure via .gitkeep)
 data/*
 !data/.gitkeep
+
+scratch/

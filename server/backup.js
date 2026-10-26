@@ -66,24 +66,59 @@ export const createBackup = async ({ destinationDir = null, isAuto = false } = {
     fs.copyFileSync(dbPath, tempDbSnapshot);
   }
 
-  // 2. Fetch system stats for manifest
+  // 2. Fetch comprehensive system stats for manifest
   let totalRecruits = 0;
   let activeBatchName = 'غير محدد';
+  let totalActivities = 0;
+  let totalTickets = 0;
+  let totalDocuments = 0;
+
   try {
     const recCount = await get('SELECT COUNT(*) as count FROM recruits');
     totalRecruits = recCount ? recCount.count : 0;
     const batch = await get('SELECT name FROM batches WHERE active = 1 LIMIT 1');
     if (batch) activeBatchName = batch.name;
+    const actCount = await get('SELECT COUNT(*) as count FROM recruit_activities');
+    totalActivities = actCount ? actCount.count : 0;
+    const tickCount = await get('SELECT COUNT(*) as count FROM recruit_tickets');
+    totalTickets = tickCount ? tickCount.count : 0;
+    const docCount = await get('SELECT COUNT(*) as count FROM recruit_documents');
+    totalDocuments = docCount ? docCount.count : 0;
   } catch (e) {}
 
+  // Count files in uploads subdirectories
+  let photosCount = 0;
+  let videosCount = 0;
+  let documentsCount = 0;
+  try {
+    if (fs.existsSync(path.join(uploadsDir, 'photos'))) {
+      photosCount = fs.readdirSync(path.join(uploadsDir, 'photos')).filter(f => !f.startsWith('.')).length;
+    }
+    if (fs.existsSync(path.join(uploadsDir, 'videos'))) {
+      videosCount = fs.readdirSync(path.join(uploadsDir, 'videos')).filter(f => !f.startsWith('.')).length;
+    }
+    if (fs.existsSync(path.join(uploadsDir, 'documents'))) {
+      documentsCount = fs.readdirSync(path.join(uploadsDir, 'documents')).filter(f => !f.startsWith('.')).length;
+    }
+  } catch (_) {}
+
   const manifest = {
-    title: 'نسخة احتياطية شاملة - منظومة تسجيل وفحص المجندين',
+    title: 'نسخة احتياطية شاملة - منظومة تسجيل وفحص المجندين (SECURITY EYE)',
     authority: 'وزارة الداخلية - قطاع الأمن المركزي - منطقة وسط الدلتا',
     createdAt: new Date().toISOString(),
     isAutomated: isAuto,
+    systemVersion: '2.5.1',
     totalRecruits,
     activeBatch: activeBatchName,
-    version: '1.0.0'
+    stats: {
+      recruits: totalRecruits,
+      activities: totalActivities,
+      tickets: totalTickets,
+      archivedDocuments: totalDocuments,
+      photosCount,
+      videosCount,
+      documentsCount
+    }
   };
 
   // 3. Create zip archive
@@ -124,6 +159,7 @@ export const createBackup = async ({ destinationDir = null, isAuto = false } = {
     sizeFormatted: (stats.size / (1024 * 1024)).toFixed(2) + ' MB',
     createdAt: new Date().toISOString(),
     totalRecruits,
+    stats: manifest.stats,
     externalCopied: false,
     externalPath: null
   };

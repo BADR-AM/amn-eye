@@ -269,7 +269,7 @@ export const OfficialReportSheet = React.forwardRef(({
 
           <div className="text-left font-mono text-[9px] text-slate-600 leading-tight">
             <div className="font-bold text-black">منظومة فحص وتسجيل المجندين</div>
-            <div>VER 02.5 • قطاع الأمن المركزي</div>
+            <div>VER 02.5.1 • قطاع الأمن المركزي</div>
             <div className="text-[8.5px] text-slate-700 font-bold">AUTH: [{accountFingerprint}]</div>
           </div>
         </div>
@@ -312,7 +312,7 @@ export default function OfficialReport({ recruit, currentUser: propCurrentUser, 
           <div>
             <h3 className="text-base font-bold text-white">معاينة طباعة استمارة الفحص الرسمية (A4)</h3>
             <p className="text-xs text-slate-400">
-              طباعة صفحة واحدة مؤمنة A4 • إصدار <span className="font-mono text-emerald-400 font-bold">VER 02.5</span> • بصمة الحساب: <span className="font-mono text-amber-300 font-bold">{accountFingerprint}</span>
+              طباعة صفحة واحدة مؤمنة A4 • إصدار <span className="font-mono text-emerald-400 font-bold">VER 02.5.1</span> • بصمة الحساب: <span className="font-mono text-amber-300 font-bold">{accountFingerprint}</span>
             </p>
           </div>
         </div>

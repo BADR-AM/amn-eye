@@ -4,6 +4,7 @@ import {
   Trash2, Printer, Download, Eye, ZoomIn, RefreshCw, Shield, Scan
 } from 'lucide-react';
 import { authHeaders, getUser } from '../utils/auth';
+import DocumentScannerModal from './DocumentScannerModal';
 
 export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecruits }) {
   if (!recruit) return null;
@@ -27,6 +28,65 @@ export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecru
   const [otherDocCustomTitle, setOtherDocCustomTitle] = useState('');
   const [otherDocNotes, setOtherDocNotes] = useState('');
   const currentUser = getUser();
+
+  // Smart Document Scanner Modal state
+  const [scannerModal, setScannerModal] = useState({
+    isOpen: false,
+    targetType: null,
+    title: '',
+    subtitle: ''
+  });
+
+  const openSmartScanner = (targetType, modalTitle, modalSubtitle) => {
+    setScannerModal({
+      isOpen: true,
+      targetType,
+      title: modalTitle || 'مسح وثيقة ضوئياً',
+      subtitle: modalSubtitle || 'قم بمحاذاة الوثيقة داخل الإطار للالتقاط الذكي'
+    });
+  };
+
+  const handleSaveScannerCapture = async (base64Data, targetType) => {
+    try {
+      setUploadingType(targetType);
+      const payload = {
+        doc_type: targetType,
+        base64_data: base64Data
+      };
+
+      if (targetType === 'other') {
+        payload.title = otherDocTitle === 'مستند آخر' ? (otherDocCustomTitle || 'مستند إضافي') : otherDocTitle;
+        if (otherDocNotes) payload.notes = otherDocNotes;
+      }
+
+      const res = await fetch(`/api/recruits/${recruit.id}/documents`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders()
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        await fetchDocuments();
+        onRefreshRecruits?.();
+        if (targetType === 'other') {
+          setShowAddOtherDoc(false);
+          setOtherDocCustomTitle('');
+          setOtherDocNotes('');
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || 'فشل حفظ المسح الضوئي');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('خطأ في حفظ المسح الضوئي: ' + err.message);
+    } finally {
+      setUploadingType(null);
+    }
+  };
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -163,6 +223,12 @@ export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecru
       formData.append('document', file);
       formData.append('doc_type', activeUploadType);
 
+      if (activeUploadType === 'other') {
+        const resolvedTitle = otherDocTitle === 'مستند آخر' ? (otherDocCustomTitle || 'مستند إضافي') : otherDocTitle;
+        formData.append('title', resolvedTitle);
+        if (otherDocNotes) formData.append('notes', otherDocNotes);
+      }
+
       const res = await fetch(`/api/recruits/${recruit.id}/documents`, {
         method: 'POST',
         headers: authHeaders(),
@@ -172,6 +238,11 @@ export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecru
       if (res.ok) {
         await fetchDocuments();
         onRefreshRecruits?.();
+        if (activeUploadType === 'other') {
+          setShowAddOtherDoc(false);
+          setOtherDocCustomTitle('');
+          setOtherDocNotes('');
+        }
       } else {
         const err = await res.json();
         alert(err.error || 'فشل رفع المستند');
@@ -286,50 +357,6 @@ export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecru
           </button>
         </div>
 
-        {/* Camera / Scanner Direct Capture Overlay */}
-        {isCapturing && (
-          <div className="p-4 bg-[#1a1a1a] border-b border-[#393939] flex flex-col items-center">
-            <div className="w-full max-w-2xl bg-black border border-[#525252] relative overflow-hidden mb-3">
-              <video 
-                ref={videoRef} 
-                autoPlay 
-                playsInline 
-                className="w-full h-80 object-contain"
-              ></video>
-              
-              {/* Overlay alignment guide */}
-              <div className="absolute inset-4 border-2 border-dashed border-[#0f62fe]/70 pointer-events-none flex items-center justify-center">
-                <span className="bg-black/60 px-3 py-1 text-xs text-[#0f62fe] font-bold">
-                  قم بمحاذاة الوثيقة داخل الإطار
-                </span>
-              </div>
-            </div>
-
-            {cameraError && (
-              <p className="text-xs text-red-400 mb-3 flex items-center gap-1">
-                <AlertTriangle className="w-4 h-4" />
-                {cameraError}
-              </p>
-            )}
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={captureFrame}
-                className="px-6 py-2 bg-[#0f62fe] hover:bg-[#0353e9] text-white text-sm font-bold flex items-center gap-2"
-              >
-                <Camera className="w-4 h-4" />
-                <span>التقاط وحفظ المسح الضوئي</span>
-              </button>
-              <button
-                onClick={stopCamera}
-                className="px-4 py-2 bg-[#393939] hover:bg-[#4c4c4c] text-gray-300 text-sm"
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Body content */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
           
@@ -421,7 +448,7 @@ export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecru
                   </button>
 
                   <button
-                    onClick={() => startCamera('id_doc_front')}
+                    onClick={() => openSmartScanner('id_doc_front', 'مسح وثيقة التعارف (الوجه الأول)', 'قم بمحاذاة الوجه الأول لوثيقة التعارف داخل الإطار')}
                     className="flex-1 py-1.5 px-3 bg-[#2a2a2a] hover:bg-[#383838] text-xs font-semibold text-gray-200 hover:text-white border border-[#444] flex items-center justify-center gap-1.5"
                   >
                     <Scan className="w-3.5 h-3.5 text-emerald-400" />
@@ -506,7 +533,7 @@ export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecru
                   </button>
 
                   <button
-                    onClick={() => startCamera('id_doc_back')}
+                    onClick={() => openSmartScanner('id_doc_back', 'مسح وثيقة التعارف (الوجه الثاني)', 'قم بمحاذاة الوجه الثاني لوثيقة التعارف داخل الإطار')}
                     className="flex-1 py-1.5 px-3 bg-[#2a2a2a] hover:bg-[#383838] text-xs font-semibold text-gray-200 hover:text-white border border-[#444] flex items-center justify-center gap-1.5"
                   >
                     <Scan className="w-3.5 h-3.5 text-emerald-400" />
@@ -602,7 +629,7 @@ export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecru
                   </button>
 
                   <button
-                    onClick={() => startCamera('military_record')}
+                    onClick={() => openSmartScanner('military_record', 'مسح أصل السجل العسكري', 'قم بمحاذاة أصل السجل العسكري داخل الإطار')}
                     className="py-2 px-4 bg-[#2a2a2a] hover:bg-[#383838] text-xs font-semibold text-gray-200 hover:text-white border border-[#444] flex items-center gap-2"
                   >
                     <Scan className="w-4 h-4 text-emerald-400" />
@@ -696,7 +723,10 @@ export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecru
 
                   <button
                     type="button"
-                    onClick={() => startCamera('other')}
+                    onClick={() => {
+                      const docName = otherDocTitle === 'مستند آخر' ? (otherDocCustomTitle || 'مستند إضافي') : otherDocTitle;
+                      openSmartScanner('other', `مسح مستند: ${docName}`, 'قم بمحاذاة المستند داخل الإطار للالتقاط');
+                    }}
                     className="flex-1 py-2 px-4 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors"
                   >
                     <Camera className="w-4 h-4" />
@@ -785,6 +815,15 @@ export default function RecruitDocumentsModal({ recruit, onClose, onRefreshRecru
         </div>
 
       </div>
+
+      {/* Smart Document Scanner Direct Capture Modal */}
+      <DocumentScannerModal
+        isOpen={scannerModal.isOpen}
+        onClose={() => setScannerModal(prev => ({ ...prev, isOpen: false }))}
+        title={scannerModal.title}
+        subtitle={scannerModal.subtitle}
+        onCapture={(base64Data) => handleSaveScannerCapture(base64Data, scannerModal.targetType)}
+      />
 
       {/* High-Resolution Document Zoom Viewer */}
       {previewDoc && (

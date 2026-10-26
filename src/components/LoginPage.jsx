@@ -110,7 +110,7 @@ export default function LoginPage({ onLogin }) {
               <Eye className="w-3.5 h-3.5" />
               <span>SECURITY EYE</span>
               <span className="px-1.5 py-0.2 text-[10px] rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                VER 02.5
+                VER 02.5.1
               </span>
             </div>
 
@@ -267,7 +267,7 @@ export default function LoginPage({ onLogin }) {
           <span>•</span>
           <span className="text-gray-300 font-semibold">Created by SHERIF A.ELRAHMAN</span>
           <span>•</span>
-          <span className="text-gray-400">VER 02.5</span>
+          <span className="text-gray-400">VER 02.5.1</span>
         </p>
       </footer>
 

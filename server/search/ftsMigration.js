@@ -1,4 +1,4 @@
-import { get, run } from '../db.js';
+import { get, run, query } from '../db.js';
 
 const normCol = (col) =>
   `(COALESCE(${col}, '') || ' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${col}, ''), 'أ', 'ا'), 'إ', 'ا'), 'آ', 'ا'), 'ة', 'ه'), 'ى', 'ي'), 'ئ', 'ء'))`;
@@ -52,6 +52,15 @@ export async function initFts() {
     if (!hasFts5) {
       console.warn('⚠️ SQLite FTS5 extension is not enabled. Falling back to LIKE search.');
       return false;
+    }
+
+    // Ensure recruits_fts has the required search_text schema
+    const tableInfo = await query("PRAGMA table_info(recruits_fts)").catch(() => []);
+    const hasSearchText = Array.isArray(tableInfo) && tableInfo.some(col => col.name === 'search_text');
+
+    if (tableInfo.length > 0 && !hasSearchText) {
+      console.log('🔄 إعادة بناء جدول الفهرسة الشامل recruits_fts لدعم كافة الحقول...');
+      await run(`DROP TABLE IF EXISTS recruits_fts`);
     }
 
     await run(`

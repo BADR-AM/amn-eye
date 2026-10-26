@@ -9,10 +9,64 @@ import {
   BrainCircuit, 
   ChevronDown, 
   ChevronLeft,
-  X
+  X,
+  Printer,
+  FileText
 } from 'lucide-react';
 import { authHeaders } from '../utils/auth';
 import Orb, { Orb as LiquidOrb } from './Orb';
+
+// Format markdown report into clean printable HTML for official A4 PDF printing
+function formatReportHtml(md) {
+  if (!md) return '';
+  let text = md.trim().replace(/<think>[\s\S]*?<\/think>/g, '');
+  text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  
+  const lines = text.split('\n');
+  let inTable = false;
+  let tableRows = [];
+  let output = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.startsWith('|') && line.endsWith('|')) {
+      if (!inTable) {
+        inTable = true;
+        tableRows = [];
+      }
+      if (line.includes('---')) continue;
+      const cells = line.split('|').slice(1, -1);
+      const isHeader = tableRows.length === 0;
+      const tag = isHeader ? 'th' : 'td';
+      tableRows.push('<tr>' + cells.map(c => '<' + tag + '>' + c.trim() + '</' + tag + '>').join('') + '</tr>');
+    } else {
+      if (inTable) {
+        output.push('<table class="report-table"><tbody>' + tableRows.join('') + '</tbody></table>');
+        inTable = false;
+        tableRows = [];
+      }
+
+      if (line.startsWith('### ')) {
+        output.push('<h3>' + line.substring(4) + '</h3>');
+      } else if (line.startsWith('## ')) {
+        output.push('<h2>' + line.substring(3) + '</h2>');
+      } else if (line.startsWith('# ')) {
+        output.push('<h1>' + line.substring(2) + '</h1>');
+      } else if (line.startsWith('* ') || line.startsWith('- ')) {
+        output.push('<li>' + line.substring(2) + '</li>');
+      } else if (line.length > 0) {
+        output.push('<p>' + line + '</p>');
+      }
+    }
+  }
+
+  if (inTable && tableRows.length > 0) {
+    output.push('<table class="report-table"><tbody>' + tableRows.join('') + '</tbody></table>');
+  }
+
+  return output.join('\n');
+}
 
 // ErrorBoundary to catch ReactMarkdown parsing errors
 class ErrorBoundary extends Component {
@@ -165,6 +219,182 @@ export default function ChatPanel({ isOpen, onClose, activeBatch }) {
     }
   };
 
+  const handlePrintReport = (reportContent, queryTitle = 'استعلام أمني وإحصائي') => {
+    if (!reportContent) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('يرجى السماح بالنوافذ المنبثقة لطباعة التقرير');
+      return;
+    }
+
+    const currentDate = new Date().toLocaleDateString('ar-EG', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    const formattedHtml = formatReportHtml(reportContent);
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="utf-8">
+        <title>تقرير أمني - ${queryTitle}</title>
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 14mm 12mm 14mm 12mm;
+          }
+          body {
+            font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #000;
+            background: #fff;
+            direction: rtl;
+            text-align: right;
+            font-size: 11pt;
+            line-height: 1.6;
+          }
+          .header {
+            border-bottom: 2px solid #000;
+            padding-bottom: 8px;
+            margin-bottom: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          .header-col {
+            font-size: 10pt;
+            font-weight: bold;
+            line-height: 1.4;
+          }
+          .header-title {
+            text-align: center;
+            font-size: 14pt;
+            font-weight: 900;
+            text-decoration: underline;
+            margin: 8px 0;
+          }
+          .meta-box {
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            padding: 8px 12px;
+            margin-bottom: 14px;
+            font-size: 10pt;
+            display: flex;
+            justify-content: space-between;
+          }
+          .report-body {
+            margin-bottom: 24px;
+          }
+          .report-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+            font-size: 9.5pt;
+          }
+          .report-table th, .report-table td {
+            border: 1px solid #000;
+            padding: 6px 8px;
+            text-align: right;
+          }
+          .report-table th {
+            background: #e2e8f0;
+            font-weight: bold;
+            text-align: center;
+          }
+          .report-table tr:nth-child(even) {
+            background: #f8fafc;
+          }
+          ul, ol {
+            padding-right: 20px;
+            margin: 8px 0;
+          }
+          li {
+            margin-bottom: 4px;
+          }
+          p {
+            margin: 6px 0;
+          }
+          h2, h3, h4 {
+            margin: 12px 0 6px 0;
+            color: #0f172a;
+          }
+          .footer {
+            margin-top: 30px;
+            border-top: 1px dashed #64748b;
+            padding-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 8.5pt;
+            color: #475569;
+          }
+          .signatures {
+            margin-top: 36px;
+            display: flex;
+            justify-content: space-between;
+            text-align: center;
+            font-weight: bold;
+            font-size: 10.5pt;
+          }
+          .sig-block {
+            width: 220px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="header-col">
+            وزارة الداخلية<br>
+            قطاع الأمن المركزي<br>
+            منطقة وسط الدلتا
+          </div>
+          <div class="header-col" style="text-align: left;">
+            إدارة الأمن والتحريات<br>
+            منظومة عين الأمن VER 02.5.1<br>
+            التاريخ: ${currentDate}
+          </div>
+        </div>
+
+        <div class="header-title">تقرير استعلام وتحريات أمنية معتمد</div>
+
+        <div class="meta-box">
+          <div><strong>موضوع الاستعلام:</strong> ${queryTitle}</div>
+          <div><strong>المصدر:</strong> قاعدة بيانات المجندين (الذكاء الاصطناعي المحلي)</div>
+        </div>
+
+        <div class="report-body">
+          ${formattedHtml}
+        </div>
+
+        <div class="signatures">
+          <div class="sig-block">
+            مسؤول التحريات والتشغيل<br><br><br>
+            .............................
+          </div>
+          <div class="sig-block">
+            يعتمد ،،،<br>
+            رئيس وحدة الأمن والتحريات<br><br>
+            .............................
+          </div>
+        </div>
+
+        <div class="footer">
+          <div>وثيقة أمنية سرية ومؤمنة رقمياً • منظومة عين الأمن VER 02.5.1</div>
+          <div>صفحة استخراج آلية معتمدة للطباعة أو الحفظ كملف PDF</div>
+        </div>
+      </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    setTimeout(() => {
+      printWindow.print();
+    }, 450);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -294,6 +524,21 @@ export default function ChatPanel({ isOpen, onClose, activeBatch }) {
                 </div>
               )}
             </div>
+
+            {/* Print / Export Report as PDF Action */}
+            {msg.role === 'model' && msg.content && idx > 0 && (
+              <div className="flex items-center gap-2 mt-2 px-1">
+                <button
+                  type="button"
+                  onClick={() => handlePrintReport(msg.content, messages[idx - 1]?.content || 'استعلام أمني وإحصائي')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 text-[11px] font-bold shadow-sm transition-all"
+                  title="تصدير هذا التقرير كملف PDF للطباعة الرسمية"
+                >
+                  <Printer className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>طباعة / حفظ تقرير PDF</span>
+                </button>
+              </div>
+            )}
 
             {/* Interactive Suggestions Pills */}
             {msg.suggestions && msg.suggestions.length > 0 && !isLoading && (

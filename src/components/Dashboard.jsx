@@ -49,6 +49,7 @@ import PsychologicalFollowupModal from './PsychologicalFollowupModal';
 import CameraQrScanner from './CameraQrScanner';
 import DistributionImportModal from './DistributionImportModal';
 import BulkReportExportModal from './BulkReportExportModal';
+import BulkActivityModal from './BulkActivityModal';
 import { fetchCompanyColors, DEFAULT_COMPANY_COLORS, getCompanyStyle } from '../utils/companyColors';
 import { authHeaders, getUser } from '../utils/auth';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -99,6 +100,7 @@ export default function Dashboard({
   const [ticketRecruit, setTicketRecruit] = useState(null);
   const [psychologicalRecruit, setPsychologicalRecruit] = useState(null);
   const [showCameraScanner, setShowCameraScanner] = useState(false);
+  const [showBulkActivityModal, setShowBulkActivityModal] = useState(false);
   const [companyColors, setCompanyColors] = useState(DEFAULT_COMPANY_COLORS);
   
   const userClosedPanel = useRef(false);
@@ -734,6 +736,16 @@ export default function Dashboard({
             >
               <Printer className="w-4 h-4" />
               <span>تصدير الاستمارات الرسمية ({selectedIds.length})</span>
+            </button>
+
+            {/* Bulk Hospital / Mission Dispatch Button */}
+            <button
+              onClick={() => setShowBulkActivityModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-700 hover:bg-rose-600 text-white text-xs font-bold transition-all shadow"
+              title="تسجيل قيام أو عودة (مستشفى الشرطة / عيادات / مأموريات خارجية) للمجندين المحددين"
+            >
+              <Stethoscope className="w-4 h-4" />
+              <span>قيام / مستشفى / مأمورية ({selectedIds.length})</span>
             </button>
 
             {/* Bulk Delete Button (Admin only) */}
@@ -1508,6 +1520,21 @@ export default function Dashboard({
           recruits={recruits}
           selectedRecruitIds={selectedIds}
           currentUser={currentUser}
+        />
+      )}
+
+      {/* Bulk Hospital / Mission Dispatch Modal */}
+      {showBulkActivityModal && (
+        <BulkActivityModal
+          isOpen={showBulkActivityModal}
+          onClose={() => setShowBulkActivityModal(false)}
+          recruits={recruits}
+          selectedRecruitIds={selectedIds}
+          onSuccess={() => {
+            fetchRecruits();
+            if (onRefresh) onRefresh();
+            setSelectedIds([]);
+          }}
         />
       )}
 

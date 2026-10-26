@@ -269,7 +269,7 @@ export default function BulkReportExportModal({
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <span>تصدير الاستمارات الرسمية دفعة واحدة</span>
                 <span className="text-xs font-mono bg-indigo-500/20 text-indigo-300 px-2.5 py-0.5 rounded-full border border-indigo-500/30">
-                  VER 02.5
+                  VER 02.5.1
                 </span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">

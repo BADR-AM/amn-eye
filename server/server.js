@@ -988,7 +988,7 @@ app.get('/api/recruits', requireAuth, async (req, res) => {
       } else if (category === 'political_suspicion') {
         whereClauses.push(`(r.political_suspicion_status = 'اشتباه' OR r.political_suspicion_status = 'جاري الفحص' OR EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'political_suspicion' AND t.status = 'open') OR (r.family_security_status NOT LIKE '%خالية%' AND r.family_security_status LIKE '%سياسي%') OR r.inspection LIKE '%سياسي%')`);
       } else if (category === 'medical') {
-        whereClauses.push(`((${SQL_MEDICAL_UNFIT}) OR EXISTS (SELECT 1 FROM recruit_activities a WHERE a.recruit_id = r.id AND a.activity_type = 'medical_referral' AND (a.return_date IS NULL OR a.return_date = '')) OR EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'medical_condition' AND t.status = 'open'))`);
+        whereClauses.push(`((${SQL_MEDICAL_UNFIT}) OR EXISTS (SELECT 1 FROM recruit_activities a WHERE a.recruit_id = r.id AND (a.activity_type IN ('medical_referral', 'hospital', 'clinic') OR a.destination LIKE '%مستشفى%') AND (a.return_date IS NULL OR a.return_date = '')) OR EXISTS (SELECT 1 FROM recruit_tickets t WHERE t.recruit_id = r.id AND t.ticket_type = 'medical_condition' AND t.status = 'open'))`);
       }
     }
 
@@ -2008,6 +2008,149 @@ app.delete('/api/activities/:activityId', requireAuth, requireRole('admin', 'off
   }
 });
 
+// جلب جميع التحركات والمتابعات المفتوحة والنشطة حالياً خارج المعسكر
+app.get('/api/activities/active', requireAuth, async (req, res) => {
+  try {
+    const activeActivities = await query(`
+      SELECT a.*, r.name as recruit_name, r.military_number, r.national_id, r.police_number, r.company
+      FROM recruit_activities a
+      JOIN recruits r ON a.recruit_id = r.id
+      WHERE (a.return_date IS NULL OR a.return_date = '')
+      ORDER BY a.departure_date DESC, a.id DESC
+    `);
+    res.json(activeActivities);
+  } catch (error) {
+    console.error('Error fetching active activities:', error);
+    res.status(500).json({ error: 'خطأ في جلب التحركات النشطة' });
+  }
+});
+
+// تسجيل قيام جماعي (مستشفى / مأمورية / عيادات) لمجموعة مجندين محددين (تذكرة مفتوحة)
+app.post('/api/recruits/bulk-activities', requireAuth, requireRole('admin', 'officer'), async (req, res) => {
+  try {
+    const {
+      recruit_ids,
+      activity_type = 'medical_referral',
+      destination = 'مستشفى الشرطة بطنطا',
+      departure_date = new Date().toISOString().slice(0, 16),
+      diagnosis = '',
+      notes = '',
+      officer_name = ''
+    } = req.body;
+
+    if (!recruit_ids || !Array.isArray(recruit_ids) || recruit_ids.length === 0) {
+      return res.status(400).json({ error: 'يرجى تحديد مجند واحد على الأقل للقيام' });
+    }
+
+    let insertedCount = 0;
+
+    await withTransaction(async () => {
+      for (const recId of recruit_ids) {
+        if (!recId) continue;
+        await run(
+          `INSERT INTO recruit_activities 
+            (recruit_id, activity_type, destination, departure_date, return_date, diagnosis, medical_decision, notes, officer_name)
+           VALUES (?, ?, ?, ?, NULL, ?, '', ?, ?)`,
+          [
+            recId,
+            activity_type,
+            destination || '',
+            departure_date,
+            diagnosis || '',
+            notes || '',
+            officer_name || ''
+          ]
+        );
+        insertedCount++;
+      }
+    });
+
+    logAudit(req, {
+      action_type: 'BULK_DISPATCH_ACTIVITY',
+      entity_type: 'activity',
+      entity_id: 0,
+      entity_name: destination || 'قيام جماعي',
+      details: `تسجيل قيام جماعي (${activity_type}) لعدد (${insertedCount}) مجند إلى: ${destination || 'غير محدد'}`,
+    });
+
+    notifyDataChanged();
+    res.status(201).json({
+      success: true,
+      message: `تم تسجيل قيام عدد (${insertedCount}) مجند بنجاح وبدء تذكرة المتابعة`,
+      count: insertedCount,
+      activity_type,
+      destination
+    });
+  } catch (error) {
+    console.error('Error in bulk dispatch activities:', error);
+    res.status(500).json({ error: 'خطأ في تسجيل القيام الجماعي' });
+  }
+});
+
+// تسجيل عودة جماعية لمجندين من المستشفى أو المأمورية وإغلاق التذكرة
+app.post('/api/recruits/bulk-activities/return', requireAuth, requireRole('admin', 'officer'), async (req, res) => {
+  try {
+    const {
+      recruit_ids,
+      activity_ids,
+      return_date = new Date().toISOString().slice(0, 16),
+      medical_decision = 'لائق واستكمال التدريب',
+      diagnosis = '',
+      notes = ''
+    } = req.body;
+
+    let updatedCount = 0;
+
+    await withTransaction(async () => {
+      if (Array.isArray(activity_ids) && activity_ids.length > 0) {
+        const placeholders = activity_ids.map(() => '?').join(',');
+        const r = await run(
+          `UPDATE recruit_activities 
+           SET return_date = ?,
+               medical_decision = COALESCE(NULLIF(?, ''), medical_decision),
+               diagnosis = CASE WHEN ? != '' THEN ? ELSE diagnosis END,
+               notes = CASE WHEN ? != '' THEN notes || ' | ' || ? ELSE notes END,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id IN (${placeholders}) AND (return_date IS NULL OR return_date = '')`,
+          [return_date, medical_decision, diagnosis, diagnosis, notes, notes, ...activity_ids]
+        );
+        updatedCount = r.changes || 0;
+      } else if (Array.isArray(recruit_ids) && recruit_ids.length > 0) {
+        const placeholders = recruit_ids.map(() => '?').join(',');
+        const r = await run(
+          `UPDATE recruit_activities 
+           SET return_date = ?,
+               medical_decision = COALESCE(NULLIF(?, ''), medical_decision),
+               diagnosis = CASE WHEN ? != '' THEN ? ELSE diagnosis END,
+               notes = CASE WHEN ? != '' THEN notes || ' | ' || ? ELSE notes END,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE recruit_id IN (${placeholders}) AND (return_date IS NULL OR return_date = '')`,
+          [return_date, medical_decision, diagnosis, diagnosis, notes, notes, ...recruit_ids]
+        );
+        updatedCount = r.changes || 0;
+      }
+    });
+
+    logAudit(req, {
+      action_type: 'BULK_RETURN_ACTIVITY',
+      entity_type: 'activity',
+      entity_id: 0,
+      entity_name: 'تسجيل عودة جماعية',
+      details: `تسجيل عودة عدد (${updatedCount}) مجند وإغلاق التذاكر المفتوحة - القرار: ${medical_decision}`,
+    });
+
+    notifyDataChanged();
+    res.json({
+      success: true,
+      message: `تم تسجيل عودة عدد (${updatedCount}) مجند بنجاح وإغلاق التذاكر`,
+      updatedCount
+    });
+  } catch (error) {
+    console.error('Error in bulk return activities:', error);
+    res.status(500).json({ error: 'خطأ في تسجيل العودة الجماعية' });
+  }
+});
+
 // -------------------------------------------------------------
 // 9.5. Recruit Tickets & Security Alerts (نظام التيكتات وبلاغات الاشتباه ورفعها)
 // -------------------------------------------------------------
@@ -2311,7 +2454,7 @@ app.get('/api/analytics/overview', requireAuth, async (req, res) => {
          FROM recruit_activities a
          JOIN recruits r ON a.recruit_id = r.id
          ${batchFilter ? 'WHERE r.batch_id = ? AND' : 'WHERE'}
-         a.activity_type = 'medical_referral' 
+         (a.activity_type IN ('medical_referral', 'hospital', 'clinic') OR a.destination LIKE '%مستشفى%' OR a.destination LIKE '%عياد%') 
          AND (a.return_date IS NULL OR a.return_date = '')`,
         params
       ),
