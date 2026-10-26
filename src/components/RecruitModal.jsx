@@ -1,6 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { 
-  X, 
+import {
+  X,
+  Maximize2,
+  ZoomIn,
+  ZoomOut, 
   Printer, 
   Trash2, 
   Video, 
@@ -57,6 +60,10 @@ export default function RecruitModal({
   const [showPsychologicalModal, setShowPsychologicalModal] = useState(false);
   const cardRef = useRef(null);
 
+  // Enlarged media modal (Photo zoom & Video theater modal)
+  const [enlargedMedia, setEnlargedMedia] = useState(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
+
   // Edit Mode State
   const [isEditing, setIsEditing] = useState(initialEditMode);
   const [saving, setSaving] = useState(false);
@@ -99,11 +106,13 @@ export default function RecruitModal({
     }
   }, [recruit, isEditing]);
 
-  // Handle ESC key
+  // Handle ESC key (supports enlarged media closing first)
   useEffect(() => {
     const handleEsc = (e) => { 
       if (e.key === 'Escape') {
-        if (isEditing) {
+        if (enlargedMedia) {
+          setEnlargedMedia(null);
+        } else if (isEditing) {
           setIsEditing(false);
           setSaveError(null);
         } else {
@@ -113,7 +122,7 @@ export default function RecruitModal({
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [onClose, isEditing]);
+  }, [onClose, isEditing, enlargedMedia]);
 
   const handleDownloadCard = async () => {
     if (!cardRef.current) return;
@@ -554,24 +563,71 @@ export default function RecruitModal({
                   <Camera className="w-3.5 h-3.5 text-emerald-400" />
                   الصورة الشخصية
                 </span>
-                {isEditing && photoPreview && (
-                  <button
-                    type="button"
-                    onClick={handleRemovePhoto}
-                    className="text-[11px] text-rose-400 hover:text-rose-300 font-bold transition-colors"
-                  >
-                    حذف الصورة
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {photoPreview && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setZoomLevel(1);
+                        setEnlargedMedia({
+                          type: 'photo',
+                          url: photoPreview,
+                          title: `الصورة الشخصية - ${editData.name || recruit.name || ''}`
+                        });
+                      }}
+                      className="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded bg-cyan-950/40 border border-cyan-800/40 hover:bg-cyan-900/50"
+                      title="تكبير الصورة الشخصية في نافذة كبيرة"
+                    >
+                      <Maximize2 className="w-3 h-3" />
+                      <span>تكبير</span>
+                    </button>
+                  )}
+                  {isEditing && photoPreview && (
+                    <button
+                      type="button"
+                      onClick={handleRemovePhoto}
+                      className="text-[11px] text-rose-400 hover:text-rose-300 font-bold transition-colors"
+                    >
+                      حذف الصورة
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-slate-900 border border-slate-700 relative">
+              <div className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-slate-900 border border-slate-700 relative group">
                 {photoPreview ? (
-                  <img
-                    src={photoPreview}
-                    alt={editData.name || recruit.name}
-                    className="w-full h-full object-cover"
-                  />
+                  <>
+                    <img
+                      src={photoPreview}
+                      alt={editData.name || recruit.name}
+                      className="w-full h-full object-cover cursor-pointer transition-transform duration-300 group-hover:scale-105"
+                      onClick={() => {
+                        setZoomLevel(1);
+                        setEnlargedMedia({
+                          type: 'photo',
+                          url: photoPreview,
+                          title: `الصورة الشخصية - ${editData.name || recruit.name || ''}`
+                        });
+                      }}
+                      title="انقر لتكبير الصورة في نافذة كبيرة"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setZoomLevel(1);
+                        setEnlargedMedia({
+                          type: 'photo',
+                          url: photoPreview,
+                          title: `الصورة الشخصية - ${editData.name || recruit.name || ''}`
+                        });
+                      }}
+                      className="absolute top-2 left-2 p-1.5 rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px] font-bold shadow-md"
+                      title="تكبير الصورة"
+                    >
+                      <Maximize2 className="w-3 h-3 text-cyan-300" />
+                      <span>تكبير</span>
+                    </button>
+                  </>
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 text-xs">
                     <User className="w-12 h-12 mb-2 stroke-1 text-slate-600" />
@@ -623,31 +679,67 @@ export default function RecruitModal({
               )}
             </div>
 
-            {/* 30-Second Video Clip */}
+            {/* Video Clip */}
             <div className="bg-darkslate-850 border border-slate-800 rounded-2xl p-3 flex flex-col">
               <div className="w-full flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
                   <Video className="w-3.5 h-3.5 text-rose-400" />
-                  فيديو الاستمارة (30 ثانية)
+                  فيديو الاستمارة والتعرف
                 </span>
-                {isEditing && videoPreview && (
-                  <button
-                    type="button"
-                    onClick={handleRemoveVideo}
-                    className="text-[11px] text-rose-400 hover:text-rose-300 font-bold transition-colors"
-                  >
-                    حذف الفيديو
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {videoPreview && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEnlargedMedia({
+                          type: 'video',
+                          url: videoPreview,
+                          title: `فيديو الاستمارة والتعرف - ${editData.name || recruit.name || ''}`
+                        });
+                      }}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded bg-amber-950/40 border border-amber-800/40 hover:bg-amber-900/50"
+                      title="عرض الفيديو في نافذة كبيرة (وضع المسرح)"
+                    >
+                      <Maximize2 className="w-3 h-3" />
+                      <span>تكبير العرض</span>
+                    </button>
+                  )}
+                  {isEditing && videoPreview && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveVideo}
+                      className="text-[11px] text-rose-400 hover:text-rose-300 font-bold transition-colors"
+                    >
+                      حذف الفيديو
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="w-full aspect-video rounded-xl overflow-hidden bg-slate-900 border border-slate-700 flex items-center justify-center relative">
+              <div className="w-full aspect-video rounded-xl overflow-hidden bg-slate-900 border border-slate-700 flex items-center justify-center relative group">
                 {videoPreview ? (
-                  <video
-                    src={videoPreview}
-                    controls
-                    className="w-full h-full object-contain"
-                  />
+                  <>
+                    <video
+                      src={videoPreview}
+                      controls
+                      className="w-full h-full object-contain"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEnlargedMedia({
+                          type: 'video',
+                          url: videoPreview,
+                          title: `فيديو الاستمارة والتعرف - ${editData.name || recruit.name || ''}`
+                        });
+                      }}
+                      className="absolute top-2 left-2 z-10 p-1.5 rounded-lg bg-black/70 hover:bg-black/90 text-white backdrop-blur-sm border border-white/20 transition-all opacity-85 hover:opacity-100 flex items-center gap-1 text-[10px] font-bold shadow-lg"
+                      title="عرض الفيديو في نافذة كبيرة"
+                    >
+                      <Maximize2 className="w-3 h-3 text-amber-300" />
+                      <span>تكبير</span>
+                    </button>
+                  </>
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 text-xs">
                     <Video className="w-10 h-10 mb-2 stroke-1 text-slate-600" />
@@ -668,10 +760,10 @@ export default function RecruitModal({
                     type="button"
                     onClick={handleOpenWebcamVideo}
                     className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-md transition-all active:scale-95"
-                    title="تشغيل كاميرا الويب المباشرة لتسجيل مقطع فيديو للمجند (30 ثانية)"
+                    title="تشغيل كاميرا الويب المباشرة لتسجيل مقطع فيديو للمجند (مفتوح / 30ث استرشادية)"
                   >
                     <Video className="w-4 h-4 text-purple-200" />
-                    <span>تسجيل فيديو بكاميرا الويب (30 ثانية)</span>
+                    <span>تسجيل فيديو بكاميرا الويب (مفتوح / 30ث استرشادية)</span>
                   </button>
 
                   <div className="grid grid-cols-2 gap-2">
@@ -1314,6 +1406,143 @@ export default function RecruitModal({
         onCapture={handleWebcamCapture}
         onClose={() => setWebcamModalConfig((prev) => ({ ...prev, isOpen: false }))}
       />
+      {/* Enlarged Media Modal (تكبير الصورة والفيديو في نافذة كبيرة مسرحية) */}
+      {enlargedMedia && (
+        <div 
+          className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200"
+          onClick={() => setEnlargedMedia(null)}
+        >
+          <div 
+            className="relative w-full max-w-5xl max-h-[92vh] flex flex-col bg-slate-900/95 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950/80">
+              <div className="flex items-center gap-2.5">
+                {enlargedMedia.type === 'photo' ? (
+                  <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    <Camera className="w-4 h-4" />
+                  </div>
+                ) : (
+                  <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                    <Video className="w-4 h-4" />
+                  </div>
+                )}
+                <div>
+                  <h3 className="text-sm font-bold text-white leading-tight">
+                    {enlargedMedia.title}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    رقم الشرطة: <span className="font-mono text-cyan-400 font-bold">{editData.military_number || recruit.military_number || 'غير محدد'}</span>
+                    {' • '}
+                    السرية: <span className="text-slate-300 font-medium">{editData.company || recruit.company || 'غير محدد'}</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Controls */}
+              <div className="flex items-center gap-2">
+                {enlargedMedia.type === 'photo' && (
+                  <div className="flex items-center bg-slate-800/80 rounded-xl border border-slate-700 p-0.5 ml-2">
+                    <button
+                      type="button"
+                      onClick={() => setZoomLevel(prev => Math.min(Number((prev + 0.25).toFixed(2)), 3))}
+                      className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+                      title="تكبير (Zoom In)"
+                    >
+                      <ZoomIn className="w-4 h-4" />
+                    </button>
+                    <span className="px-2 text-[11px] font-mono text-cyan-400 font-bold min-w-[42px] text-center">
+                      {Math.round(zoomLevel * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setZoomLevel(prev => Math.max(Number((prev - 0.25).toFixed(2)), 0.5))}
+                      className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+                      title="تصغير (Zoom Out)"
+                    >
+                      <ZoomOut className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setZoomLevel(1)}
+                      className="px-2 py-1 text-[10px] text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors font-bold border-r border-slate-700/60"
+                      title="إعادة ضبط الحجم الطبيعي 100%"
+                    >
+                      100%
+                    </button>
+                  </div>
+                )}
+
+                <a
+                  href={enlargedMedia.url}
+                  download={enlargedMedia.type === 'photo' ? `photo_${recruit.military_number || recruit.id}.jpg` : `video_${recruit.military_number || recruit.id}.webm`}
+                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors"
+                  title="تحميل الملف إلى جهازك"
+                >
+                  <Download className="w-4 h-4" />
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => setEnlargedMedia(null)}
+                  className="p-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 hover:text-rose-100 border border-rose-500/30 transition-colors"
+                  title="إغلاق النافذة (Esc)"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Media Canvas */}
+            <div className="flex-1 flex items-center justify-center p-4 bg-black/75 overflow-auto min-h-[380px] max-h-[75vh]">
+              {enlargedMedia.type === 'photo' ? (
+                <div className="overflow-auto max-w-full max-h-full flex items-center justify-center">
+                  <img
+                    src={enlargedMedia.url}
+                    alt="صورة مكبرة للمجند"
+                    style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center center' }}
+                    className="max-h-[70vh] max-w-[85vw] object-contain rounded-xl shadow-2xl transition-transform duration-150 border border-slate-800 select-none"
+                  />
+                </div>
+              ) : (
+                <div className="w-full max-w-4xl aspect-video rounded-xl overflow-hidden bg-black shadow-2xl border border-slate-800 flex items-center justify-center">
+                  <video
+                    src={enlargedMedia.url}
+                    controls
+                    autoPlay
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Footer Bar */}
+            <div className="px-4 py-2.5 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+              <span className="flex items-center gap-1.5">
+                {enlargedMedia.type === 'photo' ? (
+                  <>
+                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>عرض عالي الدقة • استخدم أزرار التكبير لفحص الملامح والسمات الشخصية</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="inline-block w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
+                    <span>وضع المسرح الكبير • يمكنك تفعيل ملء الشاشة أو التحكم بسرعة التشغيل</span>
+                  </>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => setEnlargedMedia(null)}
+                className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-[11px] border border-slate-700 transition-colors"
+              >
+                إغلاق (Esc)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
