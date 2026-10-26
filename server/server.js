@@ -2488,7 +2488,7 @@ app.get('/api/analytics/overview', requireAuth, async (req, res) => {
       get(`SELECT COUNT(*) as count FROM recruits ${batchFilter ? batchFilter + ' AND' : 'WHERE'} ${SQL_MEDICAL_FIT}`, params),
       get(`SELECT COUNT(*) as count FROM recruits ${batchFilter ? batchFilter + ' AND' : 'WHERE'} ${SQL_MEDICAL_UNFIT}`, params),
       get(`SELECT COUNT(*) as count FROM recruits ${batchFilter ? batchFilter + ' AND' : 'WHERE'} REPLACE(company, 'أ', 'ا') LIKE '%امن%'`, params),
-      get(`SELECT COUNT(*) as count FROM recruits ${batchFilter ? batchFilter + ' AND' : 'WHERE'} (REPLACE(company, 'أ', 'ا') LIKE '%قاعد%' OR REPLACE(REPLACE(company, 'أ', 'ا'), 'ة', 'ه') LIKE '%اساسي%' OR REPLACE(company, 'ة', 'ه') LIKE '%سريه%') AND REPLACE(company, 'أ', 'ا') NOT LIKE '%امن%'`, params)
+      get(`SELECT COUNT(*) as count FROM recruits ${batchFilter ? batchFilter + ' AND' : 'WHERE'} (REPLACE(company, 'أ', 'ا') LIKE '%اساس%' OR REPLACE(company, 'ة', 'ه') LIKE '%قوه اساس%')`, params)
     ]);
 
     const total = totalRecruits?.count || 0;

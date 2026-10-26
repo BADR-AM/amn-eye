@@ -36,7 +36,7 @@ export default function WebcamCaptureModal({
 
   // Video recording
   const [isRecording, setIsRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(30);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [capturedVideoBlob, setCapturedVideoBlob] = useState(null);
   const [capturedVideoUrl, setCapturedVideoUrl] = useState(null);
 
@@ -171,7 +171,7 @@ export default function WebcamCaptureModal({
       setCapturedVideoBlob(null);
       setCapturedVideoUrl(null);
       setIsRecording(false);
-      setRecordingSeconds(30);
+      setRecordingSeconds(0);
       startCamera();
     } else {
       stopStream();
@@ -213,6 +213,12 @@ export default function WebcamCaptureModal({
     }, 'image/jpeg', 0.95);
   };
 
+  const formatTimer = (totalSeconds) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
   // Start Video Recording
   const handleStartVideoRecording = () => {
     if (!streamRef.current) return;
@@ -243,16 +249,10 @@ export default function WebcamCaptureModal({
 
       mediaRecorder.start(250); // Record in 250ms slices
       setIsRecording(true);
-      setRecordingSeconds(30);
+      setRecordingSeconds(0);
 
       timerIntervalRef.current = setInterval(() => {
-        setRecordingSeconds((prev) => {
-          if (prev <= 1) {
-            handleStopVideoRecording();
-            return 0;
-          }
-          return prev - 1;
-        });
+        setRecordingSeconds((prev) => prev + 1);
       }, 1000);
     } catch (recErr) {
       console.error('MediaRecorder error:', recErr);
@@ -282,7 +282,7 @@ export default function WebcamCaptureModal({
     }
     setCapturedVideoBlob(null);
     setCapturedVideoUrl(null);
-    setRecordingSeconds(30);
+    setRecordingSeconds(0);
     startCamera(selectedDeviceId);
   };
 
@@ -371,7 +371,7 @@ export default function WebcamCaptureModal({
                 {mode === 'photo' ? 'التقاط الصورة الشخصية بكاميرا الويب' : 'تسجيل مقطع الفيديو بكاميرا الويب'}
               </h3>
               <p className="text-[11px] text-slate-400">
-                {mode === 'photo' ? 'اضغط زر الالتقاط أو زر مسافة (Space) لحفظ الصورة' : 'مدة المقطع 30 ثانية كحد أقصى للتحقق الأمني'}
+                {mode === 'photo' ? 'اضغط زر الالتقاط أو زر مسافة (Space) لحفظ الصورة' : 'تسجيل فيديو مفتوح (30 ثانية مدة استرشادية فقط) - اضغط إنهاء عند الانتهاء'}
               </p>
             </div>
           </div>
@@ -429,9 +429,13 @@ export default function WebcamCaptureModal({
 
                 {/* Recording Badge & Timer Overlay for Video */}
                 {mode === 'video' && isRecording && (
-                  <div className="absolute top-3 right-3 flex items-center gap-2 px-3 py-1.5 bg-rose-600/90 text-white font-mono font-bold text-xs rounded-full shadow-lg backdrop-blur-sm animate-pulse">
+                  <div className={`absolute top-3 right-3 flex items-center gap-2 px-3.5 py-1.5 font-mono font-bold text-xs rounded-full shadow-lg backdrop-blur-sm ${
+                    recordingSeconds >= 30 ? 'bg-amber-600/90 text-white border border-amber-300/40 animate-none' : 'bg-rose-600/90 text-white animate-pulse'
+                  }`}>
                     <span className="w-2.5 h-2.5 rounded-full bg-white"></span>
-                    <span>جارٍ التسجيل: 00:{recordingSeconds < 10 ? `0${recordingSeconds}` : recordingSeconds}</span>
+                    <span>
+                      تسجيل: {formatTimer(recordingSeconds)} / 00:30 (مدة استرشادية مفتوحة)
+                    </span>
                   </div>
                 )}
 
@@ -552,7 +556,7 @@ export default function WebcamCaptureModal({
                       className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold text-xs shadow-lg shadow-purple-600/30 flex items-center justify-center gap-2 transition-all active:scale-95"
                     >
                       <CircleDot className="w-4 h-4 text-rose-300 animate-pulse" />
-                      <span>بدء تسجيل الفيديو (30 ثانية)</span>
+                      <span>بدء تسجيل الفيديو (مفتوح - 30ث استرشادية)</span>
                     </button>
                   ) : (
                     <button
@@ -561,7 +565,7 @@ export default function WebcamCaptureModal({
                       className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2 transition-all active:scale-95"
                     >
                       <Square className="w-4 h-4 fill-white" />
-                      <span>إنهاء وحفظ التسجيل</span>
+                      <span>إنهاء وحفظ التسجيل ({formatTimer(recordingSeconds)})</span>
                     </button>
                   )
                 )}

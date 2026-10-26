@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, ShieldAlert, ShieldCheck, Stethoscope, ChevronRight, 
   Layers, Calendar, Activity, BarChart2, CheckCircle2, ArrowUpRight,
-  Brain, AlertOctagon
+  Brain, AlertOctagon, GraduationCap, Shield
 } from 'lucide-react';
 import { getCompanyStyle, getCompanyColorConfig } from '../utils/companyColors';
 import { authHeaders } from '../utils/auth';
@@ -68,22 +68,8 @@ function AnalyticsOverview({
       }
     }
 
-    // If base force (القوة الأساسية) has 0 direct entries, compute it from numbered companies
-    if (map['base'] !== undefined && map['base'] === 0) {
-      const numberedForce = Object.keys(map)
-        .filter(k => k !== 'sec' && k !== 'base')
-        .reduce((sum, k) => sum + (map[k] || 0), 0);
-      if (numberedForce > 0) {
-        map['base'] = numberedForce;
-      } else if (data?.base_force) {
-        map['base'] = data.base_force;
-      }
-    }
-
-    // Safety net: ensure any unmapped recruits are tracked in unassigned so sum matches total (excluding aggregate 'base')
-    const mappedSum = Object.keys(map)
-      .filter(k => k !== 'base')
-      .reduce((sum, k) => sum + (map[k] || 0), 0);
+    // Calculate total mapped across all discrete companies (including numbered companies, security & base force)
+    const mappedSum = Object.keys(map).reduce((sum, k) => sum + (map[k] || 0), 0);
     if (data && data.total > (mappedSum + unassigned)) {
       unassigned = data.total - mappedSum;
     }
@@ -337,70 +323,196 @@ function AnalyticsOverview({
         </div>
       </div>
 
-      {/* 3. Daily Attendance & Medical Log Snapshot */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      {/* 3. Daily Attendance, Medical Fitness & Qualifications Telemetry */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
         
-        {/* Attendance Days Trend */}
-        <div className="bg-[#161616] border border-[#393939] p-4 lg:col-span-2">
-          <div className="flex items-center justify-between mb-3 border-b border-[#262626] pb-2">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-[#0f62fe]" />
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                معدل تسجيل وحضور المجندين (آخر أيام الاستقبال)
-              </h4>
-            </div>
-            <span className="text-xs text-gray-400">انقر على التاريخ للتصفية المباشرة</span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {data.attendanceTrends && data.attendanceTrends.length > 0 ? (
-              data.attendanceTrends.map((item, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => onSelectAttendanceDate?.(item.attendance_date)}
-                  className="bg-[#212121] border border-[#333333] hover:border-[#0f62fe] p-2.5 text-right transition-colors"
-                >
-                  <span className="text-xs text-gray-400 block font-mono">{item.attendance_date}</span>
-                  <div className="flex items-baseline justify-between mt-1">
-                    <span className="text-lg font-bold text-white font-mono">{item.count}</span>
-                    <span className="text-[11px] text-[#0f62fe]">حضور</span>
-                  </div>
-                </button>
-              ))
-            ) : (
-              <div className="col-span-4 text-center py-4 text-xs text-gray-500">
-                لا توجد سجلات حضور مسجلة
+        {/* Attendance Days Trend (2 columns) */}
+        <div className="bg-[#161616] border border-[#393939] p-4 lg:col-span-2 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3 border-b border-[#262626] pb-2">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-[#0f62fe]" />
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                  معدل تسجيل وحضور المجندين (أيام الاستقبال)
+                </h4>
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                {data.attendanceTrends && data.attendanceTrends.length > 0 && (
+                  <span className="text-[10px] font-mono px-2 py-0.5 bg-[#0f62fe]/10 text-[#0f62fe] border border-[#0f62fe]/30 font-bold">
+                    إجمالي: {data.attendanceTrends.reduce((s, i) => s + (i.count || 0), 0)} مجند
+                  </span>
+                )}
+                <span className="text-[11px] text-gray-400 hidden sm:inline">انقر للتصفية</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {data.attendanceTrends && data.attendanceTrends.length > 0 ? (
+                (() => {
+                  const maxDay = Math.max(...data.attendanceTrends.map(t => t.count || 0), 1);
+                  return data.attendanceTrends.map((item, idx) => {
+                    const pct = Math.round(((item.count || 0) / maxDay) * 100);
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => onSelectAttendanceDate?.(item.attendance_date)}
+                        className="bg-[#212121] border border-[#333333] hover:border-[#0f62fe] p-2.5 text-right transition-all group"
+                        title={`تصفية مجندي يوم ${item.attendance_date}`}
+                      >
+                        <span className="text-[11px] text-gray-400 block font-mono group-hover:text-white transition-colors">
+                          {item.attendance_date}
+                        </span>
+                        <div className="flex items-baseline justify-between mt-1">
+                          <span className="text-lg font-bold text-white font-mono">{item.count}</span>
+                          <span className="text-[10px] text-[#0f62fe] font-bold">حضور</span>
+                        </div>
+                        <div className="w-full bg-[#111] h-1 mt-1.5 overflow-hidden">
+                          <div 
+                            className="h-full bg-[#0f62fe] transition-all duration-300"
+                            style={{ width: `${pct}%` }}
+                          ></div>
+                        </div>
+                      </button>
+                    );
+                  });
+                })()
+              ) : (
+                <div className="col-span-4 text-center py-6 text-xs text-gray-500">
+                  لا توجد سجلات حضور مسجلة
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Medical Decisions Breakdown */}
-        <div className="bg-[#161616] border border-[#393939] p-4">
-          <div className="flex items-center justify-between mb-3 border-b border-[#262626] pb-2">
-            <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-red-400" />
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                مؤشرات القرارات الطبية
-              </h4>
+        {/* Medical Decisions & Fitness Breakdown (1 column) */}
+        <div className="bg-[#161616] border border-[#393939] p-4 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3 border-b border-[#262626] pb-2">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-red-400" />
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                  مؤشرات القرارات الطبية
+                </h4>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 bg-red-500/10 text-red-400 border border-red-500/30 font-bold">
+                حالات: {(data.medicalDecisions || []).reduce((s, m) => s + (m.count || 0), 0)}
+              </span>
+            </div>
+
+            {/* Medical Fitness Summary Mini-Gauge */}
+            <div className="mb-3 p-2 bg-[#1b1b1b] border border-[#2e2e2e] flex items-center justify-between text-[11px]">
+              <span className="text-emerald-400 font-bold">لائق: {data.medically_fit || 0}</span>
+              <span className="text-gray-500">•</span>
+              <span className="text-rose-400 font-bold">غير لائق: {data.medically_unfit || 0}</span>
+              <span className="text-gray-500">•</span>
+              <span className="text-amber-400 font-bold">تحت الفحص: {data.medically_undetermined || 0}</span>
+            </div>
+
+            <div className="space-y-1.5 text-xs max-h-48 overflow-y-auto">
+              {data.medicalDecisions && data.medicalDecisions.length > 0 ? (
+                data.medicalDecisions.map((med, idx) => {
+                  const isFit = med.medical_decision.includes('لائق');
+                  const isPsych = med.medical_decision.includes('مستقر') || med.medical_decision.includes('نفسي');
+                  const isRest = med.medical_decision.includes('راحة') || med.medical_decision.includes('كشف');
+                  const dotColor = isFit ? 'bg-emerald-400' : (isPsych ? 'bg-purple-400' : (isRest ? 'bg-amber-400' : 'bg-cyan-400'));
+
+                  return (
+                    <div key={idx} className="flex items-center justify-between p-2 bg-[#212121] border border-[#2d2d2d] hover:border-gray-600 transition-colors">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`}></span>
+                        <span className="text-gray-200 font-medium truncate" title={med.medical_decision}>
+                          {med.medical_decision}
+                        </span>
+                      </div>
+                      <span className="font-mono font-bold text-white bg-[#161616] px-2 py-0.5 border border-[#393939] shrink-0">
+                        {med.count}
+                      </span>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-6 text-gray-500 text-xs">
+                  لم يتم تسجيل قرارات طبية بعد
+                </div>
+              )}
             </div>
           </div>
+        </div>
 
-          <div className="space-y-2 text-xs">
-            {data.medicalDecisions && data.medicalDecisions.length > 0 ? (
-              data.medicalDecisions.map((med, idx) => (
-                <div key={idx} className="flex items-center justify-between p-2 bg-[#212121] border border-[#2d2d2d]">
-                  <span className="text-gray-300 font-medium">{med.medical_decision}</span>
-                  <span className="font-mono font-bold text-white bg-[#161616] px-2 py-0.5 border border-[#393939]">
-                    {med.count}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-6 text-gray-500 text-xs">
-                لم يتم تسجيل قرارات طبية بعد
+        {/* Educational Qualifications Profile (1 column) */}
+        <div className="bg-[#161616] border border-[#393939] p-4 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3 border-b border-[#262626] pb-2">
+              <div className="flex items-center gap-2">
+                <GraduationCap className="w-4 h-4 text-emerald-400" />
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                  توزيع المؤهلات الدراسية
+                </h4>
               </div>
-            )}
+              <span className="text-[10px] font-mono px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
+                {data.total} مجند
+              </span>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              {data.qualificationStats && data.qualificationStats.length > 0 ? (
+                (() => {
+                  // Consolidate qualifications into clean categories
+                  const qualMap = {};
+                  for (const q of data.qualificationStats) {
+                    const raw = String(q.qualification || 'بدون').trim();
+                    let key = raw;
+                    if (raw.includes('متوسط') && !raw.includes('فوق')) key = 'مؤهل متوسط';
+                    else if (raw.includes('فوق متوسط')) key = 'مؤهل فوق متوسط';
+                    else if (raw.includes('عالي') || raw.includes('عالم') || raw.includes('بكالوريوس') || raw.includes('ليسانس')) key = 'مؤهل عالي';
+                    else if (raw.includes('أمي') || raw.includes('امي') || raw.includes('محو')) key = 'محو أمية / أمي';
+                    else if (raw.includes('اعدادي') || raw.includes('إعدادي')) key = 'إعدادية';
+                    else if (raw.includes('ابتدائي') || raw.includes('إبتدائي')) key = 'ابتدائية';
+                    else key = raw;
+
+                    qualMap[key] = (qualMap[key] || 0) + (q.count || 0);
+                  }
+
+                  const sorted = Object.entries(qualMap).sort((a, b) => b[1] - a[1]);
+                  const topQuals = sorted.slice(0, 5);
+
+                  return topQuals.map(([name, count], idx) => {
+                    const pct = data.total > 0 ? Math.round((count / data.total) * 100) : 0;
+                    const colors = [
+                      'bg-emerald-500',
+                      'bg-blue-500',
+                      'bg-purple-500',
+                      'bg-amber-500',
+                      'bg-cyan-500'
+                    ];
+                    const barColor = colors[idx % colors.length];
+
+                    return (
+                      <div key={idx} className="p-2 bg-[#212121] border border-[#2d2d2d]">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-gray-300 font-medium truncate">{name}</span>
+                          <span className="font-mono font-bold text-white text-[11px] flex items-center gap-1.5">
+                            <span>{count}</span>
+                            <span className="text-gray-400 text-[10px]">({pct}%)</span>
+                          </span>
+                        </div>
+                        <div className="w-full bg-[#111] h-1.5 overflow-hidden">
+                          <div 
+                            className={`h-full ${barColor} transition-all duration-300`}
+                            style={{ width: `${pct}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()
+              ) : (
+                <div className="text-center py-6 text-gray-500 text-xs">
+                  لا توجد إحصائيات مؤهلات
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
