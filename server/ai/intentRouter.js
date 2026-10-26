@@ -1,3 +1,4 @@
+import { searchRecruitsFts } from '../search/ftsQueries.js';
 import { extractNationalId, normalizeArabic } from './arabicNormalize.js';
 import { validateIntent } from './intentSchema.js';
 import { executeQuery, QUERY_CATALOG } from './queryCatalog.js';
@@ -497,7 +498,7 @@ export async function routeUserQuery(message, options = {}) {
     .trim();
 
   const searchTarget = cleanTerm && cleanTerm.length >= 2 ? cleanTerm : rawMsg;
-  const searchResult = await executeQuery('search_recruits', { query: searchTarget });
+  const searchResult = await searchRecruitsFts(searchTarget, { limit: 15 });
 
   if (searchResult.results && searchResult.results.length > 0) {
     const formatted = formatQueryResult('search_recruits', searchResult, { query: searchTarget, totalRecruits });
@@ -505,9 +506,23 @@ export async function routeUserQuery(message, options = {}) {
     // If local LLM is ready, synthesize a smart executive officer briefing from matched recruits
     if (modelManager.state === 'ready') {
       try {
-        const recruitSnippets = searchResult.results.slice(0, 6).map((r, idx) =>
-          `${idx + 1}- ${r.name} (السرية: ${r.company || 'غير محددة'}، القطاع: ${r.distribution_sector || 'قيد التدريب'}، المؤهل: ${r.qualification || 'بدون'}، المهنة: ${r.current_job || 'بدون'})`
-        ).join('\n');
+        const recruitSnippets = searchResult.results.slice(0, 10).map((r, idx) => {
+          const details = [
+            `الاسم: ${r.name}`,
+            r.police_number ? `رقم الشرطة: ${r.police_number}` : '',
+            r.military_number ? `الرقم العسكري: ${r.military_number}` : '',
+            r.company ? `السرية: ${r.company}` : '',
+            r.distribution_sector ? `القطاع: ${r.distribution_sector}` : '',
+            r.travel_abroad ? `سفر للخارج: ${r.travel_abroad}` : '',
+            r.father_job ? `مهنة الوالد: ${r.father_job}` : '',
+            r.political_suspicion_status && r.political_suspicion_status !== 'لا يوجد اشتباه' && r.political_suspicion_status !== 'سليم' ? `اشتباه سياسي: ${r.political_suspicion_status}` : '',
+            r.criminal_suspicion_status && r.criminal_suspicion_status !== 'لا يوجد اشتباه' && r.criminal_suspicion_status !== 'سليم' ? `اشتباه جنائي: ${r.criminal_suspicion_status}` : '',
+            r.psychological_notes ? `ملاحظات نفسية: ${r.psychological_notes}` : '',
+            r.notes ? `ملاحظات: ${r.notes}` : '',
+            r.inspection ? `المناظرة: ${r.inspection}` : ''
+          ].filter(Boolean).join(' | ');
+          return `${idx + 1}- ${details}`;
+        }).join('\n');
         const context = `المجندون المطابقون للاستفسار في قاعدة البيانات:\n${recruitSnippets}`;
         const aiSummary = await modelAdapter.generateConversationalResponse(rawMsg, context);
         if (aiSummary) {
@@ -517,6 +532,7 @@ export async function routeUserQuery(message, options = {}) {
             statusLabel: `تحليل ذكي ومطابقة لسجلات المجندين (${searchResult.results.length} مجند)`,
             responseText: `${aiSummary}\n\n---\n\n${formatted.responseText}`,
             matchCount: searchResult.results.length,
+            recruits: searchResult.results,
             suggestions: formatted.suggestions || []
           };
         }
@@ -527,6 +543,7 @@ export async function routeUserQuery(message, options = {}) {
       intent: 'search_recruits',
       mode: 'deterministic',
       statusLabel: 'البحث في سجلات المجندين ومطابقة الأسماء والبيانات',
+      recruits: searchResult.results,
       ...formatted
     };
   }

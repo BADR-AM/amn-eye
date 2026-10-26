@@ -1,47 +1,70 @@
 const TOKEN_KEY = 'auth_token';
-const LEGACY_TOKEN_KEY = 'token';
 const USER_KEY = 'auth_user';
 
-export const getToken = () => {
-  const t = localStorage.getItem(TOKEN_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY);
-  if (!t || t === 'null' || t === 'undefined') return '';
-  return t;
-};
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    window.localStorage.removeItem(TOKEN_KEY);
+    window.localStorage.removeItem('token');
+    window.localStorage.removeItem(USER_KEY);
+    window.localStorage.removeItem('user');
+  } catch (_) {}
+}
 
-export const setToken = (token) => {
+export function getToken() {
+  if (typeof window === 'undefined') return null;
+  return window.sessionStorage.getItem(TOKEN_KEY) || window.sessionStorage.getItem('token');
+}
+
+export function setToken(token) {
+  if (typeof window === 'undefined') return;
   if (token) {
-    localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem(LEGACY_TOKEN_KEY, token);
+    window.sessionStorage.setItem(TOKEN_KEY, token);
   } else {
     clearToken();
   }
-};
+}
 
-export const getUser = () => {
+export function clearToken() {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.removeItem(TOKEN_KEY);
+  window.sessionStorage.removeItem('token');
+  window.localStorage.removeItem(TOKEN_KEY);
+  window.localStorage.removeItem('token');
+}
+
+export function getUser() {
+  if (typeof window === 'undefined') return null;
   try {
-    const raw = localStorage.getItem(USER_KEY) || localStorage.getItem('user');
+    const raw = window.sessionStorage.getItem(USER_KEY) || window.sessionStorage.getItem('user');
     return raw ? JSON.parse(raw) : null;
-  } catch (e) {
+  } catch {
     return null;
   }
-};
+}
 
-export const setUser = (user) => {
+export function setUser(user) {
+  if (typeof window === 'undefined') return;
   if (user) {
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
-    localStorage.setItem('user', JSON.stringify(user));
+    window.sessionStorage.setItem(USER_KEY, JSON.stringify(user));
   } else {
-    localStorage.removeItem(USER_KEY);
-    localStorage.removeItem('user');
+    removeUser();
   }
-};
+}
 
-export const clearToken = () => {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(LEGACY_TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
-  localStorage.removeItem('user');
-};
+export function removeUser() {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.removeItem(USER_KEY);
+  window.sessionStorage.removeItem('user');
+  window.localStorage.removeItem(USER_KEY);
+  window.localStorage.removeItem('user');
+}
+
+export function authHeaders(extra = {}) {
+  const token = getToken();
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : { ...extra };
+}
+
+export const isLoggedIn = () => !!getToken();
 
 export const notifySessionExpired = () => {
   clearToken();
@@ -50,18 +73,6 @@ export const notifySessionExpired = () => {
   }
 };
 
-export const authHeaders = () => {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
-
-export const isLoggedIn = () => !!getToken();
-
-/**
- * Global fetch interceptor:
- * 1. Automatically attaches Authorization: Bearer <token> to /api/ requests if not already validly present.
- * 2. Catches 401 Unauthorized responses and notifies session expiration cleanly.
- */
 export const setupAuthInterceptor = () => {
   if (typeof window === 'undefined' || window.__authInterceptorInstalled) return;
   window.__authInterceptorInstalled = true;
@@ -125,5 +136,3 @@ export const setupAuthInterceptor = () => {
 if (typeof window !== 'undefined') {
   setupAuthInterceptor();
 }
-
-

@@ -1,151 +1,126 @@
-import { run, get, query } from '../db.js';
+import { get, run } from '../db.js';
 
-/**
- * Idempotent FTS5 Full-Text Search Schema & Index Migration for Recruits
- *
- * Preserves all original data, adds an FTS5 index on approved text fields,
- * and maintains real-time synchronization via SQLite triggers.
- *
- * Normalizes Arabic letters in the index (Alef variants, Taa Marbuta, Yaa)
- * while preserving the original characters so both forms match accurately.
- */
+const normCol = (col) =>
+  `(COALESCE(${col}, '') || ' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${col}, ''), 'أ', 'ا'), 'إ', 'ا'), 'آ', 'ا'), 'ة', 'ه'), 'ى', 'ي'), 'ئ', 'ء'))`;
 
-// SQL expression to concatenate original text and normalized Arabic text in FTS index
-const normCol = (col) => `(COALESCE(${col}, '') || ' ' || REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${col}, ''), 'أ', 'ا'), 'إ', 'ا'), 'آ', 'ا'), 'ة', 'ه'), 'ى', 'ي'), 'ٱ', 'ا'))`;
+const buildFullRecruitFtsExpr = (prefix = '') => {
+  const p = prefix ? `${prefix}.` : '';
+  return `
+    ${normCol(`${p}name`)} || ' ' ||
+    COALESCE(${p}national_id, '') || ' ' ||
+    COALESCE(${p}recruit_code, '') || ' ' ||
+    COALESCE(${p}police_number, '') || ' ' ||
+    COALESCE(${p}military_number, '') || ' ' ||
+    ${normCol(`${p}qualification`)} || ' ' ||
+    ${normCol(`${p}current_job`)} || ' ' ||
+    ${normCol(`${p}other_jobs`)} || ' ' ||
+    ${normCol(`${p}address`)} || ' ' ||
+    ${normCol(`${p}company`)} || ' ' ||
+    ${normCol(`${p}distribution_sector`)} || ' ' ||
+    ${normCol(`${p}medical_status`)} || ' ' ||
+    ${normCol(`${p}inspection`)} || ' ' ||
+    ${normCol(`${p}notes`)} || ' ' ||
+    ${normCol(`${p}religion`)} || ' ' ||
+    ${normCol(`${p}literacy`)} || ' ' ||
+    ${normCol(`${p}travel_abroad`)} || ' ' ||
+    ${normCol(`${p}wife`)} || ' ' ||
+    ${normCol(`${p}father_name`)} || ' ' ||
+    ${normCol(`${p}father_job`)} || ' ' ||
+    ${normCol(`${p}mother_name`)} || ' ' ||
+    ${normCol(`${p}mother_job`)} || ' ' ||
+    ${normCol(`${p}siblings_check`)} || ' ' ||
+    ${normCol(`${p}family_social_status`)} || ' ' ||
+    ${normCol(`${p}family_security_status`)} || ' ' ||
+    ${normCol(`${p}political_suspicion_status`)} || ' ' ||
+    ${normCol(`${p}political_suspicion_details`)} || ' ' ||
+    ${normCol(`${p}criminal_suspicion_status`)} || ' ' ||
+    ${normCol(`${p}criminal_suspicion_details`)} || ' ' ||
+    ${normCol(`${p}psychological_notes`)} || ' ' ||
+    COALESCE(${p}birth_date, '') || ' ' ||
+    COALESCE(${p}attendance_date, '') || ' ' ||
+    CASE WHEN ${p}is_psychological_case = 1 THEN 'حالة نفسية حاله نفسيه نفسي عيادة نفسية غير متزن' ELSE '' END || ' ' ||
+    CASE WHEN COALESCE(${p}political_suspicion_status, 'سليم') != 'سليم' THEN 'اشتباه سياسي امن سياسي' ELSE '' END || ' ' ||
+    CASE WHEN COALESCE(${p}criminal_suspicion_status, 'سليم') != 'سليم' THEN 'اشتباه جنائي امن جنائي احكام قضايا' ELSE '' END
+  `;
+};
 
-export async function ensureFtsTable() {
+export async function initFts() {
   try {
-    // 1. Create FTS5 virtual table
+    const ftsCheck = await get("SELECT sqlite_compileoption_used('ENABLE_FTS5') as enabled");
+    const hasFts5 = ftsCheck && (ftsCheck.enabled === 1 || ftsCheck.enabled === '1');
+
+    if (!hasFts5) {
+      console.warn('⚠️ SQLite FTS5 extension is not enabled. Falling back to LIKE search.');
+      return false;
+    }
+
     await run(`
       CREATE VIRTUAL TABLE IF NOT EXISTS recruits_fts USING fts5(
         recruit_id UNINDEXED,
-        name,
-        national_id,
-        recruit_code,
-        qualification,
-        current_job,
-        other_jobs,
-        address,
-        company,
-        notes,
-        inspection,
-        medical_status,
+        search_text,
         tokenize = 'unicode61 remove_diacritics 2'
       );
     `);
 
-    // 2. Drop existing triggers to ensure schema & normalization updates take effect
-    await run(`DROP TRIGGER IF EXISTS trg_recruits_fts_insert;`);
-    await run(`DROP TRIGGER IF EXISTS trg_recruits_fts_delete;`);
-    await run(`DROP TRIGGER IF EXISTS trg_recruits_fts_update;`);
+    // Clean up both legacy and new trigger names to prevent column mismatch errors
+    await run(`DROP TRIGGER IF EXISTS trg_recruits_fts_insert`);
+    await run(`DROP TRIGGER IF EXISTS trg_recruits_fts_delete`);
+    await run(`DROP TRIGGER IF EXISTS trg_recruits_fts_update`);
+    await run(`DROP TRIGGER IF EXISTS recruits_after_insert`);
+    await run(`DROP TRIGGER IF EXISTS recruits_after_delete`);
+    await run(`DROP TRIGGER IF EXISTS recruits_after_update`);
 
-    // 3. Trigger on INSERT
     await run(`
-      CREATE TRIGGER trg_recruits_fts_insert
+      CREATE TRIGGER recruits_after_insert
       AFTER INSERT ON recruits
       BEGIN
-        INSERT INTO recruits_fts (
-          recruit_id, name, national_id, recruit_code, qualification,
-          current_job, other_jobs, address, company, notes, inspection, medical_status
-        ) VALUES (
-          new.id,
-          ${normCol('new.name')},
-          COALESCE(new.national_id, ''),
-          COALESCE(new.recruit_code, ''),
-          ${normCol('new.qualification')},
-          ${normCol('new.current_job')},
-          ${normCol('new.other_jobs')},
-          ${normCol('new.address')},
-          ${normCol('new.company')},
-          ${normCol('new.notes')},
-          ${normCol('new.inspection')},
-          ${normCol('new.medical_status')}
-        );
+        INSERT INTO recruits_fts(recruit_id, search_text)
+        VALUES (new.id, ${buildFullRecruitFtsExpr('new')});
       END;
     `);
 
-    // 4. Trigger on DELETE
     await run(`
-      CREATE TRIGGER trg_recruits_fts_delete
+      CREATE TRIGGER recruits_after_delete
       AFTER DELETE ON recruits
       BEGIN
         DELETE FROM recruits_fts WHERE recruit_id = old.id;
       END;
     `);
 
-    // 5. Trigger on UPDATE
     await run(`
-      CREATE TRIGGER trg_recruits_fts_update
+      CREATE TRIGGER recruits_after_update
       AFTER UPDATE ON recruits
       BEGIN
         DELETE FROM recruits_fts WHERE recruit_id = old.id;
-        INSERT INTO recruits_fts (
-          recruit_id, name, national_id, recruit_code, qualification,
-          current_job, other_jobs, address, company, notes, inspection, medical_status
-        ) VALUES (
-          new.id,
-          ${normCol('new.name')},
-          COALESCE(new.national_id, ''),
-          COALESCE(new.recruit_code, ''),
-          ${normCol('new.qualification')},
-          ${normCol('new.current_job')},
-          ${normCol('new.other_jobs')},
-          ${normCol('new.address')},
-          ${normCol('new.company')},
-          ${normCol('new.notes')},
-          ${normCol('new.inspection')},
-          ${normCol('new.medical_status')}
-        );
+        INSERT INTO recruits_fts(recruit_id, search_text)
+        VALUES (new.id, ${buildFullRecruitFtsExpr('new')});
       END;
     `);
 
-    // 6. Backfill index if FTS table is empty but recruits table has data
-    const ftsCount = await get(`SELECT COUNT(*) as count FROM recruits_fts`);
-    const recruitsCount = await get(`SELECT COUNT(*) as count FROM recruits`);
-
-    if (recruitsCount && recruitsCount.count > 0 && (!ftsCount || ftsCount.count === 0)) {
-      await rebuildFtsIndex();
-    }
-
+    await rebuildFtsIndex();
+    console.log('✅ تم تحديث فهرس البحث الشامل FTS5 ليغطي جميع حقول المجندين (43 عموداً).');
     return true;
   } catch (err) {
-    console.error('⚠️ خطأ أثناء تهيئة فهرس البحث FTS5:', err.message);
+    console.error('⚠️ فشل تهيئة جدول البحث FTS5:', err.message);
     return false;
   }
 }
 
-/**
- * Rebuilds the entire FTS5 index from the recruits table.
- * Idempotent, safe, and non-destructive to original recruit records.
- */
 export async function rebuildFtsIndex() {
   try {
-    await run(`DELETE FROM recruits_fts;`);
+    await run('DELETE FROM recruits_fts');
     await run(`
-      INSERT INTO recruits_fts (
-        recruit_id, name, national_id, recruit_code, qualification,
-        current_job, other_jobs, address, company, notes, inspection, medical_status
-      )
-      SELECT
-        id,
-        ${normCol('name')},
-        COALESCE(national_id, ''),
-        COALESCE(recruit_code, ''),
-        ${normCol('qualification')},
-        ${normCol('current_job')},
-        ${normCol('other_jobs')},
-        ${normCol('address')},
-        ${normCol('company')},
-        ${normCol('notes')},
-        ${normCol('inspection')},
-        ${normCol('medical_status')}
-      FROM recruits;
+      INSERT INTO recruits_fts(recruit_id, search_text)
+      SELECT id, ${buildFullRecruitFtsExpr('')}
+      FROM recruits
     `);
-    const count = await get(`SELECT COUNT(*) as count FROM recruits_fts`);
-    console.log(`✅ تم بناء فهرس FTS5 بنجاح: ${count.count} سجل مفهرس`);
-    return count.count;
+    const count = await get('SELECT COUNT(*) as count FROM recruits_fts');
+    console.log(`✅ تم إعادة بناء فهرس FTS5 الشامل: ${count?.count || 0} سجلاً`);
+    return true;
   } catch (err) {
-    console.error('❌ خطأ في إعادة بناء فهرس FTS5:', err.message);
-    throw err;
+    console.error('❌ فشل إعادة بناء فهرس FTS5:', err.message);
+    return false;
   }
 }
+
+export const ensureFtsTable = initFts;

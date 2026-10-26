@@ -1,21 +1,31 @@
 import { query, get } from '../db.js';
-import { buildFts5Query, extractNationalId, normalizeArabic, normalizeDigits } from '../ai/arabicNormalize.js';
+import { extractNationalId, normalizeArabic, normalizeDigits } from '../ai/arabicNormalize.js';
 
-/**
- * Executes a safe, normalized search across recruits using FTS5 and exact fallbacks.
- *
- * @param {string} rawTerm - User's search text
- * @param {object} options - Search options
- * @param {number} [options.batchId] - Filter by recruitment batch
- * @param {string} [options.company] - Filter by company / unit
- * @param {number} [options.limit=20] - Maximum records to return
- * @param {number} [options.offset=0] - Pagination offset
- * @returns {Promise<{ results: Array, total: number, mode: string }>}
- */
-export async function searchRecruits(rawTerm, options = {}) {
-  const limit = Math.min(Math.max(1, parseInt(options.limit, 10) || 20), 100);
-  const offset = Math.max(0, parseInt(options.offset, 10) || 0);
-  const term = (rawTerm || '').trim();
+const CONVERSATIONAL_STOP_WORDS = new Set([
+  'مين', 'من', 'ما', 'ماذا', 'هل', 'فين', 'اين', 'امتي', 'متي', 'كيف', 'ازاي',
+  'اللي', 'الذي', 'التي', 'الذين', 'الي', 'في', 'فى', 'علي', 'على', 'عن', 'مع',
+  'كل', 'جميع', 'اي', 'ايه', 'عايز', 'عوز', 'اريد', 'هات', 'اعرض', 'وريني', 'شوف',
+  'ابحث', 'بحث', 'طلع', 'قائمه', 'بيانات', 'معلومات', 'تفاصيل', 'اسماء', 'اسم',
+  'مجند', 'مجندين', 'المجند', 'المجندين', 'العساكر', 'عسكري', 'افراد', 'الافراد',
+  'الناس', 'الشباب', 'عنده', 'عندهم', 'لديه', 'لديهم', 'فيهم', 'منهم', 'بتوع', 'بتاع',
+  'هو', 'هي', 'هم', 'كان', 'كانت', 'مسجل', 'مسجلين', 'المسجلين', 'المحفوظه', 'المحفوظين'
+].map(w => normalizeArabic(w)));
+
+const SELECT_RECRUIT_COLS = `
+  r.id, r.name, r.national_id, r.recruit_code, r.police_number, r.military_number,
+  r.qualification, r.current_job, r.other_jobs, r.address, r.company, r.distribution_sector,
+  r.medical_status, r.inspection, r.notes, r.religion, r.literacy, r.travel_abroad,
+  r.wife, r.father_name, r.father_job, r.mother_name, r.mother_job, r.siblings_check,
+  r.family_social_status, r.family_security_status, r.political_suspicion_status,
+  r.political_suspicion_details, r.criminal_suspicion_status, r.criminal_suspicion_details,
+  r.is_psychological_case, r.psychological_notes, r.birth_date, r.attendance_date,
+  r.photo_path, r.video_path, b.name as batch_name, r.batch_id
+`;
+
+export async function searchRecruitsFts(rawTerm, options = {}) {
+  const limit = parseInt(options.limit || '25', 10);
+  const offset = parseInt(options.offset || '0', 10);
+  const term = rawTerm ? rawTerm.trim() : '';
 
   if (!term) {
     return { results: [], total: 0, mode: 'empty' };
@@ -25,11 +35,9 @@ export async function searchRecruits(rawTerm, options = {}) {
   const nid = extractNationalId(term);
   if (nid) {
     const exactNidMatch = await query(`
-      SELECT r.id, r.name, r.national_id, r.recruit_code, r.qualification,
-             r.current_job, r.other_jobs, r.address, r.company, r.medical_status,
-             r.photo_path, r.video_path, b.name as batch_name, r.batch_id
+      SELECT ${SELECT_RECRUIT_COLS}
       FROM recruits r
-      JOIN batches b ON r.batch_id = b.id
+      LEFT JOIN batches b ON r.batch_id = b.id
       WHERE r.national_id = ?
       LIMIT 1
     `, [nid]);
@@ -46,11 +54,9 @@ export async function searchRecruits(rawTerm, options = {}) {
   // 2. Check for exact recruit code (e.g. REC-1234 or numbers)
   const normalizedDigits = normalizeDigits(term);
   const exactCodeMatch = await query(`
-    SELECT r.id, r.name, r.national_id, r.recruit_code, r.qualification,
-           r.current_job, r.other_jobs, r.address, r.company, r.medical_status,
-           r.photo_path, r.video_path, b.name as batch_name, r.batch_id
+    SELECT ${SELECT_RECRUIT_COLS}
     FROM recruits r
-    JOIN batches b ON r.batch_id = b.id
+    LEFT JOIN batches b ON r.batch_id = b.id
     WHERE r.recruit_code = ? OR r.recruit_code = ?
     LIMIT 1
   `, [term, normalizedDigits]);
@@ -63,126 +69,151 @@ export async function searchRecruits(rawTerm, options = {}) {
     };
   }
 
-  // 3. FTS5 Search
-  const ftsQueryStr = buildFts5Query(term);
-  if (ftsQueryStr) {
-    try {
-      let filterSql = '';
-      const filterParams = [ftsQueryStr];
+  const allTokens = term
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .map(t => normalizeArabic(t))
+    .filter(t => t.length > 0);
 
-      if (options.batchId) {
-        filterSql += ` AND r.batch_id = ?`;
-        filterParams.push(options.batchId);
-      }
-      if (options.company) {
-        filterSql += ` AND r.company LIKE ?`;
-        filterParams.push(`%${options.company}%`);
-      }
+  const meaningfulTokens = allTokens.filter(t => !CONVERSATIONAL_STOP_WORDS.has(t) && t.length > 1);
+  const sanitizedTokens = meaningfulTokens.length > 0 ? meaningfulTokens : allTokens;
 
-      // Count total matches
-      const countRow = await get(`
+  if (sanitizedTokens.length === 0) {
+    return { results: [], total: 0, mode: 'empty' };
+  }
+
+  let filterSql = '';
+  const filterParams = [];
+
+  if (options.batchId && options.batchId !== 'all') {
+    filterSql += ' AND r.batch_id = ?';
+    filterParams.push(options.batchId);
+  }
+
+  if (options.company) {
+    filterSql += ' AND r.company LIKE ?';
+    filterParams.push(`%${options.company}%`);
+  }
+
+  const joinedNormalized = sanitizedTokens.join(' ');
+  let semanticSqlCondition = null;
+
+  if (/(سافر|سفر|بره|خارج البلاد|دوله)/.test(joinedNormalized)) {
+    semanticSqlCondition = `r.travel_abroad IS NOT NULL AND TRIM(r.travel_abroad) != '' AND TRIM(r.travel_abroad) NOT IN ('لا', 'لا يوجد', 'لم يسافر', 'بدون', '-')`;
+  } else if (/(سياسي|اخوان|انتماء)/.test(joinedNormalized)) {
+    semanticSqlCondition = `(COALESCE(r.political_suspicion_status, 'سليم') != 'سليم' OR (r.political_suspicion_details IS NOT NULL AND TRIM(r.political_suspicion_details) != ''))`;
+  } else if (/(جنائي|قضيه|قضايا|حكم|احكام|سوابق)/.test(joinedNormalized)) {
+    semanticSqlCondition = `(COALESCE(r.criminal_suspicion_status, 'سليم') != 'سليم' OR (r.criminal_suspicion_details IS NOT NULL AND TRIM(r.criminal_suspicion_details) != ''))`;
+  } else if (/(نفسي|نفسيه|عصبيه|عياده|غير متزن)/.test(joinedNormalized)) {
+    semanticSqlCondition = `(r.is_psychological_case = 1 OR (r.psychological_notes IS NOT NULL AND TRIM(r.psychological_notes) != ''))`;
+  } else if (/(امي|بصمجي|لا يقرا|لا يكتب)/.test(joinedNormalized)) {
+    semanticSqlCondition = `(r.literacy LIKE '%أمي%' OR r.literacy LIKE '%امي%' OR r.literacy LIKE '%بصم%' OR r.literacy LIKE '%لا يقرأ%')`;
+  }
+
+  if (semanticSqlCondition) {
+    const semCount = await get(`
+      SELECT COUNT(*) as total FROM recruits r WHERE ${semanticSqlCondition} ${filterSql}
+    `, filterParams);
+    if ((semCount?.total || 0) > 0) {
+      const semResults = await query(`
+        SELECT ${SELECT_RECRUIT_COLS}
+        FROM recruits r
+        LEFT JOIN batches b ON r.batch_id = b.id
+        WHERE ${semanticSqlCondition} ${filterSql}
+        ORDER BY r.id DESC
+        LIMIT ? OFFSET ?
+      `, [...filterParams, limit, offset]);
+      return { results: semResults, total: semCount.total, mode: 'semantic_sql' };
+    }
+  }
+
+  try {
+    const ftsAndQuery = sanitizedTokens.map(t => `"${t}"*`).join(' AND ');
+
+    const countAndRow = await get(`
+      SELECT COUNT(*) as total
+      FROM recruits_fts f
+      JOIN recruits r ON f.recruit_id = r.id
+      WHERE recruits_fts MATCH ? ${filterSql}
+    `, [ftsAndQuery, ...filterParams]);
+
+    if (countAndRow && countAndRow.total > 0) {
+      const results = await query(`
+        SELECT ${SELECT_RECRUIT_COLS}, bm25(recruits_fts) as rank
+        FROM recruits_fts f
+        JOIN recruits r ON f.recruit_id = r.id
+        LEFT JOIN batches b ON r.batch_id = b.id
+        WHERE recruits_fts MATCH ? ${filterSql}
+        ORDER BY rank
+        LIMIT ? OFFSET ?
+      `, [ftsAndQuery, ...filterParams, limit, offset]);
+
+      return { results, total: countAndRow.total, mode: 'fts5_and' };
+    }
+
+    if (sanitizedTokens.length > 1) {
+      const ftsOrQuery = sanitizedTokens.map(t => `"${t}"*`).join(' OR ');
+      const orParams = [ftsOrQuery, ...filterParams];
+      const countOrRow = await get(`
         SELECT COUNT(*) as total
         FROM recruits_fts f
         JOIN recruits r ON f.recruit_id = r.id
         WHERE recruits_fts MATCH ? ${filterSql}
-      `, filterParams);
+      `, orParams);
 
-      const total = countRow?.total || 0;
-
-      // Fetch paged results ranked by relevance
-      const results = await query(`
-        SELECT r.id, r.name, r.national_id, r.recruit_code, r.qualification,
-               r.current_job, r.other_jobs, r.address, r.company, r.medical_status,
-               r.photo_path, r.video_path, b.name as batch_name, r.batch_id,
-               bm25(recruits_fts) as rank
-        FROM recruits_fts f
-        JOIN recruits r ON f.recruit_id = r.id
-        JOIN batches b ON r.batch_id = b.id
-        WHERE recruits_fts MATCH ? ${filterSql}
-        ORDER BY rank
-        LIMIT ? OFFSET ?
-      `, [...filterParams, limit, offset]);
-
-      if (results.length > 0) {
-        return {
-          results,
-          total,
-          mode: 'fts5'
-        };
-      } else if (ftsQueryStr.includes(' AND ')) {
-        // Multi-word fallback: Try OR matching if strict AND yielded zero results
-        const orQueryStr = ftsQueryStr.replaceAll(' AND ', ' OR ');
-        const orParams = [orQueryStr, ...filterParams.slice(1)];
-        const countOrRow = await get(`
-          SELECT COUNT(*) as total
+      if ((countOrRow?.total || 0) > 0) {
+        const orResults = await query(`
+          SELECT ${SELECT_RECRUIT_COLS}, bm25(recruits_fts) as rank
           FROM recruits_fts f
           JOIN recruits r ON f.recruit_id = r.id
+          LEFT JOIN batches b ON r.batch_id = b.id
           WHERE recruits_fts MATCH ? ${filterSql}
-        `, orParams);
+          ORDER BY rank
+          LIMIT ? OFFSET ?
+        `, [...orParams, limit, offset]);
 
-        if ((countOrRow?.total || 0) > 0) {
-          const orResults = await query(`
-            SELECT r.id, r.name, r.national_id, r.recruit_code, r.qualification,
-                   r.current_job, r.other_jobs, r.address, r.company, r.medical_status,
-                   r.photo_path, r.video_path, b.name as batch_name, r.batch_id,
-                   bm25(recruits_fts) as rank
-            FROM recruits_fts f
-            JOIN recruits r ON f.recruit_id = r.id
-            JOIN batches b ON r.batch_id = b.id
-            WHERE recruits_fts MATCH ? ${filterSql}
-            ORDER BY rank
-            LIMIT ? OFFSET ?
-          `, [...orParams, limit, offset]);
-
-          if (orResults.length > 0) {
-            return {
-              results: orResults,
-              total: countOrRow.total,
-              mode: 'fts5_or'
-            };
-          }
+        if (orResults.length > 0) {
+          return { results: orResults, total: countOrRow.total, mode: 'fts5_or' };
         }
       }
-    } catch (ftsErr) {
-      // If FTS fails for any reason (e.g. malformed tokenizer syntax), fall back to LIKE
-      console.warn('FTS5 query failed, falling back to LIKE:', ftsErr.message);
     }
+  } catch (ftsErr) {
+    console.warn('FTS5 query failed, falling back to LIKE:', ftsErr.message);
   }
 
-  // 4. Safe Fallback: Parameterized LIKE matching
-  const normTerm = normalizeArabic(term);
-  const likeParam = `%${normTerm}%`;
+  const normTerm = normalizeArabic(sanitizedTokens.join(' '));
+  const rawLike = `%${term}%`;
+  const normLike = `%${normTerm}%`;
 
-  let fallbackFilter = '';
-  const fallbackParams = [likeParam, likeParam, likeParam, likeParam];
+  const likeCols = [
+    'r.name', 'r.national_id', 'r.recruit_code', 'r.police_number', 'r.military_number',
+    'r.qualification', 'r.current_job', 'r.other_jobs', 'r.address', 'r.company',
+    'r.distribution_sector', 'r.medical_status', 'r.inspection', 'r.notes',
+    'r.travel_abroad', 'r.father_name', 'r.father_job', 'r.mother_name', 'r.mother_job',
+    'r.political_suspicion_status', 'r.political_suspicion_details',
+    'r.criminal_suspicion_status', 'r.criminal_suspicion_details', 'r.psychological_notes'
+  ];
 
-  if (options.batchId) {
-    fallbackFilter += ` AND r.batch_id = ?`;
-    fallbackParams.push(options.batchId);
-  }
-  if (options.company) {
-    fallbackFilter += ` AND r.company LIKE ?`;
-    fallbackParams.push(`%${options.company}%`);
-  }
+  const whereClause = likeCols.map(c => `(${c} LIKE ? OR ${c} LIKE ?)`).join(' OR ');
+  const likeParams = [];
+  likeCols.forEach(() => {
+    likeParams.push(rawLike, normLike);
+  });
 
   const countFallback = await get(`
     SELECT COUNT(*) as total
     FROM recruits r
-    WHERE (r.name LIKE ? OR r.national_id LIKE ? OR r.qualification LIKE ? OR r.current_job LIKE ?)
-    ${fallbackFilter}
-  `, fallbackParams);
+    WHERE (${whereClause}) ${filterSql}
+  `, [...likeParams, ...filterParams]);
 
   const fallbackResults = await query(`
-    SELECT r.id, r.name, r.national_id, r.recruit_code, r.qualification,
-           r.current_job, r.other_jobs, r.address, r.company, r.medical_status,
-           r.photo_path, r.video_path, b.name as batch_name, r.batch_id
+    SELECT ${SELECT_RECRUIT_COLS}
     FROM recruits r
-    JOIN batches b ON r.batch_id = b.id
-    WHERE (r.name LIKE ? OR r.national_id LIKE ? OR r.qualification LIKE ? OR r.current_job LIKE ?)
-    ${fallbackFilter}
+    LEFT JOIN batches b ON r.batch_id = b.id
+    WHERE (${whereClause}) ${filterSql}
     ORDER BY r.id DESC
     LIMIT ? OFFSET ?
-  `, [...fallbackParams, limit, offset]);
+  `, [...likeParams, ...filterParams, limit, offset]);
 
   return {
     results: fallbackResults,
@@ -190,3 +221,5 @@ export async function searchRecruits(rawTerm, options = {}) {
     mode: 'like_fallback'
   };
 }
+
+export const searchRecruits = searchRecruitsFts;

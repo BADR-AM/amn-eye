@@ -23,24 +23,36 @@ export const QUERY_CATALOG = {
     execute: async () => {
       const stats = await get(`SELECT COUNT(*) as total_recruits FROM recruits`);
       const activeBatch = await get(`SELECT id, name FROM batches WHERE active = 1 LIMIT 1`);
-      const tickets = await get(`SELECT COUNT(*) as open_tickets FROM recruit_tickets WHERE status = 'open'`);
+      const tickets = await get(`SELECT COUNT(*) as open_tickets FROM recruit_tickets WHERE status = 'open'`).catch(() => ({ open_tickets: 0 }));
       const psych = await get(`SELECT COUNT(*) as psych_cases FROM recruits WHERE is_psychological_case = 1`);
-      const secCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE company LIKE '%أمن%'`);
-      const baseCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE company LIKE '%أساسية%' OR company LIKE '%اساسية%'`);
+      const secCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE REPLACE(company, 'أ', 'ا') LIKE '%امن%'`);
+      const baseCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE REPLACE(company, 'أ', 'ا') LIKE '%قاعد%' OR REPLACE(REPLACE(company, 'أ', 'ا'), 'ة', 'ه') LIKE '%اساسي%' OR REPLACE(company, 'ة', 'ه') LIKE '%سريه%'`);
+      const companyRows = await query(`SELECT COALESCE(NULLIF(TRIM(company), ''), 'غير موزع على سرية') as company_name, COUNT(*) as count FROM recruits GROUP BY company_name ORDER BY count DESC`);
       const fitCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE ${SQL_MEDICAL_FIT}`);
       const unfitCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE ${SQL_MEDICAL_UNFIT}`);
-      const distributedCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE distribution_sector IS NOT NULL AND distribution_sector != ''`);
+      const distributedCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE distribution_sector IS NOT NULL AND TRIM(distribution_sector) != ''`);
+      const politicalCases = await get(`SELECT COUNT(*) as count FROM recruits WHERE COALESCE(political_suspicion_status, 'سليم') != 'سليم'`);
+      const criminalCases = await get(`SELECT COUNT(*) as count FROM recruits WHERE COALESCE(criminal_suspicion_status, 'سليم') != 'سليم'`);
+      const traveledAbroad = await get(`SELECT COUNT(*) as count FROM recruits WHERE travel_abroad IS NOT NULL AND TRIM(travel_abroad) != '' AND TRIM(travel_abroad) NOT IN ('لا', 'لا يوجد', 'لم يسافر', 'بدون', '-')`);
+
       const total = stats?.total_recruits || 0;
+      const fit = fitCount?.count || 0;
+      const unfit = unfitCount?.count || 0;
 
       return {
         total_recruits: total,
-        active_batch: activeBatch ? activeBatch.name : 'غير محدد',
+        active_batch: activeBatch ? activeBatch.name : 'لا توجد دفعة نشطة',
         open_tickets: tickets?.open_tickets || 0,
         psych_cases: psych?.psych_cases || 0,
+        political_suspicion_cases: politicalCases?.count || 0,
+        criminal_suspicion_cases: criminalCases?.count || 0,
+        traveled_abroad_count: traveledAbroad?.count || 0,
         security_company_force: secCount?.count || 0,
         base_force: baseCount?.count || 0,
-        medically_fit: fitCount?.count || 0,
-        medically_unfit: unfitCount?.count || 0,
+        companies_breakdown: companyRows || [],
+        medically_fit: fit,
+        medically_unfit: unfit,
+        medically_undetermined: Math.max(0, total - (fit + unfit)),
         distributed_recruits: distributedCount?.count || 0,
         unassigned_recruits: Math.max(0, total - (distributedCount?.count || 0))
       };

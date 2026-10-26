@@ -864,6 +864,7 @@ app.post('/api/batches', requireAuth, async (req, res) => {
       details: `إضافة دفعة تجنيد جديدة: ${name} (${year}/${month})${active ? ' وتفعيلها كدفعة حالية' : ''}`,
     });
 
+    notifyDataChanged();
     res.status(201).json(created);
   } catch (error) {
     console.error('Error creating batch:', error);
@@ -886,10 +887,38 @@ app.put('/api/batches/:id/set-active', requireAuth, async (req, res) => {
       details: `تفعيل دفعة التجنيد كدفعة حالية نشطة: ${updated ? updated.name : id}`,
     });
 
+    notifyDataChanged();
     res.json(updated);
   } catch (error) {
     console.error('Error activating batch:', error);
     res.status(500).json({ error: 'خطأ في تفعيل الدفع التجنيدي' });
+  }
+});
+
+app.delete('/api/batches/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const batch = await get(`SELECT * FROM batches WHERE id = ?`, [id]);
+    if (!batch) {
+      return res.status(404).json({ error: 'الدفع التجنيدي غير موجود' });
+    }
+    const recruitCount = await get(`SELECT COUNT(*) as count FROM recruits WHERE batch_id = ?`, [id]);
+    if (recruitCount?.count > 0) {
+      return res.status(400).json({ error: `لا يمكن حذف الدفع لوجود ${recruitCount.count} مجند مسجلين به` });
+    }
+    await run(`DELETE FROM batches WHERE id = ?`, [id]);
+    logAudit(req, {
+      action_type: 'DELETE_BATCH',
+      entity_type: 'batch',
+      entity_id: id,
+      entity_name: batch.name,
+      details: `حذف دفعة التجنيد: ${batch.name}`
+    });
+    notifyDataChanged();
+    res.json({ message: 'تم حذف الدفع التجنيدي بنجاح' });
+  } catch (error) {
+    console.error('Error deleting batch:', error);
+    res.status(500).json({ error: 'خطأ في حذف الدفع التجنيدي' });
   }
 });
 
@@ -2232,7 +2261,11 @@ app.get('/api/analytics/overview', requireAuth, async (req, res) => {
       inHospitalNow,
       medicalDecisions,
       attendanceTrends,
-      qualificationStats
+      qualificationStats,
+      fitRecruits,
+      unfitRecruits,
+      securityForce,
+      baseForceRecruits
     ] = await Promise.all([
       get(`SELECT COUNT(*) as count FROM recruits ${batchFilter}`, params),
       get(
@@ -2314,13 +2347,24 @@ app.get('/api/analytics/overview', requireAuth, async (req, res) => {
          ORDER BY count DESC 
          LIMIT 5`,
         params
-      )
+      ),
+      get(`SELECT COUNT(*) as count FROM recruits ${batchFilter ? batchFilter + ' AND' : 'WHERE'} ${SQL_MEDICAL_FIT}`, params),
+      get(`SELECT COUNT(*) as count FROM recruits ${batchFilter ? batchFilter + ' AND' : 'WHERE'} ${SQL_MEDICAL_UNFIT}`, params),
+      get(`SELECT COUNT(*) as count FROM recruits ${batchFilter ? batchFilter + ' AND' : 'WHERE'} REPLACE(company, 'أ', 'ا') LIKE '%امن%'`, params),
+      get(`SELECT COUNT(*) as count FROM recruits ${batchFilter ? batchFilter + ' AND' : 'WHERE'} (REPLACE(company, 'أ', 'ا') LIKE '%قاعد%' OR REPLACE(REPLACE(company, 'أ', 'ا'), 'ة', 'ه') LIKE '%اساسي%' OR REPLACE(company, 'ة', 'ه') LIKE '%سريه%') AND REPLACE(company, 'أ', 'ا') NOT LIKE '%امن%'`, params)
     ]);
 
+    const total = totalRecruits?.count || 0;
+    const fit = fitRecruits?.count || 0;
+    const unfit = unfitRecruits?.count || 0;
+    const undetermined = Math.max(0, total - (fit + unfit));
+    const secForce = securityForce?.count || 0;
+    const baseForce = baseForceRecruits?.count || 0;
+
     res.json({
-      total: totalRecruits?.count || 0,
+      total,
       flagged: flaggedRecruits?.count || 0,
-      clean: Math.max(0, (totalRecruits?.count || 0) - (flaggedRecruits?.count || 0)),
+      clean: Math.max(0, total - (flaggedRecruits?.count || 0)),
       inHospitalNow: inHospitalNow?.count || 0,
       psychologicalCount: psychologicalCases?.count || 0,
       activeTicketsCount: activeTickets?.count || 0,
@@ -2329,7 +2373,12 @@ app.get('/api/analytics/overview', requireAuth, async (req, res) => {
       companyDistribution: companyDistribution || [],
       medicalDecisions: medicalDecisions || [],
       attendanceTrends: (attendanceTrends || []).reverse(),
-      qualificationStats: qualificationStats || []
+      qualificationStats: qualificationStats || [],
+      medically_fit: fit,
+      medically_unfit: unfit,
+      medically_undetermined: undetermined,
+      security_company_force: secForce,
+      base_force: baseForce,
     });
   } catch (error) {
     console.error('Error fetching analytics overview:', error);

@@ -2,17 +2,8 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import http from 'http';
+import os from 'os';
 import { AI_CONFIG } from './aiConfig.js';
-
-/**
- * Embedded AI Sidecar Process Manager
- *
- * Supervises the local llama-server executable:
- * - Binds STRICTLY to 127.0.0.1 (loopback only)
- * - Restricts memory and threads to match 8GB RAM Intel CPU constraints
- * - Handles health checks, crashes, graceful termination, and lazy startup
- * - Seamless fallback: if binary/model is not installed, system operates in 'deterministic_only' mode.
- */
 
 class ModelManager {
   constructor() {
@@ -24,227 +15,245 @@ class ModelManager {
     this.binaryPath = null;
     this.modelPath = null;
     this.hasAssets = false;
+    this.idleTimer = null;
 
     this.resolveAssetPaths();
     this.registerExitHooks();
   }
 
   resolveAssetPaths() {
-    const { paths, activeModelId, models } = AI_CONFIG;
-    const modelProfile = models[activeModelId] || models['qwen3-1.7b-instruct-q4km'];
+    const { runtimesDir, modelsDir, binaryName } = AI_CONFIG.paths;
+    const candidateBinary = path.join(runtimesDir, binaryName);
+    const binaryExists = fs.existsSync(candidateBinary);
 
-    // Support development path, Electron extraResources path, and userData path
-    const appDataDir = process.env.APP_DATA_DIR;
-    const resourcesPath = process.resourcesPath;
+    const searchOrder = [
+      AI_CONFIG.activeModelId,
+      ...(AI_CONFIG.preferredModelOrder || [])
+    ].filter((v, i, a) => v && a.indexOf(v) === i);
 
-    const candidateBinaries = [
-      path.join(paths.runtimesDir, paths.binaryName),
-      resourcesPath ? path.join(resourcesPath, 'assets', 'runtimes', paths.binaryName) : null,
-      path.join(paths.projectRoot, paths.binaryName),
-      appDataDir ? path.join(appDataDir, 'runtimes', paths.binaryName) : null
-    ].filter(Boolean);
+    let selectedProfile = null;
+    let selectedModelPath = null;
 
-    for (const b of candidateBinaries) {
-      if (fs.existsSync(b)) {
-        this.binaryPath = b;
+    for (const modelId of searchOrder) {
+      const profile = AI_CONFIG.models[modelId];
+      if (!profile) continue;
+      const candidatePath = path.join(modelsDir, profile.filename);
+      if (fs.existsSync(candidatePath)) {
+        selectedProfile = profile;
+        selectedModelPath = candidatePath;
+        AI_CONFIG.activeModelId = modelId;
         break;
       }
     }
 
-    const candidateModels = [
-      path.join(paths.modelsDir, modelProfile.filename),
-      resourcesPath ? path.join(resourcesPath, 'assets', 'ai', modelProfile.filename) : null,
-      path.join(paths.projectRoot, modelProfile.filename),
-      appDataDir ? path.join(appDataDir, 'models', modelProfile.filename) : null
-    ].filter(Boolean);
-
-    for (const m of candidateModels) {
-      if (fs.existsSync(m)) {
-        this.modelPath = m;
-        break;
-      }
-    }
-
-    // Dynamic fallback: if exact model profile filename is not found, discover any valid .gguf in modelsDir
-    if (!this.modelPath) {
-      const searchDirs = [
-        paths.modelsDir,
-        resourcesPath ? path.join(resourcesPath, 'assets', 'ai') : null,
-        appDataDir ? path.join(appDataDir, 'models') : null
-      ].filter(Boolean);
-
-      for (const d of searchDirs) {
-        if (fs.existsSync(d)) {
-          try {
-            const files = fs.readdirSync(d);
-            const ggufFile = files.find(f => f.toLowerCase().endsWith('.gguf'));
-            if (ggufFile) {
-              this.modelPath = path.join(d, ggufFile);
-              break;
-            }
-          } catch (e) {}
-        }
-      }
-    }
-
-    this.hasAssets = !!(this.binaryPath && this.modelPath);
-    if (!this.hasAssets) {
+    if (binaryExists && selectedProfile && selectedModelPath) {
+      this.binaryPath = candidateBinary;
+      this.modelPath = selectedModelPath;
+      this.hasAssets = true;
+      this.state = 'unavailable';
+      console.log(`[AI ModelManager] Selected AI model: ${selectedProfile.name} (${selectedProfile.filename})`);
+    } else {
+      this.hasAssets = false;
       this.state = 'deterministic_only';
+      console.log(`[AI ModelManager] Offline AI assets not detected (Binary: ${binaryExists}, Model: ${Boolean(selectedModelPath)}). Operating in deterministic-only mode.`);
+    }
+  }
+
+  touchActivity() {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+    const timeoutMs = AI_CONFIG.hardware.idleTimeoutMs || 300000;
+    if (timeoutMs > 0) {
+      this.idleTimer = setTimeout(() => {
+        if (this.process && this.activeGenerations === 0 && this.state === 'ready') {
+          console.log('[AI ModelManager] Unloading idle AI sidecar process to free ~1.1 GB RAM...');
+          this.stopProcessSync();
+        }
+      }, timeoutMs);
+      if (typeof this.idleTimer.unref === 'function') {
+        this.idleTimer.unref();
+      }
     }
   }
 
   registerExitHooks() {
-    const cleanExit = () => {
-      this.stop();
+    const cleanup = () => {
+      this.stopProcessSync();
     };
-
-    process.on('exit', cleanExit);
-    process.on('SIGINT', () => { cleanExit(); process.exit(0); });
-    process.on('SIGTERM', () => { cleanExit(); process.exit(0); });
+    process.on('exit', cleanup);
+    process.on('SIGINT', () => {
+      cleanup();
+      process.exit(0);
+    });
+    process.on('SIGTERM', () => {
+      cleanup();
+      process.exit(0);
+    });
   }
 
-  async checkHealth() {
-    if (!this.process || this.process.killed) {
+  async ensureStarted() {
+    this.resolveAssetPaths();
+    if (!AI_CONFIG.enabled || !this.hasAssets || this.state === 'deterministic_only') {
       return false;
     }
 
+    if (this.state === 'ready' || this.state === 'busy') {
+      this.touchActivity();
+      return true;
+    }
+
+    if (this.state === 'loading') {
+      return this.waitForReady();
+    }
+
+    this.state = 'loading';
+    console.log('[AI ModelManager] Launching embedded AI sidecar process (2 threads, low priority)...');
+
+    const args = [
+      '--model', this.modelPath,
+      '--host', AI_CONFIG.host,
+      '--port', AI_CONFIG.port.toString(),
+      '--threads', AI_CONFIG.hardware.cpuThreads.toString(),
+      '--threads-batch', AI_CONFIG.hardware.cpuThreads.toString(),
+      '--batch-size', (AI_CONFIG.hardware.batchSize || 256).toString(),
+      '--ubatch-size', (AI_CONFIG.hardware.ubatchSize || 128).toString(),
+      '--ctx-size', AI_CONFIG.hardware.maxContextTokens.toString(),
+      '--n-predict', AI_CONFIG.hardware.maxOutputTokens.toString(),
+      '--log-disable'
+    ];
+
+    try {
+      this.process = spawn(this.binaryPath, args, {
+        cwd: AI_CONFIG.paths.runtimesDir,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: false
+      });
+
+      if (this.process.pid) {
+        try {
+          os.setPriority(this.process.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+        } catch (_) {}
+      }
+
+      this.process.stderr.on('data', (chunk) => {
+        const msg = chunk.toString();
+        if (msg.includes('error') || msg.includes('FAIL')) {
+          console.error('[AI Sidecar Stderr]:', msg.trim());
+        }
+      });
+
+      this.process.on('exit', (code, signal) => {
+        const wasIntentional = this.process === null;
+        this.process = null;
+        this.state = this.hasAssets ? 'unavailable' : 'deterministic_only';
+        if (!wasIntentional && signal !== 'SIGKILL' && signal !== 'SIGTERM') {
+          console.warn(`[AI ModelManager] Sidecar exited unexpectedly (code ${code}, signal ${signal})`);
+          this.handleUnexpectedExit();
+        }
+      });
+
+      const isHealthy = await this.pollHealthCheck(20000);
+      if (isHealthy) {
+        this.state = 'ready';
+        this.restartAttempts = 0;
+        this.touchActivity();
+        console.log(`[AI ModelManager] Sidecar ready at http://${AI_CONFIG.host}:${AI_CONFIG.port}`);
+        return true;
+      } else {
+        throw new Error('Sidecar process health check timed out during boot.');
+      }
+    } catch (err) {
+      console.error('[AI ModelManager] Failed to start sidecar:', err.message);
+      this.stopProcessSync();
+      this.state = 'deterministic_only';
+      return false;
+    }
+  }
+
+  async pollHealthCheck(timeoutMs) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeoutMs) {
+      const healthy = await this.checkHealth();
+      if (healthy) return true;
+      await new Promise((res) => setTimeout(res, 500));
+    }
+    return false;
+  }
+
+  checkHealth() {
     return new Promise((resolve) => {
-      const req = http.get(
-        `http://${AI_CONFIG.host}:${AI_CONFIG.port}/health`,
-        { timeout: 2000 },
+      const req = http.request(
+        {
+          host: AI_CONFIG.host,
+          port: AI_CONFIG.port,
+          path: '/health',
+          method: 'GET',
+          timeout: 2000
+        },
         (res) => {
           resolve(res.statusCode === 200);
         }
       );
-
       req.on('error', () => resolve(false));
       req.on('timeout', () => {
         req.destroy();
         resolve(false);
       });
+      req.end();
     });
   }
 
-  async start() {
-    if (!AI_CONFIG.enabled) {
-      this.state = 'deterministic_only';
-      return false;
+  async waitForReady() {
+    let attempts = 0;
+    while (this.state === 'loading' && attempts < 40) {
+      await new Promise((res) => setTimeout(res, 500));
+      attempts++;
     }
+    return this.state === 'ready';
+  }
 
-    this.resolveAssetPaths();
-    if (!this.hasAssets) {
+  async handleUnexpectedExit() {
+    if (this.restartAttempts < AI_CONFIG.hardware.maxRestartAttempts && this.hasAssets) {
+      this.restartAttempts++;
+      await new Promise((res) => setTimeout(res, 2000));
+      this.ensureStarted();
+    } else {
       this.state = 'deterministic_only';
-      return false;
-    }
-
-    if (this.process && !this.process.killed) {
-      const healthy = await this.checkHealth();
-      if (healthy) {
-        this.state = 'ready';
-        return true;
-      }
-    }
-
-    this.state = 'loading';
-    console.log(`🧠 بدء تشغيل محرك الذكاء الاصطناعي المحلي (llama-server) على 127.0.0.1:${AI_CONFIG.port}...`);
-
-    const args = [
-      '-m', this.modelPath,
-      '--host', AI_CONFIG.host,
-      '--port', String(AI_CONFIG.port),
-      '-c', String(AI_CONFIG.hardware.maxContextTokens),
-      '-t', String(AI_CONFIG.hardware.cpuThreads),
-      '--n-predict', String(AI_CONFIG.hardware.maxOutputTokens)
-    ];
-
-    try {
-      this.process = spawn(this.binaryPath, args, {
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
-
-      const onOutput = (data) => {
-        const text = data.toString();
-        if (text.includes('listening on') || text.includes('model loaded') || text.includes('HTTP server listening')) {
-          this.state = 'ready';
-          this.restartAttempts = 0;
-          console.log(`✅ محرك الذكاء الاصطناعي جاهز للعمل على 127.0.0.1:${AI_CONFIG.port}`);
-        }
-      };
-
-      this.process.stdout.on('data', onOutput);
-      this.process.stderr.on('data', onOutput);
-
-      this.process.on('close', (code) => {
-        console.log(`🛑 توقف محرك الذكاء الاصطناعي (كود الخروج: ${code})`);
-        this.process = null;
-        this.state = this.hasAssets ? 'unavailable' : 'deterministic_only';
-      });
-
-      // Poll health until ready or timeout (up to 15s)
-      for (let i = 0; i < 30; i++) {
-        await new Promise(r => setTimeout(r, 500));
-        if (await this.checkHealth()) {
-          this.state = 'ready';
-          this.restartAttempts = 0;
-          return true;
-        }
-      }
-
-      this.state = 'unavailable';
-      return false;
-    } catch (err) {
-      console.error('❌ تعذر تشغيل محرك الذكاء الاصطناعي المحلي:', err.message);
-      this.state = 'deterministic_only';
-      return false;
     }
   }
 
-  stop() {
+  stopProcessSync() {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
     if (this.process) {
-      try {
-        console.log('🛑 إيقاف محرك الذكاء الاصطناعي المحلي...');
-        this.process.kill('SIGTERM');
-        setTimeout(() => {
-          if (this.process && !this.process.killed) {
-            this.process.kill('SIGKILL');
-          }
-        }, 1500);
-      } catch (e) {}
+      const proc = this.process;
       this.process = null;
+      try {
+        proc.kill('SIGKILL');
+      } catch (_) {}
     }
     this.state = this.hasAssets ? 'unavailable' : 'deterministic_only';
-  }
-
-  async ensureRunning() {
-    if (this.state === 'ready') {
-      return true;
-    }
-    if (!this.hasAssets) {
-      this.state = 'deterministic_only';
-      return false;
-    }
-    return await this.start();
   }
 
   getStatus() {
     return {
       enabled: AI_CONFIG.enabled,
-      engine: AI_CONFIG.engine,
+      engine: AI_CONFIG.engine || 'llama.cpp',
+      loopbackOnly: AI_CONFIG.host === '127.0.0.1' || AI_CONFIG.host === 'localhost',
+      hardwareLimits: {
+        threads: AI_CONFIG.hardware.cpuThreads,
+        contextTokens: AI_CONFIG.hardware.maxContextTokens
+      },
       state: this.state,
       activeModel: AI_CONFIG.activeModelId,
       hasAssets: this.hasAssets,
-      binaryPath: this.binaryPath,
-      modelPath: this.modelPath,
-      loopbackOnly: true,
-      port: AI_CONFIG.port,
-      hardwareLimits: {
-        threads: AI_CONFIG.hardware.cpuThreads,
-        contextTokens: AI_CONFIG.hardware.maxContextTokens,
-        maxOutputTokens: AI_CONFIG.hardware.maxOutputTokens
-      },
+      activeGenerations: this.activeGenerations,
       queueLength: this.queueLength,
-      activeGenerations: this.activeGenerations
+      endpoint: `http://${AI_CONFIG.host}:${AI_CONFIG.port}`
     };
   }
 }

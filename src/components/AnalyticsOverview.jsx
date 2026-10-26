@@ -68,14 +68,28 @@ function AnalyticsOverview({
       }
     }
 
-    // Safety net: ensure any unmapped recruits are tracked in unassigned so sum matches total
-    const mappedSum = Object.values(map).reduce((a, b) => a + b, 0);
+    // If base force (القوة الأساسية) has 0 direct entries, compute it from numbered companies
+    if (map['base'] !== undefined && map['base'] === 0) {
+      const numberedForce = Object.keys(map)
+        .filter(k => k !== 'sec' && k !== 'base')
+        .reduce((sum, k) => sum + (map[k] || 0), 0);
+      if (numberedForce > 0) {
+        map['base'] = numberedForce;
+      } else if (data?.base_force) {
+        map['base'] = data.base_force;
+      }
+    }
+
+    // Safety net: ensure any unmapped recruits are tracked in unassigned so sum matches total (excluding aggregate 'base')
+    const mappedSum = Object.keys(map)
+      .filter(k => k !== 'base')
+      .reduce((sum, k) => sum + (map[k] || 0), 0);
     if (data && data.total > (mappedSum + unassigned)) {
       unassigned = data.total - mappedSum;
     }
 
     return { countsMap: map, unassignedCount: unassigned };
-  }, [data?.companyDistribution, data?.total, companyColors]);
+  }, [data?.companyDistribution, data?.total, data?.base_force, companyColors]);
 
   if (loading && !data) {
     return (
