@@ -2,6 +2,15 @@ const { app, BrowserWindow, session, ipcMain } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const http = require('http');
+const { execSync } = require('child_process');
+
+const cleanupSidecars = () => {
+  try {
+    if (process.platform === 'win32') {
+      execSync('taskkill /F /IM llama-server.exe /T', { stdio: 'ignore' });
+    }
+  } catch (e) {}
+};
 
 function waitForServer(url, timeoutMs = 15000) {
   const start = Date.now();

@@ -96,7 +96,8 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
-      "artifactName": "SecurityEye_VER_02.5.1_SETUP.exe"
+      "artifactName": "SecurityEye_VER_02.5.1_SETUP.exe",
+      "include": "build/installer.nsh"
     },
     "files": [
       "dist/**/*",
