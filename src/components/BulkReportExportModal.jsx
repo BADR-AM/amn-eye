@@ -18,7 +18,7 @@ import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { OfficialReportSheet } from './OfficialReport';
 import { createZipBlob } from '../utils/simpleZip';
-import { getUser } from '../utils/auth';
+import { getUser, authHeaders } from '../utils/auth';
 
 const COMPANIES = [
   'السرية الأولى ( ١ )',

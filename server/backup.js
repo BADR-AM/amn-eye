@@ -57,8 +57,8 @@ export const createBackup = async ({ destinationDir = null, isAuto = false } = {
   // 1. Create a safe, non-blocking snapshot of SQLite DB using VACUUM INTO
   const tempDbSnapshot = path.join(dataDir, `snapshot_${Date.now()}.db`);
   try {
-    // Escape backslashes for SQLite
-    const safeTempPath = tempDbSnapshot.replace(/\\/g, '/');
+    // Escape backslashes and single quotes for SQLite
+    const safeTempPath = tempDbSnapshot.replace(/\\/g, '/').replace(/'/g, "''");
     await run(`VACUUM INTO '${safeTempPath}'`);
   } catch (err) {
     // Fallback: standard file copy if VACUUM INTO is not supported in older SQLite
@@ -182,10 +182,13 @@ export const listBackups = (customDir = null) => {
  */
 export const deleteBackup = (fileName, customDir = null) => {
   const dir = customDir && fs.existsSync(customDir) ? customDir : defaultBackupsDir;
-  const target = path.join(dir, fileName);
+  const safeName = path.basename(fileName);
+  const target = path.join(dir, safeName);
+  const resolvedDir = path.resolve(dir);
+  const resolvedTarget = path.resolve(target);
 
-  if (fs.existsSync(target)) {
-    fs.unlinkSync(target);
+  if (resolvedTarget.startsWith(resolvedDir) && fs.existsSync(resolvedTarget)) {
+    fs.unlinkSync(resolvedTarget);
     return true;
   }
   return false;
@@ -227,7 +230,9 @@ export const restoreBackup = async (sourcePath) => {
         await execFileAsync('tar', ['-xf', sourcePath, '-C', tempExtractDir]);
       } catch (tarErr) {
         console.warn('tar extraction failed, trying PowerShell Expand-Archive:', tarErr.message);
-        await execFileAsync('powershell', ['-NoProfile', '-Command', `Expand-Archive -LiteralPath '${sourcePath}' -DestinationPath '${tempExtractDir}' -Force`]);
+        const safeSrc = sourcePath.replace(/'/g, "''");
+        const safeDest = tempExtractDir.replace(/'/g, "''");
+        await execFileAsync('powershell', ['-NoProfile', '-Command', `Expand-Archive -LiteralPath '${safeSrc}' -DestinationPath '${safeDest}' -Force`]);
       }
 
       // Locate recruits.db inside extracted directory

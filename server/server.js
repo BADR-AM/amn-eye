@@ -1700,10 +1700,8 @@ app.post('/api/recruits/bulk-update-distribution', requireAuth, requireRole('adm
     }
 
     let updatedCount = 0;
-    const errors = [];
 
-    await run('BEGIN TRANSACTION');
-    try {
+    await withTransaction(async () => {
       for (const item of updates) {
         const { id, distribution_sector } = item;
         if (!id || !distribution_sector) continue;
@@ -1716,11 +1714,7 @@ app.post('/api/recruits/bulk-update-distribution', requireAuth, requireRole('adm
           updatedCount++;
         }
       }
-      await run('COMMIT');
-    } catch (txErr) {
-      await run('ROLLBACK');
-      throw txErr;
-    }
+    });
 
     logAudit(req, {
       action_type: 'BULK_UPDATE_DISTRIBUTION',
